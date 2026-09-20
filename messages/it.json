@@ -1,0 +1,789 @@
+{
+  "app": {
+    "name": "Utraya",
+    "tagline": "Consuma YouTube più velocemente con l'AI",
+    "description": "Utraya analizza automaticamente i tuoi canali YouTube preferiti così rimani informato in pochi minuti, non ore."
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "channels": "Canali",
+    "tracker": "Tracker",
+    "analysis": "Analisi",
+    "integrations": "Integrazioni",
+    "watchlist": "Lista da vedere",
+    "admin": "Console Admin",
+    "help": "Centro assistenza",
+    "logout": "Esci",
+    "login": "Accedi",
+    "traker": "Traker"
+  },
+  "auth": {
+    "loginWithGoogle": "Accedi con Google",
+    "adminLogin": "Accesso Super Admin",
+    "loginTitle": "Accedi a Utraya",
+    "loginSubtitle": "Usa il tuo account Google per accedere alla piattaforma.",
+    "accessDenied": "Accesso negato",
+    "accessDeniedDetail": "Il tuo account non è autorizzato ad accedere a Utraya. Contatta l'amministratore.",
+    "loggingIn": "Accesso in corso...",
+    "logoutConfirm": "Vuoi davvero uscire?",
+    "exchangeFailed": "Accesso fallito. Riprova tra qualche momento.",
+    "noUser": "Impossibile recuperare le informazioni utente. Riprova.",
+    "noCode": "Richiesta non valida. Riprova.",
+    "inviteOnly": "Accesso su invito.",
+    "inviteOnlyDetail": "Solo gli utenti autorizzati dall'amministratore possono accedere a Utraya.",
+    "backToHome": "Torna alla home",
+    "admin": {
+      "subtitle": "Accesso riservato al super admin con credenziali dedicate.",
+      "username": "Utente",
+      "usernamePlaceholder": "Inserisci utente admin",
+      "password": "Password",
+      "passwordPlaceholder": "Inserisci password",
+      "loginButton": "Accedi come super admin",
+      "invalidCredentials": "Credenziali non valide",
+      "loginLink": "Accesso Super Admin (utente/password)"
+    },
+    "deletionPending": "Account in fase di cancellazione. Usa il link email per annullare entro 30 giorni."
+  },
+  "landing": {
+    "hero": {
+      "badge": "Il futuro dei contenuti",
+      "title": "Consuma YouTube",
+      "titleHighlight": "più velocemente con l'AI",
+      "subtitle": "Smetti di sprecare ore su video lunghi. Utraya riassume automaticamente i tuoi canali preferiti così rimani informato in pochi minuti, non ore.",
+      "ctaLogin": "Accedi con Google",
+      "ctaDemo": "Guarda la demo"
+    },
+    "howItWorks": {
+      "title": "Come funziona",
+      "subtitle": "Il nostro motore AI lavora in background così non perdi mai un aggiornamento dai creator che segui.",
+      "step1Title": "Segui i canali",
+      "step1Description": "Aggiungi i canali YouTube che vuoi monitorare tramite URL. Supportiamo tutti i creator.",
+      "step2Title": "Analisi automatica",
+      "step2Description": "Non appena viene pubblicato un nuovo video, la nostra AI analizza il contenuto e identifica i punti chiave.",
+      "step3Title": "Rimani informato",
+      "step3Description": "Sfoglia i riepiloghi nel tuo dashboard. Comprendi video da 30 minuti in soli 60 secondi."
+    },
+    "faq": {
+      "title": "Domande frequenti",
+      "q1": "Quanto sono accurati i riepiloghi AI?",
+      "a1": "I nostri modelli sono ottimizzati per contenuti video lunghi e catturano le sfumature tecniche, il contesto e l'intento principale del parlante.",
+      "q2": "Posso ottenere riepiloghi in altre lingue?",
+      "a2": "Sì, Utraya supporta più lingue. I riepiloghi vengono generati nella tua lingua preferita indipendentemente dalla lingua audio del video.",
+      "q3": "Quanti canali posso seguire?",
+      "a3": "In V1 non ci sono limiti al numero di canali che puoi seguire.",
+      "q4": "Come sono protetti i miei dati?",
+      "a4": "Usiamo crittografia enterprise. Non vendiamo mai i tuoi dati di visione o informazioni personali a terzi."
+    },
+    "cta": {
+      "title": "Pronto a curare la tua intelligenza?",
+      "subtitle": "Accedi con Google e inizia subito a seguire i tuoi canali preferiti.",
+      "button": "Inizia ora"
+    },
+    "footer": {
+      "copyright": "Tutti i diritti riservati.",
+      "privacy": "Privacy Policy",
+      "terms": "Termini di Servizio",
+      "contact": "Contatto"
+    }
+  },
+  "marketing": {
+    "badgeComingSoon": "In arrivo a breve",
+    "a11y": {
+      "skipToContent": "Vai al contenuto principale"
+    },
+    "cookies": {
+      "title": "Preferenze cookie",
+      "description": "Usiamo cookie tecnici sempre attivi. Analytics e strumenti di misurazione vengono caricati solo dopo il tuo consenso.",
+      "acceptAll": "Accetta tutto",
+      "rejectNonEssential": "Rifiuta non necessari",
+      "customize": "Personalizza",
+      "managePreferences": "Preferenze cookie",
+      "policyLink": "Cookie policy →",
+      "customizeTitle": "Personalizza preferenze cookie",
+      "necessary": "Necessari (sempre attivi)",
+      "analytics": "Analitici",
+      "marketing": "Marketing",
+      "savePreferences": "Salva preferenze"
+    },
+    "hero": {
+      "ariaLabel": "Schema orbitale Utraya con nodi contenuto e AI",
+      "center": "Utraya",
+      "mobileFallbackTitle": "Hub contenuti Utraya",
+      "mobileFallbackDescription": "Video, podcast, riassunti testuali e audio convergono in un unico flusso.",
+      "nodes": {
+        "video": "Video",
+        "podcast": "Podcast",
+        "audio": "Audio",
+        "text": "Testo",
+        "playlist": "Playlist",
+        "categories": "Categorie",
+        "language": "Lingua",
+        "apiAi": "API AI"
+      }
+    },
+    "nav": {
+      "label": "Navigazione principale",
+      "features": "Funzionalità",
+      "pricing": "Prezzi",
+      "faq": "FAQ",
+      "mission": "Mission",
+      "about": "Chi siamo",
+      "comparisons": "Comparazioni",
+      "roadmap": "Roadmap",
+      "terms": "Termini di servizio",
+      "privacy": "Privacy Policy",
+      "cookies": "Cookie Policy",
+      "subProcessors": "Sub-processors"
+    },
+    "cta": {
+      "createWatchlist": "Crea la tua watchlist gratuita",
+      "exploreFeatures": "Esplora le funzionalità"
+    },
+    "footer": {
+      "product": "Prodotto",
+      "project": "Progetto",
+      "legal": "Legale",
+      "language": "Lingua",
+      "rights": "Tutti i diritti riservati."
+    },
+    "landing": {
+      "metaTitle": "I tuoi contenuti. Il tuo tempo. La tua scelta. | Utraya",
+      "metaDescription": "Utraya ti aiuta a seguire canali YouTube e podcast senza dover guardare o ascoltare tutto.",
+      "hero": {
+        "headline1": "I tuoi contenuti.",
+        "headline2": "Il tuo tempo.",
+        "headline3": "La tua scelta.",
+        "subtitle": "Utraya ti aiuta a seguire canali YouTube e podcast senza dover guardare o ascoltare tutto. Ricevi riassunti AI in testo e audio, salva ciò che ti interessa e organizza i contenuti in playlist tematiche."
+      },
+      "howItWorks": {
+        "title": "Come funziona",
+        "subtitle": "Utraya trasforma il modo in cui segui contenuti lunghi: meno accumulo, più scelta.",
+        "step1": {
+          "title": "Segui ciò che ami",
+          "description": "Aggiungi le fonti che vuoi monitorare e centralizza i contenuti."
+        },
+        "step2": {
+          "title": "Capisci cosa conta",
+          "description": "Leggi in pochi secondi i punti chiave generati dall'AI."
+        },
+        "step3": {
+          "title": "Ascolta in meno tempo",
+          "description": "Quando disponibile, converti i contenuti in formato ascoltabile."
+        },
+        "step4": {
+          "title": "Scegli cosa approfondire",
+          "description": "Decidi dove investire il tuo tempo e organizza per tema."
+        }
+      },
+      "problem": {
+        "title": "Troppi contenuti, troppo poco tempo.",
+        "description": "Video salvati per dopo, podcast lasciati a metà, canali che pubblicano ogni giorno. Utraya ti aiuta a capire rapidamente cosa vale davvero il tuo tempo.",
+        "tag1": "Video lunghi",
+        "tag2": "Podcast arretrati",
+        "tag3": "Playlist infinite",
+        "tag4": "Contenuti persi"
+      },
+      "features": {
+        "title": "Funzionalità principali",
+        "note": "Supporto multilingua · Uso delle tue API AI",
+        "items": {
+          "youtube": {
+            "title": "Tracking canali YouTube"
+          },
+          "podcast": {
+            "title": "Tracking podcast"
+          },
+          "text": {
+            "title": "Riassunti AI testuali"
+          },
+          "audio": {
+            "title": "Riassunti audio"
+          },
+          "tts": {
+            "title": "Video trasformati in contenuti ascoltabili"
+          },
+          "playlists": {
+            "title": "Categorie e playlist tematiche"
+          }
+        }
+      },
+      "reuse": {
+        "title": "Un contenuto elaborato una volta può essere utile più volte.",
+        "description": "Se un contenuto è già stato elaborato, Utraya può riutilizzare il risultato esistente invece di generarlo di nuovo. Questo riduce duplicazioni, evita sprechi e rende il servizio più sostenibile.",
+        "privacyNote": "La tua watchlist resta privata. Il sistema può riutilizzare l'elaborazione di un contenuto, ma non mostra agli altri cosa segui o cosa hai salvato."
+      },
+      "pricing": {
+        "title": "Gratis come piattaforma. Trasparente quando serve elaborare.",
+        "description": "Utraya è gratuito da usare. Puoi beneficiare dei contenuti già elaborati e, quando vuoi generare nuove elaborazioni AI non ancora disponibili, puoi collegare le tue API AI personali.",
+        "bullet1": "Nessun pacchetto crediti imposto.",
+        "bullet2": "Nessuna promessa di AI illimitata.",
+        "bullet3": "Controllo sui costi API.",
+        "bullet4": "Riutilizzo delle elaborazioni già disponibili."
+      },
+      "useCases": {
+        "title": "Casi d'uso",
+        "item1": "Segui molti canali ma non riesci a guardarli tutti.",
+        "item2": "Vuoi ascoltare il senso di un video mentre cammini o guidi.",
+        "item3": "Vuoi capire se un contenuto merita un approfondimento.",
+        "item4": "Vuoi organizzare video e podcast in playlist tematiche.",
+        "item5": "Vuoi leggere o ascoltare riassunti nella tua lingua."
+      },
+      "faq": {
+        "title": "FAQ breve",
+        "q1": "Utraya è gratuito?",
+        "a1": "Sì. L'accesso alla piattaforma è gratuito e puoi usare i contenuti già elaborati.",
+        "q2": "Devo inserire le mie API AI?",
+        "a2": "No. Servono solo quando vuoi generare una nuova elaborazione non disponibile.",
+        "q3": "La mia watchlist è privata?",
+        "a3": "Sì. Le tue scelte restano private anche quando il sistema riusa elaborazioni già presenti.",
+        "q4": "Posso ascoltare i riassunti?",
+        "a4": "La funzionalità audio è in arrivo a breve e viene mostrata come tale nel sito.",
+        "q5": "Posso usare Utraya in più lingue?",
+        "a5": "Sì, Utraya è progettato per un'esperienza multilingua.",
+        "q6": "Cosa succede se un contenuto è già stato elaborato?",
+        "a6": "Utraya riutilizza il risultato disponibile per ridurre duplicazioni e sprechi."
+      },
+      "finalCta": {
+        "title": "Riprendi il controllo dei contenuti che segui."
+      }
+    },
+    "pages": {
+      "features": {
+        "title": "Funzionalità",
+        "subtitle": "Una vista completa di come Utraya ti aiuta a seguire i contenuti senza sovraccarico.",
+        "support": {
+          "languageTitle": "Supporto multilingua",
+          "languageDescription": "Leggi o ascolta i riassunti nella lingua che preferisci, quando supportato dal flusso API.",
+          "apiTitle": "Uso API AI personali",
+          "apiDescription": "Quando serve una nuova elaborazione, puoi collegare le tue API mantenendo controllo su costi e uso.",
+          "reuseTitle": "Riutilizzo invisibile",
+          "reuseDescription": "Se un contenuto è già stato elaborato, Utraya riutilizza il risultato senza duplicare il lavoro."
+        },
+        "finalCtaTitle": "Inizia dalla tua watchlist e costruisci il tuo flusso."
+      },
+      "pricing": {
+        "title": "Prezzi",
+        "freePlanTitle": "Utraya Free",
+        "freePlanPrice": "0 €",
+        "freePlanDescription": "Accesso gratuito alla piattaforma, watchlist privata, organizzazione dei contenuti e utilizzo delle elaborazioni già disponibili.",
+        "apiBlockTitle": "Quando servono le tue API",
+        "apiBlockDescription": "Quando vuoi generare una nuova elaborazione AI per un contenuto non ancora disponibile, puoi collegare le tue API AI personali.",
+        "keyMessageTitle": "Niente pacchetti crediti",
+        "keyMessageDescription": "Utraya non vende pacchetti di crediti AI. Ti permette di usare ciò che è già disponibile e di mantenere il controllo sulle elaborazioni generate con le tue API.",
+        "faq": {
+          "title": "FAQ",
+          "q1": "Utraya è davvero gratuito?",
+          "a1": "Sì. La piattaforma è gratuita.",
+          "q2": "Devo inserire le mie API per usare Utraya?",
+          "a2": "No. Senza API puoi usare i contenuti già elaborati.",
+          "q3": "Quando servono le mie API AI?",
+          "a3": "Servono quando chiedi una nuova elaborazione non ancora presente.",
+          "q4": "Utraya paga i costi delle API?",
+          "a4": "No, i costi delle API personali restano sotto il tuo controllo.",
+          "q5": "Cosa posso fare senza configurare API personali?",
+          "a5": "Puoi seguire contenuti e usare le elaborazioni già disponibili."
+        }
+      },
+      "faq": {
+        "subtitle": "Risposte rapide su accesso, API, privacy e limiti d'uso."
+      },
+      "mission": {
+        "intro1": "Utraya nasce da un'esigenza semplice: seguire meglio i contenuti che contano, senza perdere il controllo del proprio tempo.",
+        "intro2": "Ogni giorno vengono pubblicati video, podcast e contenuti interessanti, ma il tempo per seguirli tutti non cresce allo stesso ritmo.",
+        "pillar1": "Restituire controllo sul tempo dell'utente.",
+        "pillar2": "Ridurre accumulo e sovraccarico informativo.",
+        "pillar3": "Riutilizzare elaborazioni già disponibili in modo sostenibile.",
+        "pillar4": "Mantenere privacy e scelta personale al centro."
+      },
+      "about": {
+        "intro": "Utraya è un progetto personale e indipendente, nato per aiutare chi segue molti canali YouTube e podcast a trasformare contenuti lunghi in riassunti leggibili, ascoltabili e facili da organizzare.",
+        "youtubeTitle": "Segui lo sviluppo del progetto",
+        "youtubeDescription": "Utraya è in evoluzione continua. Sul canale YouTube verranno condivisi aggiornamenti, funzionalità e scelte progettuali.",
+        "youtubeNamePlaceholder": "[PLACEHOLDER_NOME_CANALE_YOUTUBE]",
+        "youtubeUrlPlaceholder": "[PLACEHOLDER_URL_CANALE_YOUTUBE]",
+        "youtubeCta": "Iscriviti al canale YouTube"
+      },
+      "comparisons": {
+        "description": "Stiamo preparando confronti chiari e onesti per aiutarti a capire quando Utraya è la scelta giusta per te.",
+        "card1": "Utraya vs app podcast tradizionali",
+        "card2": "Utraya vs playlist YouTube",
+        "card3": "Utraya vs strumenti di riassunto video",
+        "card4": "Utraya vs tool AI manuali"
+      },
+      "roadmap": {
+        "description": "Stiamo preparando una roadmap pubblica per raccontare in modo trasparente l'evoluzione di Utraya.",
+        "card1": "Disponibile",
+        "card2": "In sviluppo",
+        "card3": "In valutazione",
+        "card4": "Feedback utenti"
+      },
+      "legal": {
+        "warning": "Contenuto placeholder: il testo finale richiede validazione legale prima della pubblicazione.",
+        "placeholdersTitle": "Placeholder da completare",
+        "sectionsTitle": "Sezioni richieste",
+        "terms": {
+          "placeholder1": "[TITOLARE_DEL_SERVIZIO]",
+          "placeholder2": "[FORMA_GIURIDICA]",
+          "placeholder3": "[INDIRIZZO_O_SEDE]",
+          "placeholder4": "[PAESE]",
+          "placeholder5": "[EMAIL_CONTATTO]",
+          "placeholder6": "[EMAIL_PRIVACY]",
+          "placeholder7": "[EVENTUALE_PIVA_O_IDENTIFICATIVO_FISCALE]",
+          "placeholder8": "[DATA_ULTIMO_AGGIORNAMENTO]",
+          "section1": "Descrizione del servizio",
+          "section2": "Account Google",
+          "section3": "Uso gratuito della piattaforma",
+          "section4": "Uso API personali",
+          "section5": "Fair use",
+          "section6": "Contenuti di terze parti",
+          "section7": "Riassunti AI e possibili imprecisioni",
+          "section8": "Uso consentito e vietato",
+          "section9": "Limitazioni del servizio",
+          "section10": "Modifiche future",
+          "section11": "Responsabilità",
+          "section12": "Contatti"
+        },
+        "privacy": {
+          "section1": "Titolare del trattamento",
+          "section2": "Dati raccolti tramite login Google",
+          "section3": "Dati tecnici",
+          "section4": "Dati di navigazione",
+          "section5": "Watchlist e preferenze",
+          "section6": "API key o token configurati dall'utente",
+          "section7": "Finalità del trattamento",
+          "section8": "Base giuridica",
+          "section9": "Conservazione dei dati",
+          "section10": "Condivisione con fornitori tecnici",
+          "section11": "Analytics e marketing tracking",
+          "section12": "Diritti dell'utente"
+        },
+        "cookie": {
+          "section1": "Cookie tecnici",
+          "section2": "Cookie analytics",
+          "section3": "Cookie marketing/misurazione campagne",
+          "section4": "Cookie di terze parti",
+          "section5": "Gestione consenso",
+          "section6": "Modifica preferenze",
+          "section7": "Durata cookie"
+        }
+      }
+    }
+  },
+  "dashboard": {
+    "title": "Intelligenza curata",
+    "subtitle": "Bentornato. {count} nuove analisi sono pronte per la tua revisione.",
+    "subtitleNone": "Nessuna nuova analisi. Controlla di nuovo più tardi.",
+    "myChannels": "I miei canali",
+    "syncActive": "Sincronizzazione attiva",
+    "viewSummary": "Vedi riepilogo",
+    "quickPreview": "Anteprima rapida",
+    "readDigest": "Leggi digest",
+    "watchLater": "Guarda dopo",
+    "markSeen": "Segna come visto",
+    "markUnseen": "Segna come non visto",
+    "seen": "VISTO",
+    "addToWatchlist": "Aggiungi alla lista",
+    "removeFromWatchlist": "Rimuovi dalla lista",
+    "unseen": "NON VISTO",
+    "analysisComplete": "ANALISI COMPLETATA",
+    "analysisInProgress": "ANALISI IN CORSO",
+    "notAnalyzed": "NON ANALIZZATO",
+    "noChannels": "Non stai ancora seguendo nessun canale.",
+    "addFirstChannel": "Aggiungi il tuo primo canale",
+    "emptyFeed": "Aggiungi canali YouTube tramite URL e Utraya analizzerà automaticamente i nuovi video.",
+    "unknownChannel": "Canale sconosciuto",
+    "noVideosYet": "I video dei tuoi canali appariranno qui non appena saranno importati.",
+    "duration": {
+      "unknown": "Durata non disponibile",
+      "under2m": "< 2 min",
+      "between2m30m": "2-30 min",
+      "over30m": "> 30 min"
+    }
+  },
+  "channels": {
+    "title": "Canali",
+    "addChannel": "Aggiungi canale",
+    "addChannelPlaceholder": "youtube.com/@handle o channel/UC...",
+    "addChannelButton": "Sincronizza canale",
+    "addChannelTitle": "Segui un nuovo canale",
+    "addChannelSubtitle": "Aggiungi un canale YouTube tramite URL pubblico o handle.",
+    "followedChannels": "Canali seguiti",
+    "scanNow": "Scansiona ora",
+    "removeChannel": "Rimuovi canale",
+    "removeChannelConfirm": "Sei sicuro di voler rimuovere questo canale? La tua cronologia personale (visto/non visto, lista) verrà eliminata.",
+    "lastScan": "Ultima scansione",
+    "nextScan": "Prossima scansione",
+    "status": {
+      "active": "Attivo",
+      "blocked": "Bloccato",
+      "noApi": "API non configurata",
+      "importing": "Importazione in corso"
+    },
+    "existingChannel": {
+      "title": "Canale già nell'archivio",
+      "description": "Questo canale è già presente nell'archivio Utraya. Vuoi importare i contenuti esistenti nel tuo account?",
+      "import": "Importa contenuti esistenti",
+      "cancel": "Annulla"
+    },
+    "noApiWarning": "Configura le tue API key nelle Integrazioni per abilitare l'analisi AI.",
+    "urlError": "URL non valido. Usa il formato youtube.com/@handle o youtube.com/channel/UC...",
+    "videos": "video",
+    "syncFrequency": "Frequenza sincronizzazione",
+    "daily": "Ogni giorno",
+    "weekly": "Ogni settimana",
+    "refreshError": "Impossibile aggiornare la lista canali",
+    "urlRequired": "Inserisci un URL canale YouTube valido",
+    "addError": "Errore in aggiunta canale",
+    "added": "Canale aggiunto",
+    "removeError": "Errore in rimozione canale",
+    "removed": "Canale rimosso",
+    "scanError": "Errore durante la scansione",
+    "scanQueued": "Scansione accodata",
+    "scanPausedMissingYoutubeKey": "Canale aggiunto. Scansione in pausa: aggiungi una API key YouTube oppure attendi che un utente con key aggiunga lo stesso canale.",
+    "adding": "Aggiunta...",
+    "supportedFormats": "Formati supportati",
+    "statusLabel": "Stato",
+    "everyNHoursPrefix": "Ogni",
+    "addPolicy": {
+      "title": "Gestione video già pubblicati",
+      "description": "Quando aggiungi un nuovo canale, come vuoi trattare i video già presenti?",
+      "markSeen": "Segna tutti come già visti",
+      "markSeenHint": "Scelta predefinita consigliata. I video storici non compariranno tra quelli da vedere.",
+      "keepUnseen": "Mantieni i video come da vedere",
+      "keepUnseenHint": "I video già presenti verranno mostrati come non visti nel tracker/dashboard.",
+      "confirm": "Conferma e aggiungi",
+      "nativePrompt": "Segnare tutti i video già pubblicati di questo canale come visti?\n\nOK = Sì (predefinito consigliato)\nAnnulla = No, mantienili da vedere"
+    }
+  },
+  "video": {
+    "publishedBy": "Pubblicato da",
+    "daysAgo": "{days} giorni fa",
+    "hoursAgo": "{hours} ore fa",
+    "minutesAgo": "{minutes} minuti fa",
+    "today": "oggi",
+    "yesterday": "ieri",
+    "duration": "Durata",
+    "bottomLine": "In sintesi",
+    "deepDive": "Analisi approfondita",
+    "context": "Contesto",
+    "keyMoments": "Momenti chiave",
+    "relatedIntelligence": "Contenuti correlati",
+    "analyzeNow": "Analizza ora",
+    "analysisNotAvailable": "Analisi non disponibile",
+    "analysisNotAvailableDetail": "Configura le tue API key per analizzare questo video.",
+    "category": "Categoria",
+    "subcategory": "Sottocategoria",
+    "watchOnYoutube": "Guarda su YouTube",
+    "aiAnalysisTitle": "Analisi AI Utraya",
+    "analysisPendingDetail": "Il risultato sarà disponibile tra qualche momento."
+  },
+  "integrations": {
+    "title": "Integrazioni",
+    "subtitle": "Configura le tue chiavi API per abilitare la sincronizzazione e l'analisi AI.",
+    "activeConnectors": "{count} connettori attivi",
+    "youtubeKey": "YouTube Data API v3",
+    "youtubeKeyDesc": "Sincronizzazione metadati canali e video",
+    "geminiKey": "Gemini API",
+    "geminiKeyDesc": "Analisi AI e generazione riepiloghi",
+    "status": {
+      "configured": "Configurata",
+      "notConfigured": "Non configurata",
+      "valid": "Valida",
+      "invalid": "Non valida",
+      "aiActive": "AI Attiva"
+    },
+    "lastCheck": "Ultimo controllo",
+    "lastUsage": "Ultimo utilizzo",
+    "rotateKey": "Ruota chiave",
+    "updateKey": "Aggiorna chiave",
+    "addKey": "Aggiungi chiave",
+    "removeKey": "Rimuovi chiave",
+    "keyPlaceholder": "Incolla la tua chiave API qui",
+    "keyMasked": "••••••••••••{last4}",
+    "saveKey": "Salva chiave",
+    "cancel": "Annulla",
+    "keyError": "Chiave non valida o quota esaurita",
+    "keyRequired": "Chiave API richiesta per nuove analisi",
+    "refreshError": "Impossibile aggiornare lo stato integrazioni",
+    "saveError": "Errore durante salvataggio chiave",
+    "savedButInvalid": "Chiave salvata ma non valida",
+    "saved": "Chiave API salvata correttamente",
+    "validateError": "Errore durante validazione chiave",
+    "validationSuccess": "Validazione completata: chiave valida",
+    "removeConfirm": "Rimuovere la chiave API di questo provider?",
+    "removeError": "Errore durante rimozione chiave",
+    "removed": "Chiave API rimossa",
+    "check": "Verifica",
+    "serverEncrypted": "Le chiavi API sono cifrate lato server e non vengono mai esposte al browser."
+  },
+  "watchlist": {
+    "title": "Lista da vedere",
+    "subtitle": "I video che hai salvato per dopo.",
+    "empty": "La tua lista è vuota.",
+    "emptyDetail": "Aggiungi video dalla dashboard o dalla pagina di analisi.",
+    "removeFromList": "Rimuovi dalla lista",
+    "count": "{count} video salvati per la tua revisione.",
+    "backToDashboard": "Torna alla dashboard",
+    "duration": {
+      "unknown": "Durata non disponibile",
+      "under2m": "< 2 min",
+      "between2m30m": "2-30 min",
+      "over30m": "> 30 min"
+    }
+  },
+  "tracker": {
+    "title": "Tracker video",
+    "subtitle": "Monitora velocemente i contenuti già visti e quelli ancora da vedere.",
+    "empty": "Non ci sono ancora video da tracciare.",
+    "addChannels": "Aggiungi canali per iniziare",
+    "allCaughtUp": "Hai visto tutto. Nessun video in sospeso.",
+    "noneWatchedYet": "Non hai ancora segnato nessun video come visto.",
+    "viewSummary": "Vedi riepilogo",
+    "badges": {
+      "seen": "VISTO",
+      "unseen": "DA VEDERE",
+      "hidden": "NASCOSTO",
+      "watchlist": "LISTA"
+    },
+    "filters": {
+      "menu": "Filtri",
+      "state": "Stato",
+      "seen": "Visto",
+      "unseen": "Da vedere",
+      "hidden": "Nascosto",
+      "duration": "Durata",
+      "durationUnder2m": "< 2 min",
+      "durationUnder5m": "< 5 min",
+      "durationBetween2m30m": "2-30 min",
+      "durationOver30m": "> 30 min"
+    },
+    "views": {
+      "ribbon": "Ribbon",
+      "list": "Lista",
+      "latest": "Solo ultimo video"
+    },
+    "scope": {
+      "allChannels": "Tutti i canali",
+      "selectedChannelPrefix": "Canale selezionato"
+    },
+    "statusInfo": {
+      "seenWithDate": "Visto · {date}",
+      "hiddenWithDate": "Nascosto · {date}"
+    },
+    "latest": {
+      "emptyChannel": "Nessun video disponibile per questo canale con i filtri attivi."
+    },
+    "list": {
+      "headers": {
+        "video": "Video",
+        "channel": "Canale",
+        "actions": "Azioni",
+        "generalCategory": "General category",
+        "subcategory": "Subcategory",
+        "shortSummary": "Short summary"
+      },
+      "noData": "-"
+    },
+    "duration": {
+      "unknown": "Durata non disponibile",
+      "under2m": "< 2 min",
+      "between2m30m": "2-30 min",
+      "over30m": "> 30 min"
+    },
+    "actions": {
+      "hide": "Nascondi",
+      "unhide": "Mostra"
+    },
+    "sections": {
+      "toWatch": "Da vedere ({count})",
+      "watched": "Visti ({count})"
+    },
+    "metrics": {
+      "toWatch": "Da vedere",
+      "watched": "Visti",
+      "inWatchlist": "In lista",
+      "hidden": "Nascosti"
+    },
+    "noVideosForFilters": "Nessun video trovato con i filtri selezionati."
+  },
+  "admin": {
+    "title": "Console Admin",
+    "superAdmin": "Super-Admin",
+    "systemHealth": "Stato del sistema",
+    "systemHealthSubtitle": "Monitoraggio infrastruttura e throughput elaborazione in tempo reale.",
+    "users": {
+      "title": "Gestione utenti",
+      "allowlistUser": "Aggiungi all'allowlist",
+      "email": "Email",
+      "accessLevel": "Livello accesso",
+      "status": "Stato",
+      "lastActivity": "Ultima attività",
+      "actions": "Azioni",
+      "manage": "Gestisci",
+      "activate": "Attiva",
+      "suspend": "Sospendi",
+      "delete": "Elimina",
+      "statusActive": "Attivo",
+      "statusSuspended": "Sospeso",
+      "statusDeleted": "Eliminato",
+      "subtitle": "Gestisci l'accesso a Utraya tramite allowlist.",
+      "allowlistDescription": "Inserisci l'indirizzo email da autorizzare ad accedere a Utraya.",
+      "emailPlaceholder": "email@esempio.it",
+      "authorizeAccess": "Autorizza accesso",
+      "authorized": "Accesso autorizzato correttamente.",
+      "authorizeError": "Errore durante autorizzazione accesso",
+      "emailRequired": "Inserisci un indirizzo email",
+      "allowlistTitle": "Allowlist attiva",
+      "allowlistEmpty": "Nessuna email attiva in allowlist.",
+      "revokeAccess": "Revoca",
+      "revokeConfirm": "Revocare l'accesso per questa email?",
+      "revoked": "Accesso revocato",
+      "revokeError": "Errore durante revoca accesso",
+      "user": "Utente",
+      "role": "Ruolo",
+      "registeredAt": "Registrato il",
+      "empty": "Nessun utente registrato.",
+      "standardUser": "Utente",
+      "showEmail": "Mostra email",
+      "hideEmail": "Nascondi email"
+    },
+    "content": {
+      "title": "Contenuto canonico",
+      "subtitle": "Rivedi e modifica i riepiloghi AI globali.",
+      "editSummary": "Modifica riepilogo",
+      "viewHistory": "Vedi cronologia",
+      "aiCurated": "CURATO AI",
+      "verifiedContent": "CONTENUTO VERIFICATO",
+      "adminEdited": "MODIFICATO ADMIN"
+    },
+    "aiProfile": {
+      "title": "Profilo analisi AI",
+      "subtitle": "Gestisci il template di prompt globale per l'analisi dei video.",
+      "promptNote": "Il prompt viene applicato a tutte le nuove analisi. I riepiloghi esistenti non vengono rigenerati."
+    },
+    "jobs": {
+      "title": "Job e operazioni",
+      "scheduledTitle": "Prossimi job schedulati",
+      "scheduledSubtitle": "Anteprima delle prossime esecuzioni pianificate (in base alla prossima sync canale).",
+      "scheduledEmpty": "Nessuna esecuzione schedulata disponibile.",
+      "channel": "Canale",
+      "nextRun": "Prossima esecuzione",
+      "lastSyncStatus": "Ultimo esito sync",
+      "syncStatus": {
+        "success": "Successo",
+        "failed": "Fallita",
+        "partial": "Parziale"
+      },
+      "retry": "Riprova",
+      "retryConfirm": "Riaccodare questo job fallito?",
+      "retryError": "Errore durante riaccodamento job",
+      "retried": "Job riaccodato correttamente",
+      "delete": "Elimina job",
+      "deleteConfirm": "Eliminare questo job in coda?",
+      "deleteError": "Errore durante eliminazione job",
+      "deleted": "Job eliminato correttamente",
+      "status": {
+        "pending": "In attesa",
+        "running": "In esecuzione",
+        "completed": "Completato",
+        "failed": "Fallito"
+      },
+      "subtitle": "Monitora e gestisci i job di elaborazione in background.",
+      "type": "Tipo",
+      "priority": "Priorità",
+      "createdAt": "Creato il",
+      "error": "Errore",
+      "empty": "Nessun job in coda."
+    },
+    "logs": {
+      "title": "Log e audit",
+      "appLogs": "Log applicazione",
+      "auditTrail": "Audit trail",
+      "failedJobLogs": "Log job falliti",
+      "cleanupFailedJobs": "Pulisci job falliti",
+      "cleanupAppLogs": "Pulisci log app",
+      "cleanupAuditLogs": "Pulisci audit",
+      "cleanupConfirmFailedJobs": "Vuoi eliminare definitivamente tutti i log dei job falliti?",
+      "cleanupConfirmAppLogs": "Vuoi eliminare definitivamente tutti i log applicazione?",
+      "cleanupConfirmAuditLogs": "Vuoi eliminare definitivamente tutti gli audit log?",
+      "emptyFailedJobs": "Nessun log di job falliti disponibile.",
+      "unknownError": "Errore non disponibile",
+      "unknownJobType": "Tipo job sconosciuto",
+      "viewExplorer": "Apri explorer",
+      "retention": "Retention: 7 giorni. Log eliminati automaticamente.",
+      "empty": "Nessun log disponibile.",
+      "emptyAudit": "Nessun audit log.",
+      "system": "sistema",
+      "viewAll": "Vedi tutti"
+    },
+    "metrics": {
+      "successRate": "Tasso di successo",
+      "pendingJobs": "Job in attesa",
+      "failedJobs": "Job falliti (24h)",
+      "apiUsage": "Utilizzo API piattaforma",
+      "requestsPerHour": "Richieste / Ora",
+      "activeUsers": "Utenti attivi",
+      "activeChannels": "Canali attivi",
+      "totalVideos": "Video totali"
+    },
+    "export": {
+      "title": "Esporta dati",
+      "exportCsv": "Esporta CSV",
+      "exportJson": "Esporta JSON"
+    },
+    "system": "Sistema",
+    "backToApp": "Torna all'app",
+    "channels": {
+      "subtitle": "Tutti i canali nell'archivio Utraya ({count} canali).",
+      "subscribers": "Iscritti",
+      "lastSync": "Ultima sync",
+      "videos": "Video",
+      "empty": "Nessun canale nell'archivio.",
+      "scanNowAdmin": "Scansione ora",
+      "scanStarted": "Scansione avviata",
+      "scanError": "Errore avvio scansione"
+    },
+    "incidents": {
+      "openIncidents": "Incidenti aperti",
+      "none": "Nessun incidente aperto",
+      "systemOperational": "Il sistema è operativo."
+    }
+  },
+  "common": {
+    "loading": "Caricamento...",
+    "error": "Si è verificato un errore",
+    "tryAgain": "Riprova",
+    "save": "Salva",
+    "cancel": "Annulla",
+    "confirm": "Conferma",
+    "delete": "Elimina",
+    "edit": "Modifica",
+    "close": "Chiudi",
+    "back": "Indietro",
+    "next": "Avanti",
+    "previous": "Precedente",
+    "search": "Cerca",
+    "filter": "Filtra",
+    "sort": "Ordina",
+    "refresh": "Aggiorna",
+    "more": "Altro",
+    "less": "Meno",
+    "yes": "Sì",
+    "no": "No",
+    "unknown": "Sconosciuto",
+    "never": "Mai",
+    "now": "Ora",
+    "ago": "fa",
+    "settings": "Impostazioni",
+    "notifications": "Notifiche",
+    "profile": "Profilo",
+    "openSideMenu": "Apri menu laterale",
+    "pinSideMenu": "Fissa menu laterale",
+    "unpinSideMenu": "Sblocca menu laterale",
+    "theme": {
+      "label": "Selettore tema sito",
+      "normal": "Normale",
+      "dark": "Dark"
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/daily-sync",
+      "schedule": "10 18 * * *"
+    },
+    {
+      "path": "/api/cron/daily-deletion-executor",
+      "schedule": "10 3 * * *"
+    }
+  ]
+}

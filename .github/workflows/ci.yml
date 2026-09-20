@@ -1,0 +1,65 @@
+# =============================================================================
+# CI - Quality Gates
+# -----------------------------------------------------------------------------
+# Controlli di qualita del codice che girano ad ogni PR e push.
+# Allineati agli script presenti in package.json (progetto alla root):
+#   - check-comments  -> verifica che ogni file abbia il commento didattico iniziale
+#   - lint            -> next lint (ESLint)
+#   - type-check      -> tsc --noEmit
+#   - test            -> vitest run
+#
+# Branch coperti:
+#   - main     -> produzione
+#   - preprod  -> staging / preview / preproduzione
+# =============================================================================
+
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+      - preprod
+  push:
+    branches:
+      - main
+      - preprod
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  validate:
+    name: Validate (comments, lint, type-check, test)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check comments (didactic headers)
+        # Verifica che ogni file in src/ e supabase/migrations/ inizi con il
+        # commento didattico richiesto. Definito in scripts/check-comments.mjs
+        run: npm run check-comments
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type-check
+        run: npm run type-check
+
+      - name: Test (Vitest)
+        # "vitest run" e gia il default dello script "test" -> nessun watch mode
+        run: npm test

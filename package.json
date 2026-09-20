@@ -1,0 +1,57 @@
+{
+  "name": "utraya",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "vitest run",
+    "lint": "eslint . --ext .ts,.tsx,.js,.mjs,.cjs --ignore-pattern node_modules --ignore-pattern .next",
+    "type-check": "tsc --noEmit",
+    "check-comments": "node scripts/check-comments.mjs",
+    "validate": "npm run check-comments && npm run lint && npm run type-check",
+    "admin:hash": "node scripts/generate-admin-password-hash.mjs",
+    "legal:hash": "node --import tsx scripts/hashLegal.ts"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@supabase/ssr": "^0.10.3",
+    "@supabase/supabase-js": "^2.45.6",
+    "next": "16.3.4",
+    "next-intl": "4.12.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^25.8.0",
+    "@types/prop-types": "^15.7.15",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.1",
+    "@typescript-eslint/eslint-plugin": "7.2.0",
+    "@typescript-eslint/parser": "7.2.0",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "15.5.18",
+    "postcss": "8.5.23",
+    "tailwindcss": "^3.4.14",
+    "tsx": "^4.22.3",
+    "typescript": "^5.6.3",
+    "vitest": "^4.1.11"
+  },
+  "overrides": {
+    "@swc/helpers": "0.5.21",
+    "esbuild": "0.25.0",
+    "glob": "10.5.0",
+    "minimatch": "9.0.7",
+    "vite": "6.4.3",
+    "nanoid": "3.3.18",
+    "js-yaml": "4.3.2",
+    "postcss-selector-parser": "6.1.4",
+    "browserslist": "4.28.7",
+    "brace-expansion": "5.0.9"
+  }
+}
