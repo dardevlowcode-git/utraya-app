@@ -73,7 +73,7 @@ jobs:
 
       - name: Upload report npm audit
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: npm-audit-report
           path: npm-audit-report.json
@@ -114,7 +114,7 @@ jobs:
 
       - name: Upload report Semgrep
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: semgrep-results
           path: semgrep-results.sarif
