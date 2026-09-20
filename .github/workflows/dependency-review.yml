@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout codice
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Dependency review (blocca HIGH/CRITICAL)
         uses: actions/dependency-review-action@v5
