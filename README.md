@@ -14,3 +14,4 @@ issue sul repository privato `utraya-doc`.
 
 Nessun segreto nel repository. Le variabili d'ambiente sono configurate solo su
 Vercel. Vedi `.env.example` per i nomi richiesti (senza valori).
+
