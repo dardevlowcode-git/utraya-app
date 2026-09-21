@@ -213,6 +213,51 @@
     background: linear-gradient(135deg, #141413, #2a2928);
   }
 
+  html[data-theme='dark'] .gradient-primary {
+    background: linear-gradient(135deg, #fcfbfa, #d8d0ca);
+  }
+
+  html[data-theme='dark'] .gradient-primary:hover {
+    box-shadow: 0 6px 20px rgb(252 251 250 / 0.25);
+  }
+
+  .btn-google {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    gap: 0.75rem;
+    background: #ffffff;
+    color: #1f1f1f;
+    border: 1px solid #747775;
+    padding: 1rem 1.5rem;
+    border-radius: 999px;
+    font-weight: 700;
+    font-size: 1rem;
+    line-height: 1.5rem;
+    transition: all 150ms ease;
+  }
+
+  .btn-google:hover {
+    background: #f2f2f2;
+    box-shadow: 0 6px 20px rgb(20 20 19 / 0.18);
+  }
+
+  .btn-google:active {
+    transform: scale(0.95);
+  }
+
+  html[data-theme='dark'] .btn-google {
+    background: #ffffff;
+    color: #1f1f1f;
+    border-color: #8e918f;
+  }
+
+  html[data-theme='dark'] .btn-google:hover {
+    background: #f2f2f2;
+    box-shadow: 0 6px 20px rgb(0 0 0 / 0.5);
+  }
+
   .gradient-ai {
     background: linear-gradient(135deg, #f37338, #cf4500);
   }
@@ -392,6 +437,10 @@
   .text-gradient-primary {
     @apply text-transparent bg-clip-text;
     background-image: linear-gradient(135deg, #141413, #2a2928);
+  }
+
+  html[data-theme='dark'] .text-gradient-primary {
+    background-image: linear-gradient(135deg, #fcfbfa, #d8d0ca);
   }
 
   .text-gradient-ai {

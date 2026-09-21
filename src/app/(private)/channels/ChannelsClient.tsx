@@ -292,7 +292,7 @@ export default function ChannelsClient({ initialChannels }: ChannelsClientProps)
                         className="w-9 h-9 rounded-full object-cover"
                       />
                     ) : (
-                      <div className="w-9 h-9 rounded-full gradient-primary flex items-center justify-center text-white text-sm font-bold">
+                      <div className="w-9 h-9 rounded-full gradient-primary flex items-center justify-center text-on-primary text-sm font-bold">
                         {channel.title?.[0] ?? '?'}
                       </div>
                     )}

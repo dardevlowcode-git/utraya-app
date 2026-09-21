@@ -308,7 +308,7 @@ export default function AdminUsersClient({
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={user.avatar_url} alt="" className="h-8 w-8 rounded-full" />
                       ) : (
-                        <div className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold text-white ${isSuperAdmin ? 'gradient-ai' : 'gradient-primary'}`}>
+                        <div className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${isSuperAdmin ? 'gradient-ai text-white' : 'gradient-primary text-on-primary'}`}>
                           {isRevealed(`user:${user.id}`)
                             ? (user.display_name ?? user.email)[0].toUpperCase()
                             : '•'}
@@ -396,7 +396,7 @@ export default function AdminUsersClient({
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={user.avatar_url} alt="" className="h-9 w-9 rounded-full" />
                       ) : (
-                        <div className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold text-white ${isSuperAdmin ? 'gradient-ai' : 'gradient-primary'}`}>
+                        <div className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold ${isSuperAdmin ? 'gradient-ai text-white' : 'gradient-primary text-on-primary'}`}>
                           {isRevealed(`user:${user.id}`)
                             ? (user.display_name ?? user.email)[0].toUpperCase()
                             : '•'}

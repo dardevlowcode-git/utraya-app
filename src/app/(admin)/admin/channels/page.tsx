@@ -96,7 +96,7 @@ export default async function AdminChannelsPage() {
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={ch.thumbnail_url} alt="" className="w-8 h-8 rounded-full" />
                   ) : (
-                    <div className="w-8 h-8 rounded-full gradient-primary flex items-center justify-center text-white text-sm font-bold">
+                    <div className="w-8 h-8 rounded-full gradient-primary flex items-center justify-center text-on-primary text-sm font-bold">
                       {ch.title[0]}
                     </div>
                   )}
