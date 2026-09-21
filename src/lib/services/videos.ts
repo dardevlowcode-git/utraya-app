@@ -765,10 +765,48 @@ export async function importChannelVideos(params: {
   const { data: insertedRows, error: insertError } = await queryClient
     .from('videos')
     .upsert(dedupedRows, { onConflict: 'youtube_video_id' })
-    .select('id')
+    .select('id,youtube_video_id')
 
   if (insertError) {
     throw new AppError('Import video fallito', 'unknown', 500, { cause: insertError.message })
+  }
+
+  // Best-effort fail-open: righe pending per le trascrizioni dei video nuovi.
+  // Mai far fallire l'import video per un errore sui transcript.
+  try {
+    const imported = (insertedRows ?? []) as Array<{ id: string; youtube_video_id: string }>
+    if (imported.length > 0) {
+      const youtubeIds = imported.map((row) => row.youtube_video_id)
+      const { data: existingTranscripts } = await admin
+        .from('video_transcripts')
+        .select('youtube_video_id,transcript_status')
+        .in('youtube_video_id', youtubeIds)
+
+      const closed = new Set(
+        ((existingTranscripts ?? []) as Array<{ youtube_video_id: string; transcript_status: string }>)
+          .filter((row) => row.transcript_status === 'fetched' || row.transcript_status === 'legacy_missing')
+          .map((row) => row.youtube_video_id)
+      )
+
+      const pendingRows = imported
+        .filter((row) => !closed.has(row.youtube_video_id))
+        .map((row) => ({
+          video_id: row.id,
+          youtube_video_id: row.youtube_video_id,
+          language_code: 'unknown',
+          kind: 'unknown',
+          transcript_status: 'pending',
+          source: 'youtubei-timedtext',
+        }))
+
+      if (pendingRows.length > 0) {
+        await admin
+          .from('video_transcripts')
+          .upsert(pendingRows, { onConflict: 'youtube_video_id,language_code' })
+      }
+    }
+  } catch {
+    // Fail-open: import video resta valido anche senza righe pending.
   }
 
   await queryClient

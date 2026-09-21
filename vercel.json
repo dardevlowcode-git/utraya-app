@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/daily-deletion-executor",
       "schedule": "10 3 * * *"
+    },
+    {
+      "path": "/api/cron/transcripts",
+      "schedule": "0 2 * * *"
     }
   ]
 }
