@@ -140,6 +140,7 @@ export default async function TrackerPage({ searchParams }: TrackerPageProps) {
         },
         latest: {
           emptyChannel: t('tracker.latest.emptyChannel'),
+          hideEmptyChannels: t('tracker.latest.hideEmptyChannels'),
         },
         list: {
           headers: {

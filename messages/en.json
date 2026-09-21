@@ -574,7 +574,8 @@
       "hiddenWithDate": "Hidden · {date}"
     },
     "latest": {
-      "emptyChannel": "No video available for this channel with the active filters."
+      "emptyChannel": "No video available for this channel with the active filters.",
+      "hideEmptyChannels": "Only channels with videos"
     },
     "list": {
       "headers": {

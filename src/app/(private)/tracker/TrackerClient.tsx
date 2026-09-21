@@ -63,6 +63,7 @@ interface TrackerClientProps {
     }
     latest: {
       emptyChannel: string
+      hideEmptyChannels: string
     }
     list: {
       headers: {
@@ -128,6 +129,7 @@ export default function TrackerClient({
     over30m: true,
   })
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false)
+  const [hideEmptyLatestChannels, setHideEmptyLatestChannels] = useState(false)
   const pathname = usePathname()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -157,6 +159,11 @@ export default function TrackerClient({
     if (view !== 'latest') return []
     return buildLatestRows(filteredItems, channels, selectedChannelId, locale)
   }, [channels, filteredItems, locale, selectedChannelId, view])
+
+  const visibleLatestRows = useMemo(() => {
+    if (!hideEmptyLatestChannels) return latestRows
+    return latestRows.filter((row) => row.item !== null)
+  }, [hideEmptyLatestChannels, latestRows])
 
   const activeFiltersCount = useMemo(() => {
     let count = 0
@@ -241,7 +248,31 @@ export default function TrackerClient({
             onToggleSeenFilter={toggleSeenFilter}
             onToggleDurationFilter={toggleDurationFilter}
           />
-          <ViewSelector view={view} labels={labels.views} onChange={updateView} />
+          <div className="flex flex-wrap items-center gap-3">
+            <ViewSelector view={view} labels={labels.views} onChange={updateView} />
+            {view === 'latest' ? (
+              <button
+                type="button"
+                onClick={() => setHideEmptyLatestChannels((current) => !current)}
+                aria-pressed={hideEmptyLatestChannels}
+                className="inline-flex items-center gap-2.5 rounded-full bg-surface-container-high px-4 py-2 text-xs font-bold text-on-surface transition-colors hover:bg-surface-container-highest"
+              >
+                <span
+                  aria-hidden="true"
+                className={`relative inline-flex h-5 w-9 items-center rounded-full border border-outline-variant/40 transition-colors ${
+                  hideEmptyLatestChannels ? 'bg-ink-black' : 'bg-surface-container-highest'
+                }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                      hideEmptyLatestChannels ? 'translate-x-4' : 'translate-x-0.5'
+                    }`}
+                  />
+                </span>
+                <span>{labels.latest.hideEmptyChannels}</span>
+              </button>
+            ) : null}
+          </div>
         </div>
       </header>
 
@@ -253,12 +284,18 @@ export default function TrackerClient({
           </Link>
         </div>
       ) : view === 'latest' ? (
-        <LatestView
-          rows={latestRows}
-          locale={locale}
-          labels={labels}
-          onStatusChange={updateVideoStatus}
-        />
+        visibleLatestRows.length === 0 ? (
+          <div className="bg-surface-container-low rounded-2xl p-10 text-center">
+            <p className="text-on-surface-variant">{labels.noVideosForFilters}</p>
+          </div>
+        ) : (
+          <LatestView
+            rows={visibleLatestRows}
+            locale={locale}
+            labels={labels}
+            onStatusChange={updateVideoStatus}
+          />
+        )
       ) : filteredItems.length === 0 ? (
         <div className="bg-surface-container-low rounded-2xl p-10 text-center">
           <p className="text-on-surface-variant">{labels.noVideosForFilters}</p>
