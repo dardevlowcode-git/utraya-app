@@ -248,7 +248,7 @@ export default function TrackerClient({
             onToggleSeenFilter={toggleSeenFilter}
             onToggleDurationFilter={toggleDurationFilter}
           />
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-col items-end gap-2">
             <ViewSelector view={view} labels={labels.views} onChange={updateView} />
             {view === 'latest' ? (
               <button
