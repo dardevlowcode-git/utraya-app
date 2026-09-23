@@ -137,7 +137,7 @@ describe('fetchAndStoreForVideo idempotenza', () => {
     const select = vi.fn(() => ({ eq: eqSelect }))
     const upsert = vi.fn().mockResolvedValue({ error: null })
     const eqUpdate = vi.fn().mockResolvedValue({ error: null })
-    const update = vi.fn(() => ({ eq: eqUpdate }))
+    const update = vi.fn((payload: Record<string, unknown>) => ({ eq: eqUpdate }))
     const admin = { from: vi.fn(() => ({ select, upsert, update })) }
     return { admin, eqSelect, upsert, update, eqUpdate }
   }
