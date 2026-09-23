@@ -1,7 +1,8 @@
 <# Commento didattico:
- # Scopo del file: smoke test E2E riusabile per il fetch trascrizioni in preview (pending -> trigger cron -> poll -> esito).
- # I segreti si leggono SOLO dal file env indicato (mai stampati, mai committati). Uso: agente autonomo o umano da PowerShell.
- # Esempio: .\scripts\e2e\transcript-smoke.ps1 -VideoId "rHshDCGPzdk" -BaseUrl "https://preview.utraya.com"
+ # Scopo del file: smoke test E2E trascrizioni in preview AD USO MANUALE di Dario (ha i segreti, li compila in .env.local).
+ # Gli agenti NON usano questo script: usano il workflow GitHub Actions `.github/workflows/e2e-transcripts.yml`
+ # (segreti solo in GitHub Secrets, mai in locale — vedi OPERATIONS.md Sez.15 e vincolo zero-esportazione in AGENTS.md).
+ # Uso manuale: .\scripts\e2e\transcript-smoke.ps1 -VideoId "rHshDCGPzdk" -BaseUrl "https://preview.utraya.com"
  #>
 param(
   [Parameter(Mandatory = $true)][string]$VideoId,
