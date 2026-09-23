@@ -50,11 +50,11 @@ export default async function AdminHomePage() {
   const recentIncidents: IncidentRow[] = (recentIncidentsData ?? []) as IncidentRow[]
 
   const statCards = [
-    { label: t('admin.metrics.activeUsers'), value: totalUsers ?? 0, icon: '👤', color: 'bg-primary-fixed' },
-    { label: t('admin.metrics.activeChannels'), value: totalChannels ?? 0, icon: '📺', color: 'bg-secondary-fixed' },
-    { label: t('admin.metrics.totalVideos'), value: totalVideos ?? 0, icon: '🎬', color: 'bg-surface-container-high' },
-    { label: t('admin.metrics.pendingJobs'), value: pendingJobs ?? 0, icon: '⏳', color: 'bg-amber-100' },
-    { label: t('admin.metrics.failedJobs'), value: failedJobs ?? 0, icon: '❌', color: 'bg-error-container' },
+    { label: t('admin.metrics.activeUsers'), value: totalUsers ?? 0, icon: '👤', color: 'bg-primary-fixed', dark: "[html[data-theme='dark']_&]:bg-surface-container-highest [html[data-theme='dark']_&]:border-white/10" },
+    { label: t('admin.metrics.activeChannels'), value: totalChannels ?? 0, icon: '📺', color: 'bg-secondary-fixed', dark: "[html[data-theme='dark']_&]:bg-[#3a2418] [html[data-theme='dark']_&]:border-white/10" },
+    { label: t('admin.metrics.totalVideos'), value: totalVideos ?? 0, icon: '🎬', color: 'bg-surface-container-high', dark: "[html[data-theme='dark']_&]:border-white/10" },
+    { label: t('admin.metrics.pendingJobs'), value: pendingJobs ?? 0, icon: '⏳', color: 'bg-amber-100', dark: "[html[data-theme='dark']_&]:bg-[#3a2e12] [html[data-theme='dark']_&]:border-white/10" },
+    { label: t('admin.metrics.failedJobs'), value: failedJobs ?? 0, icon: '❌', color: 'bg-error-container', dark: "[html[data-theme='dark']_&]:bg-[#4a1d18] [html[data-theme='dark']_&]:border-white/10" },
   ]
 
   return (
@@ -78,11 +78,11 @@ export default async function AdminHomePage() {
         </div>
       </header>
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-10">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-8">
         {statCards.map((card) => (
-          <div key={card.label} className={`${card.color} rounded-2xl p-5`}>
-            <p className="text-2xl mb-2">{card.icon}</p>
-            <p className="font-headline text-3xl font-extrabold text-on-surface">{card.value}</p>
+          <div key={card.label} className={`${card.color} ${card.dark} rounded-xl p-4 border border-transparent`}>
+            <p className="text-xl mb-1.5">{card.icon}</p>
+            <p className="font-headline text-2xl font-extrabold text-on-surface">{card.value}</p>
             <p className="text-xs text-on-surface-variant font-medium mt-1">{card.label}</p>
           </div>
         ))}
