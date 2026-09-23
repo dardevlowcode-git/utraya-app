@@ -7,6 +7,7 @@
 import type { Metadata } from 'next'
 import { createAdminClient } from '@/lib/supabase/admin'
 import AdminJobsClient from './AdminJobsClient'
+import { getTranscriptSettings, getTranscriptStats } from '@/lib/services/cron-settings'
 import { buildJobLabel, collectJobChannelIds, collectJobUserIds } from '@/lib/utils/job-label'
 
 export const metadata: Metadata = { title: 'Admin — Job' }
@@ -192,5 +193,25 @@ export default async function AdminJobsPage() {
     .sort((a, b) => a.nextSyncAt.localeCompare(b.nextSyncAt))
     .slice(0, 20)
 
-  return <AdminJobsClient initialJobs={jobsWithLabel} upcomingSchedules={upcomingSchedules} />
+  // Impostazioni/statistiche trascrizioni per la sezione manuale.
+  // Fallback ai default se la migrazione 009 non e ancora applicata.
+  const [initialTranscriptSettings, initialTranscriptStats] = await (async () => {
+    try {
+      return await Promise.all([getTranscriptSettings(supabase), getTranscriptStats(supabase)])
+    } catch {
+      return [
+        { enabled: true, batch_limit: 10 },
+        { pending: 0, fetched: 0, missing: 0, failed: 0, legacy_missing: 0, total: 0 },
+      ] as const
+    }
+  })()
+
+  return (
+    <AdminJobsClient
+      initialJobs={jobsWithLabel}
+      upcomingSchedules={upcomingSchedules}
+      initialTranscriptSettings={initialTranscriptSettings}
+      initialTranscriptStats={initialTranscriptStats}
+    />
+  )
 }

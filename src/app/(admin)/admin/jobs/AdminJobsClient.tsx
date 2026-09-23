@@ -22,6 +22,20 @@ interface JobRow {
   failure_detail?: string | null
 }
 
+interface TranscriptSettings {
+  enabled: boolean
+  batch_limit: number
+}
+
+interface TranscriptStats {
+  pending: number
+  fetched: number
+  missing: number
+  failed: number
+  legacy_missing: number
+  total: number
+}
+
 interface AdminJobsClientProps {
   initialJobs: JobRow[]
   upcomingSchedules: Array<{
@@ -30,13 +44,20 @@ interface AdminJobsClientProps {
     nextSyncAt: string
     lastSyncStatus: 'success' | 'failed' | 'partial' | null
   }>
+  initialTranscriptSettings: TranscriptSettings
+  initialTranscriptStats: TranscriptStats
 }
 
 type BusyState =
   | { jobId: string; action: 'delete' | 'retry' }
   | null
 
-export default function AdminJobsClient({ initialJobs, upcomingSchedules }: AdminJobsClientProps) {
+export default function AdminJobsClient({
+  initialJobs,
+  upcomingSchedules,
+  initialTranscriptSettings,
+  initialTranscriptStats,
+}: AdminJobsClientProps) {
   const t = useTranslations()
   const locale = useLocale()
   const router = useRouter()
@@ -45,6 +66,11 @@ export default function AdminJobsClient({ initialJobs, upcomingSchedules }: Admi
   const [busy, setBusy] = useState<BusyState>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [transcriptsEnabled, setTranscriptsEnabled] = useState(initialTranscriptSettings.enabled)
+  const [transcriptsBatchLimit, setTranscriptsBatchLimit] = useState(initialTranscriptSettings.batch_limit)
+  const [transcriptStats, setTranscriptStats] = useState<TranscriptStats>(initialTranscriptStats)
+  const [savingTranscripts, setSavingTranscripts] = useState(false)
+  const [runningTranscripts, setRunningTranscripts] = useState(false)
   const { templateColumns, onStartResize } = useResizableColumns([420, 160, 110, 170, 360, 140], { minWidth: 90 })
 
   const statusColor: Record<JobRow['status'], string> = {
@@ -137,6 +163,85 @@ export default function AdminJobsClient({ initialJobs, upcomingSchedules }: Admi
     }
   }
 
+  async function handleSaveTranscriptSettings() {
+    clearFeedback()
+    setSavingTranscripts(true)
+
+    try {
+      const response = await fetch('/api/admin/transcripts/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: transcriptsEnabled, batch_limit: transcriptsBatchLimit }),
+        cache: 'no-store',
+      })
+
+      const payload = (await response.json().catch(() => null)) as
+        | { ok: boolean; data?: { settings?: TranscriptSettings; stats?: TranscriptStats }; error?: { message?: string } }
+        | null
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error?.message ?? t('admin.jobs.transcripts.saveError'))
+      }
+
+      if (payload.data?.settings) {
+        setTranscriptsEnabled(payload.data.settings.enabled)
+        setTranscriptsBatchLimit(payload.data.settings.batch_limit)
+      }
+      if (payload.data?.stats) setTranscriptStats(payload.data.stats)
+      setMessage(t('admin.jobs.transcripts.saved'))
+      router.refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('common.error'))
+    } finally {
+      setSavingTranscripts(false)
+    }
+  }
+
+  async function handleRunTranscriptsNow() {
+    clearFeedback()
+    setRunningTranscripts(true)
+
+    try {
+      const response = await fetch('/api/admin/transcripts/run-now', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+        cache: 'no-store',
+      })
+
+      const payload = (await response.json().catch(() => null)) as
+        | { ok: boolean; data?: { checked?: number; fetched?: number; missing?: number; failed?: number } | null; error?: { message?: string } }
+        | null
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error?.message ?? t('admin.jobs.transcripts.runError'))
+      }
+
+      const result = payload.data
+      setMessage(
+        t('admin.jobs.transcripts.runSuccess', {
+          checked: result?.checked ?? 0,
+          fetched: result?.fetched ?? 0,
+          missing: result?.missing ?? 0,
+          failed: result?.failed ?? 0,
+        })
+      )
+
+      const statsResponse = await fetch('/api/admin/transcripts/settings', { cache: 'no-store' })
+      const statsPayload = (await statsResponse.json().catch(() => null)) as
+        | { ok: boolean; data?: { stats?: TranscriptStats } }
+        | null
+      if (statsResponse.ok && statsPayload?.ok && statsPayload.data?.stats) {
+        setTranscriptStats(statsPayload.data.stats)
+      }
+      router.refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('common.error'))
+    } finally {
+      setRunningTranscripts(false)
+    }
+  }
+
   return (
     <div className="p-8 max-w-6xl">
       <header className="mb-10">
@@ -150,6 +255,70 @@ export default function AdminJobsClient({ initialJobs, upcomingSchedules }: Admi
 
       {message && <p className="mb-4 text-sm text-green-700">{message}</p>}
       {error && <p className="mb-4 text-sm text-error">{error}</p>}
+
+      <section className="mb-6 bg-surface-container-lowest rounded-2xl shadow-ambient p-5">
+        <h2 className="text-lg font-semibold text-on-surface mb-1">
+          {t('admin.jobs.transcripts.title')}
+        </h2>
+        <p className="text-sm text-on-surface-variant mb-4">
+          {t('admin.jobs.transcripts.subtitle')}
+        </p>
+
+        <div className="flex flex-wrap gap-x-6 gap-y-1 mb-4 text-sm text-on-surface-variant">
+          <span>{t('admin.jobs.transcripts.statsPending')}: <strong className="text-on-surface">{transcriptStats.pending}</strong></span>
+          <span>{t('admin.jobs.transcripts.statsFetched')}: <strong className="text-on-surface">{transcriptStats.fetched}</strong></span>
+          <span>{t('admin.jobs.transcripts.statsMissing')}: <strong className="text-on-surface">{transcriptStats.missing}</strong></span>
+          <span>{t('admin.jobs.transcripts.statsFailed')}: <strong className="text-on-surface">{transcriptStats.failed}</strong></span>
+          <span>{t('admin.jobs.transcripts.statsLegacyMissing')}: <strong className="text-on-surface">{transcriptStats.legacy_missing}</strong></span>
+          <span>{t('admin.jobs.transcripts.statsTotal')}: <strong className="text-on-surface">{transcriptStats.total}</strong></span>
+        </div>
+
+        <div className="flex flex-wrap items-end gap-4">
+          <label className="flex items-center gap-2 text-sm text-on-surface">
+            <input
+              type="checkbox"
+              checked={transcriptsEnabled}
+              onChange={(event) => setTranscriptsEnabled(event.target.checked)}
+              className="h-4 w-4"
+            />
+            {t('admin.jobs.transcripts.enabled')}
+          </label>
+
+          <label className="flex flex-col gap-1 text-sm text-on-surface">
+            {t('admin.jobs.transcripts.batchLimit')}
+            <input
+              type="number"
+              min={1}
+              max={50}
+              value={transcriptsBatchLimit}
+              onChange={(event) => setTranscriptsBatchLimit(Number(event.target.value))}
+              className="w-24 rounded-lg border border-outline/30 bg-surface-container-low px-2 py-1 text-sm"
+            />
+          </label>
+
+          <button
+            type="button"
+            disabled={savingTranscripts}
+            onClick={() => handleSaveTranscriptSettings()}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold text-primary
+                       hover:bg-primary-fixed transition-all
+                       disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {t('admin.jobs.transcripts.save')}
+          </button>
+
+          <button
+            type="button"
+            disabled={runningTranscripts}
+            onClick={() => handleRunTranscriptsNow()}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold text-primary
+                       hover:bg-primary-fixed transition-all
+                       disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {t('admin.jobs.transcripts.runNow')}
+          </button>
+        </div>
+      </section>
 
       <section className="mb-6 bg-surface-container-lowest rounded-2xl shadow-ambient p-5">
         <h2 className="text-lg font-semibold text-on-surface mb-1">

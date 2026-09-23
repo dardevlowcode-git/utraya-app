@@ -30,10 +30,11 @@ const FETCH_TIMEOUT_MS = 8000
 const ERROR_DETAILS_MAX_LENGTH = 500
 const PENDING_LANGUAGE = 'unknown'
 
-// Chiave pubblica embedded nei client YouTube (stessa delle pagine watch): non e un segreto.
-// Override opzionale via env senza mai committare valori reali.
+// Chiave letta da YOUTUBEI_API_KEY (Vercel env, mai in git).
 function getYoutubeiKey(): string {
-  return process.env.YOUTUBEI_API_KEY ?? 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8'
+  const key = process.env.YOUTUBEI_API_KEY?.trim()
+  if (!key) throw new Error('YOUTUBEI_API_KEY mancante: impostarla in Vercel env')
+  return key
 }
 
 function isAsrTrack(track: CaptionTrack): boolean {
