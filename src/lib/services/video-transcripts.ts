@@ -97,6 +97,24 @@ export async function fetchMainTranscript(
     { clientName: 'ANDROID', clientVersion: '20.10.38' },
     { clientName: 'TVHTML5', clientVersion: '7.20240101' },
   ] as const
+  const clientHeaders: Record<(typeof clients)[number]['clientName'], Record<string, string>> = {
+    ANDROID: {
+      'User-Agent': 'com.google.android.youtube/20.10.38 (Linux; U; Android 14; it_IT; Pixel 7 Build/UQ1A.240105.004)',
+      'Accept-Language': 'it-IT,it;q=0.9,en;q=0.8',
+      'Content-Type': 'application/json',
+      Origin: 'https://www.youtube.com',
+      Referer: 'https://www.youtube.com/',
+      Accept: '*/*',
+    },
+    TVHTML5: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+      'Accept-Language': 'it-IT,it;q=0.9,en;q=0.8',
+      'Content-Type': 'application/json',
+      Origin: 'https://www.youtube.com',
+      Referer: 'https://www.youtube.com/',
+      Accept: '*/*',
+    },
+  }
   const attempts: string[] = []
   let playerSucceeded = false
 
@@ -110,7 +128,7 @@ export async function fetchMainTranscript(
         `https://www.youtube.com/youtubei/v1/player?key=${apiKey}&prettyPrint=false`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: clientHeaders[client.clientName],
           body: JSON.stringify({
             videoId: youtubeVideoId,
             context: { client: { clientName: client.clientName, clientVersion: client.clientVersion } },
@@ -142,7 +160,11 @@ export async function fetchMainTranscript(
 
     // Mai `tlang`: solo la lingua originale della traccia scelta.
     const timedtextUrl = track.baseUrl.includes('fmt=') ? track.baseUrl : `${track.baseUrl}&fmt=json3`
+    // GET timedtext: stessi header realistici della POST, senza Content-Type (GET senza body).
+    const timedtextHeaders = { ...clientHeaders[client.clientName] }
+    delete timedtextHeaders['Content-Type']
     const timedtextResponse = await fetchImpl(timedtextUrl, {
+      headers: timedtextHeaders,
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     })
 
