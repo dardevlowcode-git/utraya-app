@@ -48,6 +48,10 @@ describe('pickMainTrack', () => {
 })
 
 describe('fetchMainTranscript', () => {
+  beforeEach(() => {
+    process.env.YOUTUBEI_API_KEY = 'test-key'
+  })
+
   it('sceglie la manuale e compone testo e segmenti dal json3', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse({
@@ -89,6 +93,7 @@ describe('fetchMainTranscript', () => {
 describe('fetchAndStoreForVideo idempotenza', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    process.env.YOUTUBEI_API_KEY = 'test-key'
   })
 
   function buildAdminMock(existing: Array<{ transcript_status: string }>) {
