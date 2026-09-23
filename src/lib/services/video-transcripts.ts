@@ -80,58 +80,120 @@ function parseJson3(payload: { events?: Json3Event[] }): { text: string; segment
 }
 
 /**
- * Scarica la trascrizione principale. Ritorna null se il video non ha tracce
- * (da marcare `missing`), lancia eccezione su errori di rete/parse (da marcare `failed`).
+ * Scarica la trascrizione principale provando i client youtubei in ordine
+ * (ANDROID poi TVHTML5: gli IP datacenter Vercel spesso ricevono risposte
+ * player SENZA tracce, il secondo client funge da fallback).
+ * Ritorna `{ transcript, diagnostics }`: transcript null se nessun client
+ * dà tracce (da marcare `missing` con diagnostics come error_details),
+ * lancia eccezione se nessun player risponde o su errori timedtext
+ * (da marcare `failed`).
  */
 export async function fetchMainTranscript(
   youtubeVideoId: string,
   fetchImpl: FetchImpl = fetch
-): Promise<MainTranscript | null> {
-  const playerResponse = await fetchImpl(
-    `https://www.youtube.com/youtubei/v1/player?key=${getYoutubeiKey()}&prettyPrint=false`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        videoId: youtubeVideoId,
-        context: { client: { clientName: 'ANDROID', clientVersion: '20.10.38' } },
-      }),
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+): Promise<{ transcript: MainTranscript | null; diagnostics: string }> {
+  const apiKey = getYoutubeiKey()
+  const clients = [
+    { clientName: 'ANDROID', clientVersion: '20.10.38' },
+    { clientName: 'TVHTML5', clientVersion: '7.20240101' },
+  ] as const
+  const clientHeaders: Record<(typeof clients)[number]['clientName'], Record<string, string>> = {
+    ANDROID: {
+      'User-Agent': 'com.google.android.youtube/20.10.38 (Linux; U; Android 14; it_IT; Pixel 7 Build/UQ1A.240105.004)',
+      'Accept-Language': 'it-IT,it;q=0.9,en;q=0.8',
+      'Content-Type': 'application/json',
+      Origin: 'https://www.youtube.com',
+      Referer: 'https://www.youtube.com/',
+      Accept: '*/*',
+    },
+    TVHTML5: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+      'Accept-Language': 'it-IT,it;q=0.9,en;q=0.8',
+      'Content-Type': 'application/json',
+      Origin: 'https://www.youtube.com',
+      Referer: 'https://www.youtube.com/',
+      Accept: '*/*',
+    },
+  }
+  const attempts: string[] = []
+  let playerSucceeded = false
+
+  for (const client of clients) {
+    let playerJson: {
+      captions?: { playerCaptionsTracklistRenderer?: { captionTracks?: CaptionTrack[] } }
+      playabilityStatus?: { status?: string }
     }
-  )
+    try {
+      const playerResponse = await fetchImpl(
+        `https://www.youtube.com/youtubei/v1/player?key=${apiKey}&prettyPrint=false`,
+        {
+          method: 'POST',
+          headers: clientHeaders[client.clientName],
+          body: JSON.stringify({
+            videoId: youtubeVideoId,
+            context: { client: { clientName: client.clientName, clientVersion: client.clientVersion } },
+          }),
+          signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        }
+      )
 
-  if (!playerResponse.ok) {
-    throw new Error(`youtubei player status ${playerResponse.status}`)
+      if (!playerResponse.ok) {
+        attempts.push(`${client.clientName}(http:${playerResponse.status})`)
+        continue
+      }
+
+      playerJson = (await playerResponse.json()) as typeof playerJson
+      playerSucceeded = true
+    } catch (error) {
+      const short = (error instanceof Error ? error.message : String(error)).split('\n')[0].slice(0, 60)
+      attempts.push(`${client.clientName}(err:${short})`)
+      continue
+    }
+
+    const tracks = playerJson.captions?.playerCaptionsTracklistRenderer?.captionTracks ?? []
+    const play = playerJson.playabilityStatus?.status ?? '?'
+    const track = pickMainTrack(tracks)
+    if (!track) {
+      attempts.push(`${client.clientName}(tracce:0,play:${play})`)
+      continue
+    }
+
+    // Mai `tlang`: solo la lingua originale della traccia scelta.
+    const timedtextUrl = track.baseUrl.includes('fmt=') ? track.baseUrl : `${track.baseUrl}&fmt=json3`
+    // GET timedtext: stessi header realistici della POST, senza Content-Type (GET senza body).
+    const timedtextHeaders = { ...clientHeaders[client.clientName] }
+    delete timedtextHeaders['Content-Type']
+    const timedtextResponse = await fetchImpl(timedtextUrl, {
+      headers: timedtextHeaders,
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    })
+
+    if (!timedtextResponse.ok) {
+      throw new Error(`timedtext status ${timedtextResponse.status}`)
+    }
+
+    const { text, segments } = parseJson3((await timedtextResponse.json()) as { events?: Json3Event[] })
+    attempts.push(`${client.clientName}(tracce:${tracks.length})`)
+    if (!text) return { transcript: null, diagnostics: attempts.join(' ') }
+
+    const isAsr = isAsrTrack(track)
+    return {
+      transcript: {
+        language_code: track.languageCode,
+        kind: isAsr ? 'asr' : 'standard',
+        is_asr: isAsr,
+        text,
+        segments,
+      },
+      diagnostics: attempts.join(' '),
+    }
   }
 
-  const playerJson = (await playerResponse.json()) as {
-    captions?: { playerCaptionsTracklistRenderer?: { captionTracks?: CaptionTrack[] } }
-  }
-  const tracks = playerJson.captions?.playerCaptionsTracklistRenderer?.captionTracks ?? []
-  const track = pickMainTrack(tracks)
-  if (!track) return null
-
-  // Mai `tlang`: solo la lingua originale della traccia scelta.
-  const timedtextUrl = track.baseUrl.includes('fmt=') ? track.baseUrl : `${track.baseUrl}&fmt=json3`
-  const timedtextResponse = await fetchImpl(timedtextUrl, {
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  })
-
-  if (!timedtextResponse.ok) {
-    throw new Error(`timedtext status ${timedtextResponse.status}`)
+  if (!playerSucceeded) {
+    throw new Error(`youtubei player fallito su tutti i client: ${attempts.join(' ')}`)
   }
 
-  const { text, segments } = parseJson3((await timedtextResponse.json()) as { events?: Json3Event[] })
-  if (!text) return null
-
-  const isAsr = isAsrTrack(track)
-  return {
-    language_code: track.languageCode,
-    kind: isAsr ? 'asr' : 'standard',
-    is_asr: isAsr,
-    text,
-    segments,
-  }
+  return { transcript: null, diagnostics: attempts.join(' ') }
 }
 
 /**
@@ -198,12 +260,12 @@ export async function fetchAndStoreForVideo(
   await ensurePendingRow(admin, videoUuid, youtubeVideoId)
 
   try {
-    const transcript = await fetchMainTranscript(youtubeVideoId, fetchImpl)
+    const { transcript, diagnostics } = await fetchMainTranscript(youtubeVideoId, fetchImpl)
 
     if (!transcript) {
       await admin
         .from('video_transcripts')
-        .update({ transcript_status: 'missing', error_details: null })
+        .update({ transcript_status: 'missing', error_details: truncateError(diagnostics) })
         .eq('youtube_video_id', youtubeVideoId)
       return { outcome: 'missing' }
     }

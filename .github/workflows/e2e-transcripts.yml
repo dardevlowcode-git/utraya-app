@@ -1,0 +1,94 @@
+# Commento didattico: smoke test E2E trascrizioni in preview, triggerabile a mano o da agente via `gh workflow run`.
+# Segreti SOLO da GitHub Secrets (mai in chiaro, mai in locale): E2E_SUPABASE_URL, E2E_SUPABASE_SERVICE_KEY, E2E_CRON_SECRET.
+name: E2E Trascrizioni (preview)
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_id:
+        description: "YouTube video ID con sottotitoli noti"
+        required: true
+        default: "rHshDCGPzdk"
+      base_url:
+        description: "Base URL ambiente da testare"
+        required: true
+        default: "https://preview.utraya.com"
+      limit:
+        description: "Batch cron"
+        required: false
+        default: "10"
+      poll_timeout_seconds:
+        description: "Attesa massima esito (secondi)"
+        required: false
+        default: "300"
+
+concurrency:
+  group: e2e-transcripts
+  cancel-in-progress: true
+
+jobs:
+  transcript-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Reset riga a pending (Supabase REST)
+        env:
+          SB_URL: ${{ secrets.E2E_SUPABASE_URL }}
+          SB_KEY: ${{ secrets.E2E_SUPABASE_SERVICE_KEY }}
+          VIDEO_ID: ${{ inputs.video_id }}
+        run: |
+          code=$(curl -s -o /tmp/reset.json -w "%{http_code}" -X PATCH \
+            "$SB_URL/rest/v1/video_transcripts?youtube_video_id=eq.$VIDEO_ID" \
+            -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" \
+            -H "Content-Type: application/json" -H "Prefer: return=representation" \
+            -d '{"transcript_status":"pending","error_details":null}')
+          echo "reset http=$code"
+          test "$code" = "200" || { echo "reset fallito"; cat /tmp/reset.json; exit 1; }
+
+      - name: Trigger cron trascrizioni
+        env:
+          CRON_SECRET: ${{ secrets.E2E_CRON_SECRET }}
+          BASE_URL: ${{ inputs.base_url }}
+          LIMIT: ${{ inputs.limit }}
+        run: |
+          UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+          code=$(curl -s -o /tmp/cron.json -w "%{http_code}" \
+            "$BASE_URL/api/cron/transcripts?limit=$LIMIT" \
+            -H "Authorization: Bearer $CRON_SECRET" -H "User-Agent: $UA")
+          echo "cron http=$code"
+          cat /tmp/cron.json
+          if [ "$code" = "429" ]; then echo "bloccato dal firewall bot-protection (trigger da console browser o regola firewall)"; exit 1; fi
+          test "$code" = "200" || exit 1
+
+      - name: Poll esito e riepilogo
+        env:
+          SB_URL: ${{ secrets.E2E_SUPABASE_URL }}
+          SB_KEY: ${{ secrets.E2E_SUPABASE_SERVICE_KEY }}
+          VIDEO_ID: ${{ inputs.video_id }}
+          TIMEOUT: ${{ inputs.poll_timeout_seconds }}
+        run: |
+          elapsed=0
+          status="pending"
+          while [ "$status" = "pending" ] && [ "$elapsed" -lt "$TIMEOUT" ]; do
+            sleep 15
+            elapsed=$((elapsed + 15))
+            status=$(curl -s "$SB_URL/rest/v1/video_transcripts?youtube_video_id=eq.$VIDEO_ID&select=transcript_status" \
+              -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" | jq -r '.[0].transcript_status')
+            echo "t=${elapsed}s status=${status}"
+          done
+          curl -s "$SB_URL/rest/v1/video_transcripts?youtube_video_id=eq.$VIDEO_ID&select=transcript_status,language_code,kind,error_details,transcript_text" \
+            -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" -o /tmp/final.json
+          LANG=$(jq -r '.[0].language_code' /tmp/final.json)
+          KIND=$(jq -r '.[0].kind' /tmp/final.json)
+          DIAG=$(jq -r '.[0].error_details // ""' /tmp/final.json)
+          TXTLEN=$(jq -r '.[0].transcript_text // "" | length' /tmp/final.json)
+          PREV=$(jq -r '.[0].transcript_text // "" | .[0:200]' /tmp/final.json)
+          {
+            echo "## E2E trascrizioni"
+            echo ""
+            echo "- video: \`$VIDEO_ID\`"
+            echo "- esito: \`$status\` (lingua: \`$LANG\`, kind: \`$KIND\`, testo_len: \`$TXTLEN\`)"
+            echo "- diagnostica: \`$DIAG\`"
+            echo "- anteprima: \`$PREV\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          test "$status" = "fetched"
