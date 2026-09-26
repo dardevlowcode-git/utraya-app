@@ -68,6 +68,7 @@ REVOKE EXECUTE ON FUNCTION public.is_current_user_allowlisted() FROM PUBLIC, ano
 GRANT EXECUTE ON FUNCTION public.is_current_user_allowlisted() TO authenticated, service_role;
 
 DROP POLICY IF EXISTS "Video analysis: authenticated read" ON public.video_analysis;
+DROP POLICY IF EXISTS "Video analysis: followed video read" ON public.video_analysis;
 CREATE POLICY "Video analysis: followed video read" ON public.video_analysis
   FOR SELECT TO authenticated
   USING (
@@ -83,6 +84,7 @@ CREATE POLICY "Video analysis: followed video read" ON public.video_analysis
   );
 
 DROP POLICY IF EXISTS "Localized content: authenticated read" ON public.video_localized_content;
+DROP POLICY IF EXISTS "Localized content: followed video read" ON public.video_localized_content;
 CREATE POLICY "Localized content: followed video read" ON public.video_localized_content
   FOR SELECT TO authenticated
   USING (
@@ -98,6 +100,7 @@ CREATE POLICY "Localized content: followed video read" ON public.video_localized
   );
 
 DROP POLICY IF EXISTS "Sync state: authenticated read" ON public.canonical_sync_state;
+DROP POLICY IF EXISTS "Sync state: followed channel read" ON public.canonical_sync_state;
 CREATE POLICY "Sync state: followed channel read" ON public.canonical_sync_state
   FOR SELECT TO authenticated
   USING (
@@ -112,6 +115,7 @@ CREATE POLICY "Sync state: followed channel read" ON public.canonical_sync_state
   );
 
 DROP POLICY IF EXISTS "User video states: own" ON public.user_video_states;
+DROP POLICY IF EXISTS "User video states: own followed video" ON public.user_video_states;
 CREATE POLICY "User video states: own followed video" ON public.user_video_states
   FOR ALL TO authenticated
   USING (
@@ -144,6 +148,7 @@ CREATE POLICY "User video states: own followed video" ON public.user_video_state
   );
 
 DROP POLICY IF EXISTS "Watchlist items: own" ON public.watchlist_items;
+DROP POLICY IF EXISTS "Watchlist items: own followed video" ON public.watchlist_items;
 CREATE POLICY "Watchlist items: own followed video" ON public.watchlist_items
   FOR ALL TO authenticated
   USING (
