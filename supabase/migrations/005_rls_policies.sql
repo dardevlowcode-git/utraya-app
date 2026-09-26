@@ -53,8 +53,8 @@ CREATE POLICY "Users: read own" ON public.users
 
 CREATE POLICY "Users: update own" ON public.users
   FOR UPDATE TO authenticated
-  USING (id = (select auth.uid()))
-  WITH CHECK (id = (select auth.uid()));
+  USING (id = (select auth.uid()) AND status = 'active')
+  WITH CHECK (id = (select auth.uid()) AND status = 'active');
 
 -- USER IDENTITIES
 CREATE POLICY "User identities: read own" ON public.user_identities

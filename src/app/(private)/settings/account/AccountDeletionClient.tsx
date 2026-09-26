@@ -57,8 +57,12 @@ export default function AccountDeletionClient({ initialState }: { initialState: 
     setError(null)
 
     try {
-      const response = await fetch(`/api/account/cancel-deletion?token=${encodeURIComponent(state.cancelToken)}`, {
+      // Il token viaggia nel body: la query string resta accettata solo per
+      // compatibilita` legacy ma esporrebbe il token a cronologia/log/referrer.
+      const response = await fetch('/api/account/cancel-deletion', {
         method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token: state.cancelToken }),
       })
       const payload = (await response.json().catch(() => null)) as { ok?: boolean; error?: { message?: string } } | null
       if (!response.ok || !payload?.ok) {

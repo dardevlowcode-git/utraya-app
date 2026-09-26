@@ -5,7 +5,7 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { requestScanNowForUser } from '@/lib/services/channels'
+import { processPendingScanJobs, requestScanNowForUser } from '@/lib/services/channels'
 import { AppError } from '@/lib/utils/errors'
 import type { Database } from '@/lib/types/database'
 
@@ -291,6 +291,17 @@ export async function runDailyChannelSync(): Promise<DailySyncResult> {
   }
 
   try {
+    try {
+      const recovered = await processPendingScanJobs(5)
+      if (recovered.processed > 0 || recovered.failed > 0) {
+        await writeLog(admin, 'info', 'Recovered pending API scan jobs', recovered)
+      }
+    } catch (error) {
+      await writeLog(admin, 'warn', 'Unable to recover pending API scan jobs', {
+        error: error instanceof Error ? error.message : 'recovery_failed',
+      })
+    }
+
     const lockAcquired = await acquireRunLock(admin, runId, startedAtDate, env.timeBudgetMs + 120_000)
     if (!lockAcquired) {
       const endedAtDate = new Date()

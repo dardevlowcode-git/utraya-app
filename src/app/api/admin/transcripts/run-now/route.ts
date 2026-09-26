@@ -6,7 +6,7 @@
 
 import { getAdminSession } from '@/lib/auth/admin'
 import { apiErr, apiOk } from '@/lib/http/apiResponse'
-import { getRequestId } from '@/lib/security/http'
+import { ensureJsonRequest, ensureSameOrigin, getRequestId } from '@/lib/security/http'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getTranscriptSettings } from '@/lib/services/cron-settings'
 import { processPendingTranscripts } from '@/lib/services/video-transcripts'
@@ -16,6 +16,8 @@ export async function POST(request: Request) {
   const adminSession = await getAdminSession()
   if (!adminSession) return apiErr('UNAUTHORIZED', 'Unauthorized', 401, requestId)
   try {
+    ensureSameOrigin(request)
+    ensureJsonRequest(request)
     const settings = await getTranscriptSettings(createAdminClient())
     return apiOk(await processPendingTranscripts(settings.batch_limit), requestId)
   } catch (error) {

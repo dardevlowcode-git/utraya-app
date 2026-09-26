@@ -121,6 +121,9 @@ export async function POST(request: Request) {
         userId,
         channelId,
         maxResults,
+        // L'import canonico richiede service role; il service verifica comunque
+        // ownership del canale prima di eseguire la scrittura globale.
+        bypassUserChannelGuard: true,
       })
 
       return Response.json({

@@ -9,16 +9,13 @@ import { AppError } from '@/lib/utils/errors'
 
 export function getRequestId(request: Request): string {
   const headerId = request.headers.get('x-request-id')?.trim()
-  return headerId && headerId.length > 0 ? headerId : randomUUID()
+  const isUuidV4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(headerId ?? '')
+  return isUuidV4 ? headerId! : randomUUID()
 }
 
 export function getClientIp(request: Request): string | null {
-  const forwarded = request.headers.get('x-forwarded-for')
-  if (forwarded) {
-    const candidate = forwarded.split(',')[0]?.trim()
-    if (candidate) return candidate
-  }
-
+  // Non fidarti del primo elemento di X-Forwarded-For: il client puo`
+  // pre-inserirlo. Vercel/proxy termina la catena in X-Real-IP.
   const realIp = request.headers.get('x-real-ip')?.trim()
   return realIp || null
 }

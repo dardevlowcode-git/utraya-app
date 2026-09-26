@@ -55,6 +55,7 @@ export type Database = {
           status?: 'active' | 'suspended' | 'deleted'
           updated_at?: string
         }
+        Relationships: []
       }
       user_identities: {
         Row: {
@@ -76,6 +77,7 @@ export type Database = {
         Update: {
           email?: string
         }
+        Relationships: []
       }
       roles: {
         Row: {
@@ -89,6 +91,7 @@ export type Database = {
         Update: {
           name?: 'user' | 'super_admin'
         }
+        Relationships: []
       }
       user_roles: {
         Row: {
@@ -104,6 +107,7 @@ export type Database = {
           assigned_by?: string | null
         }
         Update: Record<string, never>
+        Relationships: []
       }
       allowlist_entries: {
         Row: {
@@ -123,6 +127,7 @@ export type Database = {
         Update: {
           is_active?: boolean
         }
+        Relationships: []
       }
       admin_actions_audit: {
         Row: {
@@ -144,6 +149,7 @@ export type Database = {
           created_at?: string
         }
         Update: Record<string, never>
+        Relationships: []
       }
       // --- User API Credentials ---
       user_provider_credentials: {
@@ -182,6 +188,7 @@ export type Database = {
           last_error?: string | null
           updated_at?: string
         }
+        Relationships: []
       }
       credential_checks: {
         Row: {
@@ -201,6 +208,7 @@ export type Database = {
           error_type?: 'temporary' | 'structural' | null
         }
         Update: Record<string, never>
+        Relationships: []
       }
       // --- Canonical Layer ---
       channels: {
@@ -246,6 +254,7 @@ export type Database = {
           status?: 'active' | 'inactive' | 'error'
           updated_at?: string
         }
+        Relationships: []
       }
       videos: {
         Row: {
@@ -288,6 +297,7 @@ export type Database = {
           youtube_metadata?: Json | null
           updated_at?: string
         }
+        Relationships: []
       }
       video_analysis: {
         Row: {
@@ -318,6 +328,7 @@ export type Database = {
           analyzed_at?: string | null
           error_message?: string | null
         }
+        Relationships: []
       }
       video_analysis_raw: {
         Row: {
@@ -337,6 +348,7 @@ export type Database = {
           created_at?: string
         }
         Update: Record<string, never>
+        Relationships: []
       }
       video_localized_content: {
         Row: {
@@ -376,6 +388,7 @@ export type Database = {
           is_admin_edited?: boolean
           updated_at?: string
         }
+        Relationships: []
       }
       canonical_sync_state: {
         Row: {
@@ -400,6 +413,15 @@ export type Database = {
           next_sync_at?: string | null
           videos_found_count?: number | null
         }
+        Relationships: [
+          {
+            foreignKeyName: 'canonical_sync_state_channel_id_fkey'
+            columns: ['channel_id']
+            isOneToOne: true
+            referencedRelation: 'channels'
+            referencedColumns: ['id']
+          },
+        ]
       }
       // --- User Layer ---
       user_channels: {
@@ -423,6 +445,15 @@ export type Database = {
           is_active?: boolean
           removed_at?: string | null
         }
+        Relationships: [
+          {
+            foreignKeyName: 'user_channels_channel_id_fkey'
+            columns: ['channel_id']
+            isOneToOne: false
+            referencedRelation: 'channels'
+            referencedColumns: ['id']
+          },
+        ]
       }
       user_channel_preferences: {
         Row: {
@@ -441,6 +472,15 @@ export type Database = {
           sync_frequency_hours?: number
           is_paused?: boolean
         }
+        Relationships: [
+          {
+            foreignKeyName: 'user_channel_preferences_user_channel_id_fkey'
+            columns: ['user_channel_id']
+            isOneToOne: false
+            referencedRelation: 'user_channels'
+            referencedColumns: ['id']
+          },
+        ]
       }
       user_video_states: {
         Row: {
@@ -464,6 +504,7 @@ export type Database = {
           seen_at?: string | null
           hidden_at?: string | null
         }
+        Relationships: []
       }
       watchlists: {
         Row: {
@@ -484,6 +525,7 @@ export type Database = {
           name?: string
           is_default?: boolean
         }
+        Relationships: []
       }
       watchlist_items: {
         Row: {
@@ -499,6 +541,7 @@ export type Database = {
           added_at?: string
         }
         Update: Record<string, never>
+        Relationships: []
       }
       // --- Jobs & Operations ---
       jobs: {
@@ -514,6 +557,8 @@ export type Database = {
           started_at: string | null
           completed_at: string | null
           error_message: string | null
+          lease_id: string | null
+          lease_expires_at: string | null
         }
         Insert: {
           id?: string
@@ -527,13 +572,24 @@ export type Database = {
           started_at?: string | null
           completed_at?: string | null
           error_message?: string | null
+          lease_id?: string | null
+          lease_expires_at?: string | null
         }
         Update: {
           status?: 'pending' | 'running' | 'completed' | 'failed'
           started_at?: string | null
           completed_at?: string | null
           error_message?: string | null
+          lease_id?: string | null
+          lease_expires_at?: string | null
         }
+        Relationships: []
+      }
+      api_verifier_oidc_nonces: {
+        Row: { jti: string; expires_at: string; created_at: string }
+        Insert: { jti: string; expires_at: string; created_at?: string }
+        Update: { expires_at?: string }
+        Relationships: []
       }
       job_attempts: {
         Row: {
@@ -562,6 +618,7 @@ export type Database = {
           error_message?: string | null
           error_details?: Json | null
         }
+        Relationships: []
       }
       job_locks: {
         Row: {
@@ -581,6 +638,7 @@ export type Database = {
         Update: {
           expires_at?: string
         }
+        Relationships: []
       }
       app_logs: {
         Row: {
@@ -598,6 +656,7 @@ export type Database = {
           created_at?: string
         }
         Update: Record<string, never>
+        Relationships: []
       }
       audit_logs: {
         Row: {
@@ -621,6 +680,7 @@ export type Database = {
           created_at?: string
         }
         Update: Record<string, never>
+        Relationships: []
       }
       incidents: {
         Row: {
@@ -647,10 +707,98 @@ export type Database = {
           status?: 'open' | 'investigating' | 'resolved'
           resolved_at?: string | null
         }
+        Relationships: []
+      }
+      user_deletion_requests: {
+        Row: {
+          id: string
+          user_id: string | null
+          requested_at: string
+          scheduled_deletion_at: string
+          status: 'pending' | 'cancelled' | 'executing' | 'completed' | 'failed'
+          reason: string | null
+          ip_address: string | null
+          user_agent: string | null
+          cancelled_at: string | null
+          executed_at: string | null
+          error_details: string | null
+          previous_user_status: 'active' | 'suspended' | 'deleted'
+          suspension_updated_at: string | null
+          executing_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id?: string | null
+          requested_at?: string
+          scheduled_deletion_at: string
+          status?: 'pending' | 'cancelled' | 'executing' | 'completed' | 'failed'
+          reason?: string | null
+          ip_address?: string | null
+          user_agent?: string | null
+          cancelled_at?: string | null
+          executed_at?: string | null
+          error_details?: string | null
+          previous_user_status?: 'active' | 'suspended' | 'deleted'
+          suspension_updated_at?: string | null
+          executing_at?: string | null
+        }
+        Update: {
+          status?: 'pending' | 'cancelled' | 'executing' | 'completed' | 'failed'
+          cancelled_at?: string | null
+          executed_at?: string | null
+          error_details?: string | null
+          previous_user_status?: 'active' | 'suspended' | 'deleted'
+          suspension_updated_at?: string | null
+          executing_at?: string | null
+        }
+        Relationships: []
       }
     }
     Views: Record<string, never>
-    Functions: Record<string, never>
+    Functions: {
+      is_current_user_allowlisted: {
+        Args: Record<string, never>
+        Returns: boolean
+      }
+      claim_account_deletion: {
+        Args: { p_request_id: string }
+        Returns: boolean
+      }
+      request_account_deletion: {
+        Args: {
+          p_user_id: string
+          p_reason: string | null
+          p_ip_address: string | null
+          p_user_agent: string | null
+          p_scheduled_at: string
+        }
+        Returns: { request_id: string; scheduled_for: string }[]
+      }
+      cancel_account_deletion: {
+        Args: { p_user_id: string; p_request_id: string }
+        Returns: boolean
+      }
+      execute_user_deletion: {
+        Args: { p_user_id: string }
+        Returns: undefined
+      }
+      commit_fenced_channel_import: {
+        Args: {
+          p_job_id: string
+          p_lease_id: string
+          p_user_id: string
+          p_requested_channel_id: string
+          p_resolved_youtube_channel_id: string | null
+          p_resolved_channel_title: string | null
+          p_resolved_channel_handle: string | null
+          p_channel_snapshot: Json
+          p_video_rows: Json
+          p_sync_status: 'success' | 'partial'
+          p_videos_found_count: number
+        }
+        Returns: Json
+      }
+    }
     Enums: Record<string, never>
   }
 }

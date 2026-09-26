@@ -29,7 +29,7 @@ vi.mock('@/lib/env/getSiteUrl', () => ({
 describe('account-deletion service', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.stubEnv('SUPERADMIN_SESSION_SECRET', 'test-superadmin-session-secret')
+    vi.stubEnv('ACCOUNT_DELETION_TOKEN_SECRET', 'test-account-deletion-secret')
   })
 
   it('requestDeletion riusa richiesta pending esistente e genera cancelUrl', async () => {
@@ -59,34 +59,37 @@ describe('account-deletion service', () => {
     expect(result.cancelUrl.startsWith('https://site.test/api/account/cancel-deletion?token=')).toBe(true)
   })
 
-  it('createCancelDeletionToken e cancelDeletion aggiornano request/users con token valido', async () => {
+  it('createCancelDeletionToken e cancelDeletion usano la transizione atomica', async () => {
     // Orologio finto: il token scade il 2026-06-20, quindi la verifica deve
     // avvenire "prima" di quella data, altrimenti Date.now() reale lo dichiara
     // scaduto e il test fallisce sempre. Non tocca il codice vero.
     vi.useFakeTimers()
     try {
       vi.setSystemTime(new Date('2026-06-10T00:00:00.000Z'))
-      const requestUpdateEq3Mock = vi.fn().mockResolvedValue({ error: null })
-      const requestUpdateEq2Mock = vi.fn(() => ({ eq: requestUpdateEq3Mock }))
-      const requestUpdateEq1Mock = vi.fn(() => ({ eq: requestUpdateEq2Mock }))
-      const requestUpdateMock = vi.fn(() => ({ eq: requestUpdateEq1Mock }))
-
-      const usersUpdateEqMock = vi.fn().mockResolvedValue({ error: null })
-      const usersUpdateMock = vi.fn(() => ({ eq: usersUpdateEqMock }))
-
-      const fromMock = vi.fn((table: string) => {
-        if (table === 'user_deletion_requests') return { update: requestUpdateMock }
-        if (table === 'users') return { update: usersUpdateMock }
-        return { update: vi.fn() }
-      })
-
-      createAdminClientMock.mockReturnValue({ from: fromMock })
+      const rpcMock = vi.fn().mockResolvedValue({ data: true, error: null })
+      createAdminClientMock.mockReturnValue({ rpc: rpcMock })
 
       const token = createCancelDeletionToken('user-2', 'req-2', '2026-06-20T00:00:00.000Z')
-      await cancelDeletion(token)
+      await expect(cancelDeletion(token)).resolves.toBe(true)
 
-      expect(requestUpdateMock).toHaveBeenCalledWith(expect.objectContaining({ status: 'cancelled' }))
-      expect(usersUpdateMock).toHaveBeenCalledWith({ status: 'active' })
+      expect(rpcMock).toHaveBeenCalledWith('cancel_account_deletion', {
+        p_user_id: 'user-2',
+        p_request_id: 'req-2',
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('non riattiva l’utente quando la richiesta pending non esiste piu`', async () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(new Date('2026-06-10T00:00:00.000Z'))
+      const rpcMock = vi.fn().mockResolvedValue({ data: false, error: null })
+      createAdminClientMock.mockReturnValue({ rpc: rpcMock })
+
+      const token = createCancelDeletionToken('user-2', 'req-expired', '2026-06-20T00:00:00.000Z')
+      await expect(cancelDeletion(token)).resolves.toBe(false)
     } finally {
       vi.useRealTimers()
     }
@@ -102,7 +105,10 @@ describe('account-deletion service', () => {
 
     const updateEqMock = vi.fn().mockResolvedValue({ error: null })
     const updateMock = vi.fn(() => ({ eq: updateEqMock }))
-    const rpcMock = vi.fn().mockResolvedValue({ error: null })
+    const rpcMock = vi.fn((name: string) => {
+      if (name === 'claim_account_deletion') return Promise.resolve({ data: true, error: null })
+      return Promise.resolve({ data: null, error: null })
+    })
 
     const fromMock = vi.fn((table: string) => {
       if (table === 'user_deletion_requests') return { select: selectMock, update: updateMock }
@@ -112,8 +118,9 @@ describe('account-deletion service', () => {
 
     await executeDeletion('req-3')
 
+    expect(rpcMock).toHaveBeenCalledWith('claim_account_deletion', { p_request_id: 'req-3' })
     expect(rpcMock).toHaveBeenCalledWith('execute_user_deletion', { p_user_id: 'user-3' })
-    expect(updateMock).toHaveBeenCalledTimes(2)
+    expect(updateMock).toHaveBeenCalledTimes(1)
   })
 
   it('forceDeleteUser invoca rpc e registra audit log admin', async () => {

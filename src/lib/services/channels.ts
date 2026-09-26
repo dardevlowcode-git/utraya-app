@@ -4,17 +4,23 @@
  * Flusso: Le funzioni del servizio vengono chiamate da API route o pagine server: qui avviene l'orchestrazione delle query e delle trasformazioni dati.
  */
 
+import { createHash, randomUUID } from 'node:crypto'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { AppError } from '@/lib/utils/errors'
 import { normalizeChannelUrl, parseYouTubeChannelUrl } from '@/lib/utils/youtube-url'
 import type { Database } from '@/lib/types/database'
 import { importChannelVideos } from '@/lib/services/videos'
+import type { AppSupabaseClient } from '@/lib/supabase/types'
 
 type UserChannelRow = Database['public']['Tables']['user_channels']['Row']
 type ChannelRow = Database['public']['Tables']['channels']['Row']
 type UserChannelPreferenceRow = Database['public']['Tables']['user_channel_preferences']['Row']
 type CanonicalSyncStateRow = Database['public']['Tables']['canonical_sync_state']['Row']
+
+function hashIdentifier(value: string): string {
+  return createHash('sha256').update(value).digest('hex').slice(0, 16)
+}
 
 export interface UserChannelListItem {
   userChannel: UserChannelRow
@@ -52,11 +58,11 @@ function chunkArray<T>(values: T[], size: number): T[][] {
 }
 
 async function markChannelVideosSeenForUser(params: {
-  admin: ReturnType<typeof createAdminClient>
+  supabase: AppSupabaseClient
   userId: string
   channelId: string
 }): Promise<number> {
-  const { data: channelVideos, error: videosError } = await params.admin
+  const { data: channelVideos, error: videosError } = await params.supabase
     .from('videos')
     .select('id')
     .eq('channel_id', params.channelId)
@@ -75,7 +81,7 @@ async function markChannelVideosSeenForUser(params: {
   const seenAt = new Date().toISOString()
 
   for (const chunk of chunkArray(videoIds, 400)) {
-    const { error: upsertError } = await params.admin
+    const { error: upsertError } = await params.supabase
       .from('user_video_states')
       .upsert(
         chunk.map((videoId) => ({
@@ -138,8 +144,8 @@ function buildFallbackChannel(parsedType: 'handle' | 'channel_id', parsedValue: 
  * Restituisce l'elenco canali attivi di un utente con preferenze e stato sync.
  * Esegue la composizione in DTO per evitare logica di mapping nelle API.
  */
-export async function getChannelsForUser(userId: string): Promise<UserChannelListItem[]> {
-  const supabase = await createClient()
+export async function getChannelsForUser(userId: string, client?: AppSupabaseClient): Promise<UserChannelListItem[]> {
+  const supabase = client ?? await createClient()
 
   const { data, error } = await supabase
     .from('user_channels')
@@ -197,7 +203,13 @@ export async function getChannelsForUser(userId: string): Promise<UserChannelLis
  * Aggiunge un canale al profilo utente.
  * Flusso: parse URL -> upsert canale canonico -> upsert relazione utente -> init preferenze -> scan iniziale.
  */
-export async function addChannelForUser(params: { userId: string; channelUrl: string; markExistingVideosAsSeen?: boolean }) {
+export async function addChannelForUser(params: {
+  userId: string
+  channelUrl: string
+  markExistingVideosAsSeen?: boolean
+  supabase?: AppSupabaseClient
+  deferInitialScan?: boolean
+}) {
   const parsed = parseYouTubeChannelUrl(params.channelUrl)
 
   if (parsed.type === 'invalid') {
@@ -208,17 +220,18 @@ export async function addChannelForUser(params: { userId: string; channelUrl: st
     )
   }
 
-  const supabase = createAdminClient()
+  const supabase = params.supabase ?? await createClient()
+  const admin = createAdminClient()
   const fallback = buildFallbackChannel(parsed.type, parsed.value)
   let channel: ChannelRow | null = null
 
-  // Evita duplicati su `@handle`: se esiste gia un canale attivo con lo stesso handle, riusalo.
+  // Evita duplicati: se il canale esiste gia`, riusa la riga canonica senza
+  // sovrascrivere metadati globali usando il fallback fornito dall'utente.
   if (parsed.type === 'handle') {
-    const { data: existingByHandle, error: byHandleError } = await supabase
+    const { data: existingByHandle, error: byHandleError } = await admin
       .from('channels')
       .select('*')
       .eq('handle', fallback.handle)
-      .eq('status', 'active')
       .maybeSingle()
 
     if (byHandleError) {
@@ -230,9 +243,21 @@ export async function addChannelForUser(params: { userId: string; channelUrl: st
     channel = existingByHandle
   }
 
+  if (!channel && parsed.type === 'channel_id') {
+    const { data: existingById, error: byIdError } = await admin
+      .from('channels')
+      .select('*')
+      .eq('youtube_channel_id', fallback.youtubeChannelId)
+      .maybeSingle()
+    if (byIdError) {
+      throw new AppError('Impossibile verificare canale esistente per ID', 'unknown', 500, { cause: byIdError.message })
+    }
+    channel = existingById
+  }
+
   if (!channel) {
     // Upsert canale globale: evita duplicati quando arriva gia un `UC...`.
-    const { data: upsertedChannel, error: channelError } = await supabase
+    const { data: upsertedChannel, error: channelError } = await admin
       .from('channels')
       .upsert(
         {
@@ -257,6 +282,18 @@ export async function addChannelForUser(params: { userId: string; channelUrl: st
   }
   if (!channel) {
     throw new AppError('Canale non disponibile dopo risoluzione', 'unknown', 500)
+  }
+  if (channel.status !== 'active') {
+    const { data: reactivatedChannel, error: reactivateError } = await admin
+      .from('channels')
+      .update({ status: 'active' })
+      .eq('id', channel.id)
+      .select('*')
+      .single()
+    if (reactivateError || !reactivatedChannel) {
+      throw new AppError('Impossibile riattivare il canale canonico', 'unknown', 500, { cause: reactivateError?.message })
+    }
+    channel = reactivatedChannel as ChannelRow
   }
   const channelId = channel.id
 
@@ -300,7 +337,7 @@ export async function addChannelForUser(params: { userId: string; channelUrl: st
   }
 
   // Garantisce presenza dello stato sync canonico (una riga per canale globale).
-  await supabase
+  await admin
     .from('canonical_sync_state')
     .upsert(
       {
@@ -316,40 +353,41 @@ export async function addChannelForUser(params: { userId: string; channelUrl: st
   const shouldMarkExistingVideosAsSeen = params.markExistingVideosAsSeen ?? true
   let markedSeenCount = 0
 
-  // Prima scansione immediata best-effort:
-  // il canale deve risultare aggiunto anche se la scansione fallisce.
-  try {
-    await requestScanNowForUser({
-      userId: params.userId,
-      channelId,
-    })
-  } catch (error) {
-    const blockedReason = detectScanBlockedReasonFromError(error)
-    if (blockedReason) {
-      scanBlockedReason = blockedReason
-    } else {
-      initialScanError = error instanceof AppError
-        ? error.message
-        : error instanceof Error
-          ? error.message
-          : 'scan_failed'
-    }
-
-    await supabase.from('app_logs').insert({
-      level: 'warn',
-      message: 'Canale aggiunto ma scansione iniziale fallita',
-      context: {
+  if (!params.deferInitialScan) {
+    // Prima scansione immediata best-effort: il canale resta aggiunto se fallisce.
+    try {
+      await requestScanNowForUser({
         userId: params.userId,
         channelId,
-        scanBlockedReason,
-        error: initialScanError,
-      },
-    })
+      }, { supabase: params.supabase })
+    } catch (error) {
+      const blockedReason = detectScanBlockedReasonFromError(error)
+      if (blockedReason) {
+        scanBlockedReason = blockedReason
+      } else {
+        initialScanError = error instanceof AppError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : 'scan_failed'
+      }
+
+      await admin.from('app_logs').insert({
+        level: 'warn',
+        message: 'Canale aggiunto ma scansione iniziale fallita',
+        context: {
+          userIdHash: hashIdentifier(params.userId),
+          channelId,
+          scanBlockedReason,
+          error: initialScanError,
+        },
+      })
+    }
   }
 
   if (shouldMarkExistingVideosAsSeen) {
     markedSeenCount = await markChannelVideosSeenForUser({
-      admin: supabase,
+      supabase,
       userId: params.userId,
       channelId,
     })
@@ -368,8 +406,8 @@ export async function addChannelForUser(params: { userId: string; channelUrl: st
  * Rimuove il collegamento utente-canale e pulisce i riferimenti utente al suo contenuto.
  * Mantiene il comportamento idempotente: se gia` non attivo ritorna `alreadyRemoved: true`.
  */
-export async function removeChannelForUser(params: { userId: string; channelId: string }) {
-  const supabase = createAdminClient()
+export async function removeChannelForUser(params: { userId: string; channelId: string; supabase?: AppSupabaseClient }) {
+  const supabase = params.supabase ?? await createClient()
 
   const { data: userChannel, error: lookupError } = await supabase
     .from('user_channels')
@@ -471,18 +509,35 @@ export async function removeChannelForUser(params: { userId: string; channelId: 
 }
 
 /**
- * Accoda (ed esegue subito in V1) una scansione manuale del canale.
- * Registra sempre il job in tabella per audit/diagnosi in console admin.
+ * Accoda ed esegue una scansione manuale mantenendo il job per audit/diagnosi.
  */
 export async function requestScanNowForUser(
   params: { userId: string; channelId: string },
   options?: {
     asAdmin?: boolean
-    source?: 'manual_scan' | 'scheduled_sync'
+    source?: 'manual_scan' | 'scheduled_sync' | 'import_channel' | 'add_channel'
     dedupeKey?: string
+    maxResults?: number
+    supabase?: AppSupabaseClient
   }
 ) {
-  const supabase = options?.asAdmin ? createAdminClient() : await createClient()
+  const queued = await enqueueScanJobForUser(params, options)
+  if (queued.deduplicated || !queued.jobId) return queued
+  await runScanJob({ ...params, jobId: queued.jobId, maxResults: options?.maxResults })
+  return queued
+}
+
+export async function enqueueScanJobForUser(
+  params: { userId: string; channelId: string },
+  options?: {
+    asAdmin?: boolean
+    source?: 'manual_scan' | 'scheduled_sync' | 'import_channel' | 'add_channel'
+    dedupeKey?: string
+    maxResults?: number
+    supabase?: AppSupabaseClient
+  }
+) {
+  const supabase = options?.asAdmin ? createAdminClient() : options?.supabase ?? await createClient()
 
   const { data: userChannel, error: userChannelError } = await supabase
     .from('user_channels')
@@ -502,10 +557,13 @@ export async function requestScanNowForUser(
   const source = options?.source ?? 'manual_scan'
   const windowKey = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '')
   const dayKey = new Date().toISOString().slice(0, 10)
-  const dedupeKey = options?.dedupeKey
-    ?? (source === 'scheduled_sync'
-      ? `scheduled_sync:${params.channelId}:${dayKey}`
-      : `manual_scan:${params.userId}:${params.channelId}:${windowKey}`)
+  const clientKey = options?.dedupeKey?.trim()
+  if (clientKey && !/^[A-Za-z0-9._:-]{1,128}$/.test(clientKey)) {
+    throw new AppError('Idempotency-Key non valida', 'validation', 400)
+  }
+  const rawKey = clientKey
+    ?? (source === 'scheduled_sync' ? `${source}:${dayKey}` : `${source}:${windowKey}`)
+  const dedupeKey = `v1:${source}:${params.userId}:${params.channelId}:${rawKey}`
 
   // Chiave dedup con finestra temporale: permette scansioni ripetute,
   // ma evita spam di job multipli nello stesso minuto.
@@ -517,6 +575,7 @@ export async function requestScanNowForUser(
       channelId: params.channelId,
       userId: params.userId,
       source,
+      maxResults: options?.maxResults ?? null,
     },
     deduplication_key: dedupeKey,
     created_by_user_id: params.userId,
@@ -524,7 +583,14 @@ export async function requestScanNowForUser(
 
   // Idempotenza forte: se il job esiste gia` (dedup key), non trattare come errore.
   if (jobError?.code === '23505') {
-    return { queued: false, jobId: null, deduplicated: true }
+    const { data: existingJob, error: existingJobError } = await admin
+      .from('jobs')
+      .select('id')
+      .eq('deduplication_key', dedupeKey)
+      .eq('created_by_user_id', params.userId)
+      .maybeSingle()
+    if (existingJobError) throw new AppError('Impossibile leggere job duplicato', 'unknown', 500, { cause: existingJobError.message })
+    return { queued: false, jobId: existingJob?.id ?? null, deduplicated: true }
   }
 
   if (jobError || !jobRow) {
@@ -533,63 +599,72 @@ export async function requestScanNowForUser(
     })
   }
 
-  // In questa versione non esiste ancora un worker dedicato: eseguiamo subito il job.
-  // Manteniamo comunque la riga in tabella `jobs` per tracciamento storico in admin.
-  const startedAt = new Date().toISOString()
-  await admin
-    .from('jobs')
-    .update({ status: 'running', started_at: startedAt, error_message: null })
-    .eq('id', jobRow.id)
+  return { queued: true, jobId: jobRow.id, deduplicated: false }
+}
 
+export async function runScanJob(params: { userId: string; channelId: string; jobId: string; maxResults?: number }) {
+  const admin = createAdminClient()
+  const startedAt = new Date().toISOString()
+  const leaseId = randomUUID()
+  const leaseExpiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
+  const { data: claimed, error: claimError } = await admin
+    .from('jobs')
+    .update({ status: 'running', started_at: startedAt, lease_id: leaseId, lease_expires_at: leaseExpiresAt, error_message: null })
+    .eq('id', params.jobId)
+    .eq('status', 'pending')
+    .select('id, lease_id')
+    .maybeSingle()
+  if (claimError) throw new AppError('Impossibile acquisire job scansione', 'unknown', 500, { cause: claimError.message })
+  if (!claimed) return { claimed: false }
+
+  const { data: lastAttempt, error: attemptLookupError } = await admin
+    .from('job_attempts')
+    .select('attempt_number')
+    .eq('job_id', params.jobId)
+    .order('attempt_number', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (attemptLookupError) throw new AppError('Impossibile leggere tentativi job', 'unknown', 500, { cause: attemptLookupError.message })
+  const attemptNumber = (lastAttempt?.attempt_number ?? 0) + 1
+
+  let operationError: unknown = null
   try {
     await importChannelVideos({
       userId: params.userId,
       channelId: params.channelId,
+      lease: { jobId: params.jobId, leaseId },
       // Import canonico richiede scrittura su tabelle admin-only (`videos`).
       // Il controllo ownership canale e` gia` effettuato sopra.
       bypassUserChannelGuard: true,
-    })
-
-    const completedAt = new Date().toISOString()
-    await admin
-      .from('jobs')
-      .update({ status: 'completed', completed_at: completedAt, error_message: null })
-      .eq('id', jobRow.id)
-
-    await admin.from('job_attempts').insert({
-      job_id: jobRow.id,
-      attempt_number: 1,
-      status: 'completed',
-      started_at: startedAt,
-      completed_at: completedAt,
-      error_message: null,
-      error_details: null,
+      maxResults: params.maxResults,
     })
   } catch (error) {
-    const message = error instanceof AppError
-      ? error.message
-      : error instanceof Error
-        ? error.message
+    operationError = error
+  }
+
+  if (operationError) {
+    const message = operationError instanceof AppError
+      ? operationError.message
+      : operationError instanceof Error
+        ? operationError.message
         : 'scan_failed'
-    const details = error instanceof AppError
-      ? {
-        type: error.type,
-        statusCode: error.statusCode ?? null,
-        ...(error.context ?? {}),
-      }
-      : error instanceof Error
-        ? { message: error.message }
-        : { message: 'scan_failed' }
+    const details = operationError instanceof AppError
+      ? { type: operationError.type, statusCode: operationError.statusCode ?? null, ...(operationError.context ?? {}) }
+      : operationError instanceof Error ? { message: operationError.message } : { message: 'scan_failed' }
     const completedAt = new Date().toISOString()
-
-    await admin
+    const { data: failedJob, error: failedJobError } = await admin
       .from('jobs')
-      .update({ status: 'failed', completed_at: completedAt, error_message: message })
-      .eq('id', jobRow.id)
+      .update({ status: 'failed', completed_at: completedAt, lease_id: null, lease_expires_at: null, error_message: message })
+      .eq('id', params.jobId)
+      .eq('lease_id', leaseId)
+      .gt('lease_expires_at', new Date().toISOString())
+      .select('id')
+      .maybeSingle()
+    if (!failedJob && !failedJobError) throw new AppError('Lease job scaduta durante la scansione', 'temporary', 409)
 
-    await admin.from('job_attempts').insert({
-      job_id: jobRow.id,
-      attempt_number: 1,
+    const { error: failedAttemptError } = await admin.from('job_attempts').insert({
+      job_id: params.jobId,
+      attempt_number: attemptNumber,
       status: 'failed',
       started_at: startedAt,
       completed_at: completedAt,
@@ -597,20 +672,152 @@ export async function requestScanNowForUser(
       error_details: details,
     })
 
-    await admin.from('app_logs').insert({
+    const { error: logError } = await admin.from('app_logs').insert({
       level: 'error',
       message: 'Job scan canale fallito',
       context: {
-        jobId: jobRow.id,
-        userId: params.userId,
+        jobId: params.jobId,
+        userIdHash: hashIdentifier(params.userId),
         channelId: params.channelId,
-        errorMessage: message,
-        errorDetails: details,
+        errorType: operationError instanceof AppError ? operationError.type : 'unknown',
+        errorMessage: message.slice(0, 200),
       },
     })
 
-    throw error
+    if (failedJobError || failedAttemptError || logError) {
+      throw new AppError('Impossibile persistere esito errore scansione', 'unknown', 500, {
+        cause: failedJobError?.message ?? failedAttemptError?.message ?? logError?.message,
+      })
+    }
+
+    throw operationError
   }
 
-  return { queued: true, jobId: jobRow.id, deduplicated: false }
+  const completedAt = new Date().toISOString()
+  const { data: completedJob, error: completedError } = await admin
+    .from('jobs')
+    .update({ status: 'completed', completed_at: completedAt, lease_id: null, lease_expires_at: null, error_message: null })
+    .eq('id', params.jobId)
+    .eq('lease_id', leaseId)
+    .gt('lease_expires_at', new Date().toISOString())
+    .select('id')
+    .maybeSingle()
+  if (completedError) throw new AppError('Impossibile chiudere job scansione', 'unknown', 500, { cause: completedError.message })
+  if (!completedJob) throw new AppError('Lease job scaduta durante la scansione', 'temporary', 409)
+
+  const { error: attemptError } = await admin.from('job_attempts').insert({
+    job_id: params.jobId,
+    attempt_number: attemptNumber,
+    status: 'completed',
+    started_at: startedAt,
+    completed_at: completedAt,
+    error_message: null,
+    error_details: null,
+  })
+  if (attemptError) {
+    const { error: auditLogError } = await admin.from('app_logs').insert({
+      level: 'error',
+      message: 'Job completato ma audit attempt non persistito',
+      context: { jobId: params.jobId, error: attemptError.message },
+    })
+    if (auditLogError) throw new AppError('Impossibile persistere audit job completato', 'unknown', 500, { cause: auditLogError.message })
+    throw new AppError('Impossibile registrare esito scansione', 'unknown', 500, { cause: attemptError.message })
+  }
+
+  return { claimed: true }
+}
+
+export async function processPendingScanJobs(limit = 5): Promise<{ processed: number; failed: number }> {
+  const admin = createAdminClient()
+  const safeLimit = Math.min(Math.max(limit, 1), 20)
+  const now = new Date()
+  const nowIso = now.toISOString()
+  const legacyCutoffIso = new Date(now.getTime() - 10 * 60 * 1000).toISOString()
+  const [{ data: pending, error: pendingError }, { data: running, error: runningError }] = await Promise.all([
+    admin
+      .from('jobs')
+      .select('id, payload, lease_id, lease_expires_at')
+      .eq('job_type', 'sync_channel_delta')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true })
+      .limit(safeLimit),
+    admin
+      .from('jobs')
+      .select('id, payload, lease_id, lease_expires_at, started_at')
+      .eq('job_type', 'sync_channel_delta')
+      .eq('status', 'running')
+      .lt('lease_expires_at', nowIso)
+      .order('started_at', { ascending: true })
+      .limit(safeLimit),
+  ])
+  if (pendingError || runningError) {
+    throw new AppError('Impossibile leggere job scansione pendenti', 'unknown', 500, { cause: pendingError?.message ?? runningError?.message })
+  }
+
+  const { data: legacyRunning, error: legacyError } = await admin
+    .from('jobs')
+    .select('id, payload, lease_id, lease_expires_at, started_at')
+    .eq('job_type', 'sync_channel_delta')
+    .eq('status', 'running')
+    .is('lease_id', null)
+    .is('lease_expires_at', null)
+    .lt('started_at', legacyCutoffIso)
+    .order('started_at', { ascending: true })
+    .limit(safeLimit)
+  if (legacyError) throw new AppError('Impossibile leggere job legacy senza lease', 'unknown', 500, { cause: legacyError.message })
+
+  for (const item of [...(running ?? []), ...(legacyRunning ?? [])]) {
+    if (!item.lease_id) {
+      const { error: legacyRequeueError } = await admin
+        .from('jobs')
+        .update({ status: 'pending', started_at: null, lease_id: null, lease_expires_at: null, error_message: 'requeued_without_lease' })
+        .eq('id', item.id)
+        .eq('status', 'running')
+        .is('lease_id', null)
+        .is('lease_expires_at', null)
+        .lt('started_at', legacyCutoffIso)
+      if (legacyRequeueError) throw new AppError('Impossibile recuperare job senza lease', 'unknown', 500, { cause: legacyRequeueError.message })
+      continue
+    }
+    const { error: requeueError } = await admin
+      .from('jobs')
+      .update({ status: 'pending', started_at: null, lease_id: null, lease_expires_at: null, error_message: 'requeued_after_timeout' })
+      .eq('id', item.id)
+      .eq('status', 'running')
+      .eq('lease_id', item.lease_id)
+    if (requeueError) throw new AppError('Impossibile recuperare job scansione bloccato', 'unknown', 500, { cause: requeueError.message })
+  }
+  // Il limite e` globale: le query separate servono a distinguere le lease,
+  // ma non devono triplicare il budget di un singolo giro cron.
+  const data = [...(pending ?? []), ...(running ?? []), ...(legacyRunning ?? [])].slice(0, safeLimit)
+
+  let processed = 0
+  let failed = 0
+  for (const item of data ?? []) {
+    const payload = item.payload
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      const { error: invalidPayloadError } = await admin.from('jobs').update({ status: 'failed', completed_at: new Date().toISOString(), error_message: 'invalid_payload' }).eq('id', item.id).eq('status', 'pending')
+      if (invalidPayloadError) throw new AppError('Impossibile chiudere job con payload non valido', 'unknown', 500, { cause: invalidPayloadError.message })
+      failed += 1
+      continue
+    }
+    const userId = typeof payload.userId === 'string' ? payload.userId : null
+    const channelId = typeof payload.channelId === 'string' ? payload.channelId : null
+    const maxResults = typeof payload.maxResults === 'number' && Number.isInteger(payload.maxResults)
+      ? Math.min(Math.max(payload.maxResults, 1), 50)
+      : undefined
+    if (!userId || !channelId) {
+      const { error: invalidPayloadError } = await admin.from('jobs').update({ status: 'failed', completed_at: new Date().toISOString(), error_message: 'invalid_payload' }).eq('id', item.id).eq('status', 'pending')
+      if (invalidPayloadError) throw new AppError('Impossibile chiudere job con payload non valido', 'unknown', 500, { cause: invalidPayloadError.message })
+      failed += 1
+      continue
+    }
+    try {
+      const result = await runScanJob({ userId, channelId, jobId: item.id, maxResults })
+      if (result.claimed) processed += 1
+    } catch {
+      failed += 1
+    }
+  }
+  return { processed, failed }
 }

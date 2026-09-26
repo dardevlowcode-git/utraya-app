@@ -30,7 +30,7 @@ export default async function VideoDetailPage({ params }: Props) {
   const locale = await getLocale()
 
   // Fetch video with full context
-  const { data: video } = await supabase
+  const { data: video, error: videoError } = await supabase
     .from('videos')
     .select(`
       *,
@@ -41,7 +41,16 @@ export default async function VideoDetailPage({ params }: Props) {
     .eq('id', videoId)
     .single()
 
-  if (!video) notFound()
+  if (videoError || !video) notFound()
+
+  const { data: followedChannel } = await supabase
+    .from('user_channels')
+    .select('id')
+    .eq('user_id', session.userId)
+    .eq('channel_id', video.channel_id)
+    .eq('is_active', true)
+    .maybeSingle()
+  if (!followedChannel) notFound()
 
   const [{ data: userVideoState }, { data: watchlistItem }] = await Promise.all([
     supabase

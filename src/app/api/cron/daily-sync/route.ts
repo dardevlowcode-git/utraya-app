@@ -10,6 +10,9 @@ import { runDailyChannelSync } from '@/lib/services/daily-sync'
 import { AppError } from '@/lib/utils/errors'
 import { getRequestId } from '@/lib/security/http'
 
+export const runtime = 'nodejs'
+export const maxDuration = 300
+
 /**
  * Trigger HTTP del job giornaliero.
  */

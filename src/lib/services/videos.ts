@@ -11,6 +11,7 @@ import type { VideoWithContext } from '@/lib/types/domain'
 import type { Database, Json } from '@/lib/types/database'
 import { getProviderApiKeyForUser, getProviderApiKeyForUserAsAdmin } from '@/lib/services/integrations'
 import { parseYouTubeDurationToSeconds } from '@/lib/utils/video-duration'
+import type { AppSupabaseClient } from '@/lib/supabase/types'
 
 type AnalysisStatus = Database['public']['Tables']['video_analysis']['Row']['analysis_status']
 
@@ -33,6 +34,104 @@ export interface VideoListResponse {
   total: number
 }
 
+async function assertVideoBelongsToFollowedChannel(params: {
+  userId: string
+  videoId: string
+  supabase: AppSupabaseClient
+}): Promise<void> {
+  const { data: video, error: videoError } = await params.supabase
+    .from('videos')
+    .select('channel_id')
+    .eq('id', params.videoId)
+    .maybeSingle()
+  if (videoError) {
+    throw new AppError('Impossibile verificare il video', 'unknown', 500, { cause: videoError.message })
+  }
+  if (!video) throw new AppError('Video non trovato', 'not_found', 404)
+
+  const { data: followed, error: followedError } = await params.supabase
+    .from('user_channels')
+    .select('id')
+    .eq('user_id', params.userId)
+    .eq('channel_id', video.channel_id)
+    .eq('is_active', true)
+    .maybeSingle()
+  if (followedError) {
+    throw new AppError('Impossibile verificare ownership video', 'unknown', 500, { cause: followedError.message })
+  }
+  if (!followed) throw new AppError('Video non disponibile per questo utente', 'forbidden', 403)
+}
+
+export async function getVideoForUser(params: {
+  userId: string
+  videoId: string
+  languageCode?: string
+  supabase?: AppSupabaseClient
+}): Promise<VideoWithContext | null> {
+  const supabase = params.supabase ?? await createClient()
+  const { data: video, error } = await supabase
+    .from('videos')
+    .select(`
+      *,
+      channels(*),
+      video_analysis(id, analysis_status, model_used, analyzed_at, analyzed_by_user_id, error_message, created_at, prompt_profile_id, video_id),
+      video_localized_content(*)
+    `)
+    .eq('id', params.videoId)
+    .maybeSingle()
+
+  if (error) {
+    throw new AppError('Impossibile caricare il video', 'unknown', 500, { cause: error.message })
+  }
+  if (!video) return null
+
+  const { data: followed, error: followedError } = await supabase
+    .from('user_channels')
+    .select('channel_id')
+    .eq('user_id', params.userId)
+    .eq('channel_id', video.channel_id)
+    .eq('is_active', true)
+    .maybeSingle()
+  if (followedError) {
+    throw new AppError('Impossibile verificare ownership video', 'unknown', 500, { cause: followedError.message })
+  }
+  if (!followed) return null
+
+  const [{ data: state, error: stateError }, { data: watchlistRows, error: watchlistError }] = await Promise.all([
+    supabase
+      .from('user_video_states')
+      .select('seen_status, seen_at, hidden_at')
+      .eq('user_id', params.userId)
+      .eq('video_id', params.videoId)
+      .maybeSingle(),
+    supabase
+      .from('watchlist_items')
+      .select('video_id, watchlists!inner(user_id, is_default)')
+      .eq('video_id', params.videoId)
+      .eq('watchlists.user_id', params.userId)
+      .eq('watchlists.is_default', true)
+      .maybeSingle(),
+  ])
+  if (stateError) throw new AppError('Impossibile leggere stato video', 'unknown', 500, { cause: stateError.message })
+  if (watchlistError) throw new AppError('Impossibile leggere stato watchlist', 'unknown', 500, { cause: watchlistError.message })
+
+  const stateMap = new Map<string, { seenStatus: 'seen' | 'unseen' | 'hidden'; seenAt: string | null; hiddenAt: string | null }>()
+  if (state) {
+    stateMap.set(params.videoId, {
+      seenStatus: state.seen_status,
+      seenAt: state.seen_at,
+      hiddenAt: state.hidden_at,
+    })
+  }
+
+  return mapVideoWithContext(
+    video,
+    params.languageCode?.trim() || 'it',
+    stateMap,
+    new Set(watchlistRows ? [watchlistRows.video_id] : [])
+  )
+}
+
 /**
  * Aggiorna lo stato visto/non visto di un video per l'utente.
  */
@@ -40,8 +139,10 @@ export async function setVideoSeenStatusForUser(params: {
   userId: string
   videoId: string
   seenStatus: 'seen' | 'unseen' | 'hidden'
+  supabase?: AppSupabaseClient
 }): Promise<{ seenStatus: 'seen' | 'unseen' | 'hidden'; seenAt: string | null; hiddenAt: string | null }> {
-  const supabase = await createClient()
+  const supabase = params.supabase ?? await createClient()
+  await assertVideoBelongsToFollowedChannel({ userId: params.userId, videoId: params.videoId, supabase })
   const now = new Date().toISOString()
   const seenAt = params.seenStatus === 'seen' ? now : null
   const hiddenAt = params.seenStatus === 'hidden' ? now : null
@@ -73,8 +174,10 @@ export async function setVideoWatchlistForUser(params: {
   userId: string
   videoId: string
   inWatchlist: boolean
+  supabase?: AppSupabaseClient
 }): Promise<{ isInWatchlist: boolean }> {
-  const supabase = await createClient()
+  const supabase = params.supabase ?? await createClient()
+  await assertVideoBelongsToFollowedChannel({ userId: params.userId, videoId: params.videoId, supabase })
 
   const { data: existingWatchlist, error: watchlistReadError } = await supabase
     .from('watchlists')
@@ -221,8 +324,8 @@ function mapVideoWithContext(
  * Restituisce i video visibili all'utente con filtri, paginazione e stato utente.
  * La funzione applica il perimetro canali seguito dall'utente prima di ogni query.
  */
-export async function getVideosForUser(params: GetVideosForUserParams): Promise<VideoListResponse> {
-  const supabase = await createClient()
+export async function getVideosForUser(params: GetVideosForUserParams & { supabase?: AppSupabaseClient }): Promise<VideoListResponse> {
+  const supabase = params.supabase ?? await createClient()
 
   const { data: followedChannels, error: channelsError } = await supabase
     .from('user_channels')
@@ -247,12 +350,44 @@ export async function getVideosForUser(params: GetVideosForUserParams): Promise<
   const targetChannelIds = params.channelId ? [params.channelId] : Array.from(allowedChannelIds)
   const { safeLimit, safePage } = normalizePagination(params.limit, params.page)
 
+  const [{ data: filterWatchlistRows, error: filterWatchlistError }, { data: filterStateRows, error: filterStateError }] = await Promise.all([
+    params.onlyWatchlist
+      ? supabase.from('watchlist_items').select('video_id, watchlists!inner(user_id)').eq('watchlists.user_id', params.userId)
+      : Promise.resolve({ data: [] as Array<{ video_id: string }>, error: null }),
+    params.seenStatus
+      ? supabase.from('user_video_states').select('video_id, seen_status').eq('user_id', params.userId)
+      : Promise.resolve({ data: [] as Array<{ video_id: string; seen_status: 'seen' | 'unseen' | 'hidden' }>, error: null }),
+  ])
+  if (filterWatchlistError || filterStateError) {
+    throw new AppError('Impossibile applicare filtri video utente', 'unknown', 500, { cause: filterWatchlistError?.message ?? filterStateError?.message })
+  }
+
+  const includeSets: Set<string>[] = []
+  if (params.onlyWatchlist) includeSets.push(new Set((filterWatchlistRows ?? []).map((row) => row.video_id)))
+  const excludeIds = new Set<string>()
+  if (params.seenStatus === 'unseen') {
+    for (const row of filterStateRows ?? []) {
+      if (row.seen_status !== 'unseen') excludeIds.add(row.video_id)
+    }
+  } else if (params.seenStatus) {
+    includeSets.push(new Set((filterStateRows ?? []).filter((row) => row.seen_status === params.seenStatus).map((row) => row.video_id)))
+  }
+  let includedVideoIds: Set<string> | null = null
+  for (const candidate of includeSets) {
+    const baseIds: string[] = Array.from(includedVideoIds ?? [])
+    includedVideoIds = includedVideoIds === null ? candidate : new Set(baseIds.filter((id) => candidate.has(id)))
+  }
+  if (includedVideoIds && includedVideoIds.size === 0) return { items: [], total: 0, page: safePage, limit: safeLimit }
+
+  const analysisRelation = params.analysisStatus
+    ? 'video_analysis!inner(id, analysis_status, model_used, analyzed_at, analyzed_by_user_id, error_message, created_at, prompt_profile_id, video_id)'
+    : 'video_analysis(id, analysis_status, model_used, analyzed_at, analyzed_by_user_id, error_message, created_at, prompt_profile_id, video_id)'
   let query = supabase
     .from('videos')
     .select(`
       *,
       channels(*),
-      video_analysis(id, analysis_status, model_used, analyzed_at, analyzed_by_user_id, error_message, created_at, prompt_profile_id, video_id),
+      ${analysisRelation},
       video_localized_content(*)
     `, { count: 'exact' })
     .in('channel_id', targetChannelIds)
@@ -262,6 +397,9 @@ export async function getVideosForUser(params: GetVideosForUserParams): Promise<
   if (params.search?.trim()) {
     query = query.ilike('title', `%${params.search.trim()}%`)
   }
+  if (params.analysisStatus) query = query.eq('video_analysis.analysis_status', params.analysisStatus)
+  if (includedVideoIds) query = query.in('id', Array.from(includedVideoIds))
+  if (excludeIds.size > 0) query = query.not('id', 'in', `(${Array.from(excludeIds).join(',')})`)
 
   const from = (safePage - 1) * safeLimit
   const to = from + safeLimit - 1
@@ -276,13 +414,14 @@ export async function getVideosForUser(params: GetVideosForUserParams): Promise<
 
   const videoIds = (rows ?? []).map((row) => row.id)
 
-  const { data: states } = videoIds.length
+  const { data: states, error: statesError } = videoIds.length
     ? await supabase
       .from('user_video_states')
       .select('video_id, seen_status, seen_at, hidden_at')
       .eq('user_id', params.userId)
       .in('video_id', videoIds)
-    : { data: [] as Array<{ video_id: string; seen_status: 'seen' | 'unseen' | 'hidden'; seen_at: string | null; hidden_at: string | null }> }
+    : { data: [] as Array<{ video_id: string; seen_status: 'seen' | 'unseen' | 'hidden'; seen_at: string | null; hidden_at: string | null }>, error: null }
+  if (statesError) throw new AppError('Impossibile caricare gli stati video', 'unknown', 500, { cause: statesError.message })
 
   const userStateMap = new Map<string, { seenStatus: 'seen' | 'unseen' | 'hidden'; seenAt: string | null; hiddenAt: string | null }>()
   for (const state of states ?? []) {
@@ -293,31 +432,21 @@ export async function getVideosForUser(params: GetVideosForUserParams): Promise<
     })
   }
 
-  const { data: watchlistRows } = videoIds.length
+  const { data: watchlistRows, error: watchlistError } = videoIds.length
     ? await supabase
       .from('watchlist_items')
-      .select('video_id, watchlists!inner(user_id)')
+      .select('video_id, watchlists!inner(user_id, is_default)')
       .in('video_id', videoIds)
       .eq('watchlists.user_id', params.userId)
-    : { data: [] as Array<{ video_id: string }> }
+      .eq('watchlists.is_default', true)
+    : { data: [] as Array<{ video_id: string }>, error: null }
+  if (watchlistError) throw new AppError('Impossibile caricare la watchlist video', 'unknown', 500, { cause: watchlistError.message })
 
   const watchlistVideoIds = new Set((watchlistRows ?? []).map((row) => row.video_id))
 
   const preferredLanguage = params.languageCode?.trim() || 'it'
 
   let items = (rows ?? []).map((row) => mapVideoWithContext(row, preferredLanguage, userStateMap, watchlistVideoIds))
-
-  if (params.analysisStatus) {
-    items = items.filter((item) => item.analysis?.analysis_status === params.analysisStatus)
-  }
-
-  if (params.seenStatus) {
-    items = items.filter((item) => item.userState.seenStatus === params.seenStatus)
-  }
-
-  if (params.onlyWatchlist) {
-    items = items.filter((item) => item.userState.isInWatchlist)
-  }
 
   return {
     items,
@@ -562,8 +691,10 @@ export async function importChannelVideos(params: {
   channelId: string
   maxResults?: number
   bypassUserChannelGuard?: boolean
+  supabase?: AppSupabaseClient
+  lease?: { jobId: string; leaseId: string }
 }): Promise<{ channelId: string; importedCount: number; scannedCount: number }> {
-  const supabase = await createClient()
+  const supabase = params.supabase ?? await createClient()
   const admin = createAdminClient()
 
   const queryClient = params.bypassUserChannelGuard ? admin : supabase
@@ -600,6 +731,17 @@ export async function importChannelVideos(params: {
   if (channel.youtube_channel_id.startsWith('handle:')) {
     const handle = channel.youtube_channel_id.slice('handle:'.length)
     const resolved = await resolveChannelIdFromHandle(youtubeApiKey, handle)
+
+    if (params.lease) {
+      // Il worker con lease non scrive qui: la canonicalizzazione viene
+      // eseguita dal commit SQL fenced insieme al resto del batch.
+      channel = {
+        ...channel,
+        youtube_channel_id: resolved.channelId,
+        title: resolved.title ?? channel.title,
+        handle,
+      }
+    } else {
 
     const { data: existingCanonical, error: existingCanonicalError } = await admin
       .from('channels')
@@ -679,24 +821,28 @@ export async function importChannelVideos(params: {
 
       channel.youtube_channel_id = resolved.channelId
     }
+    }
   }
 
   const maxResults = params.maxResults ?? 20
   const channelSnapshot = await getChannelSnapshot(youtubeApiKey, channel.youtube_channel_id)
   const uploadsPlaylistId = channelSnapshot.uploadsPlaylistId
 
-  await admin
-    .from('channels')
-    .update({
-      title: channelSnapshot.title ?? channel.title,
-      description: channelSnapshot.description ?? channel.description,
-      thumbnail_url: channelSnapshot.thumbnailUrl ?? channel.thumbnail_url,
-      subscriber_count: channelSnapshot.subscriberCount,
-      video_count: channelSnapshot.videoCount,
-      custom_url: channelSnapshot.customUrl ?? channel.custom_url,
-      youtube_metadata: channelSnapshot.raw,
-    })
-    .eq('id', channel.id)
+  if (!params.lease) {
+    const { error: channelMetadataError } = await admin
+      .from('channels')
+      .update({
+        title: channelSnapshot.title ?? channel.title,
+        description: channelSnapshot.description ?? channel.description,
+        thumbnail_url: channelSnapshot.thumbnailUrl ?? channel.thumbnail_url,
+        subscriber_count: channelSnapshot.subscriberCount,
+        video_count: channelSnapshot.videoCount,
+        custom_url: channelSnapshot.customUrl ?? channel.custom_url,
+        youtube_metadata: channelSnapshot.raw,
+      })
+      .eq('id', channel.id)
+    if (channelMetadataError) throw new AppError('Aggiornamento metadata canale fallito', 'unknown', 500, { cause: channelMetadataError.message })
+  }
 
   const items = await listRecentPlaylistItems(youtubeApiKey, uploadsPlaylistId, maxResults)
   const videoIds = items
@@ -724,7 +870,7 @@ export async function importChannelVideos(params: {
       const thumbnail = getBestThumbnail(item)
 
       return {
-        channel_id: params.channelId,
+        channel_id: channel.id,
         youtube_video_id: videoId,
         title,
         description,
@@ -739,28 +885,70 @@ export async function importChannelVideos(params: {
     })
     .filter((row): row is NonNullable<typeof row> => row !== null)
 
+  // Deduplica locale per evitare errore Postgres quando lo stesso youtube_video_id
+  // compare piu` volte nello stesso batch di upsert.
+  const dedupedRows = Array.from(
+    new Map(upsertRows.map((row) => [row.youtube_video_id, row])).values()
+  )
+
+  if (params.lease) {
+    const { data: committed, error: commitError } = await admin.rpc('commit_fenced_channel_import', {
+      p_job_id: params.lease.jobId,
+      p_lease_id: params.lease.leaseId,
+      p_user_id: params.userId,
+      p_requested_channel_id: params.channelId,
+      p_resolved_youtube_channel_id: channel.youtube_channel_id.startsWith('handle:') ? null : channel.youtube_channel_id,
+      p_resolved_channel_title: channel.title,
+      p_resolved_channel_handle: channel.handle,
+      p_channel_snapshot: {
+        title: channelSnapshot.title,
+        description: channelSnapshot.description,
+        thumbnail_url: channelSnapshot.thumbnailUrl,
+        subscriber_count: channelSnapshot.subscriberCount,
+        video_count: channelSnapshot.videoCount,
+        custom_url: channelSnapshot.customUrl,
+        raw: channelSnapshot.raw,
+      },
+      p_video_rows: dedupedRows,
+      p_sync_status: upsertRows.length === 0 ? 'partial' : 'success',
+      p_videos_found_count: upsertRows.length,
+    })
+
+    if (commitError || !committed || typeof committed !== 'object' || Array.isArray(committed)) {
+      const message = commitError?.message ?? 'commit_fenced_channel_import_failed'
+      const leaseLost = message.includes('scan_job_lease_lost')
+      throw new AppError(
+        leaseLost ? 'Lease job scaduta durante la scansione' : 'Commit import video fallito',
+        leaseLost ? 'temporary' : 'unknown',
+        leaseLost ? 409 : 500,
+        { cause: message },
+      )
+    }
+
+    const result = committed as { channelId?: unknown; importedCount?: unknown; scannedCount?: unknown }
+    return {
+      channelId: typeof result.channelId === 'string' ? result.channelId : params.channelId,
+      importedCount: typeof result.importedCount === 'number' ? result.importedCount : 0,
+      scannedCount: typeof result.scannedCount === 'number' ? result.scannedCount : items.length,
+    }
+  }
+
   if (upsertRows.length === 0) {
     await queryClient
       .from('canonical_sync_state')
       .upsert({
-        channel_id: params.channelId,
+        channel_id: channel.id,
         last_sync_at: new Date().toISOString(),
         last_sync_status: 'partial',
         videos_found_count: 0,
       }, { onConflict: 'channel_id' })
 
     return {
-      channelId: params.channelId,
+      channelId: channel.id,
       importedCount: 0,
       scannedCount: items.length,
     }
   }
-
-  // Deduplica locale per evitare errore Postgres quando lo stesso youtube_video_id
-  // compare piu volte nello stesso batch di upsert.
-  const dedupedRows = Array.from(
-    new Map(upsertRows.map((row) => [row.youtube_video_id, row])).values()
-  )
 
   const { data: insertedRows, error: insertError } = await queryClient
     .from('videos')
@@ -809,16 +997,17 @@ export async function importChannelVideos(params: {
     // Fail-open: import video resta valido anche senza righe pending.
   }
 
-  await queryClient
+  const { error: syncStateError } = await queryClient
     .from('canonical_sync_state')
     .upsert({
-      channel_id: params.channelId,
+      channel_id: channel.id,
       last_sync_at: new Date().toISOString(),
       last_sync_status: 'success',
       videos_found_count: dedupedRows.length,
     }, { onConflict: 'channel_id' })
+  if (syncStateError) throw new AppError('Aggiornamento stato sync fallito', 'unknown', 500, { cause: syncStateError.message })
 
-  await queryClient
+  const { error: credentialUpdateError } = await queryClient
     .from('user_provider_credentials')
     .update({
       is_valid: true,
@@ -827,9 +1016,10 @@ export async function importChannelVideos(params: {
     })
     .eq('user_id', params.userId)
     .eq('provider', 'youtube')
+  if (credentialUpdateError) throw new AppError('Aggiornamento stato credenziale fallito', 'unknown', 500, { cause: credentialUpdateError.message })
 
     return {
-      channelId: params.channelId,
+      channelId: channel.id,
       importedCount: insertedRows?.length ?? dedupedRows.length,
       scannedCount: items.length,
     }

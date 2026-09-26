@@ -26,7 +26,7 @@ export async function isEmailAllowlisted(email: string): Promise<boolean> {
   const { data, error } = await supabase
     .from('allowlist_entries')
     .select('id, is_active')
-    .eq('email', email.toLowerCase().trim())
+    .ilike('email', email.trim())
     .eq('is_active', true)
     .single()
 
@@ -93,6 +93,18 @@ export async function provisionNewUser(params: {
 }): Promise<{ success: boolean; userId?: string; error?: string }> {
   const supabase = createAdminClient()
 
+  const { data: existingUser, error: existingUserError } = await supabase
+    .from('users')
+    .select('id, status')
+    .eq('id', params.supabaseUserId)
+    .maybeSingle()
+  if (existingUserError) {
+    return { success: false, error: existingUserError.message }
+  }
+  if (existingUser && existingUser.status !== 'active') {
+    return { success: false, error: 'Account non attivo' }
+  }
+
   // Upsert idempotente: evita duplicati se callback viene richiamato piu volte.
   const { data: user, error: userError } = await supabase
     .from('users')
@@ -103,7 +115,6 @@ export async function provisionNewUser(params: {
         display_name: params.displayName,
         avatar_url: params.avatarUrl,
         preferred_language: 'it',
-        status: 'active',
       },
       { onConflict: 'id' }
     )
@@ -115,7 +126,7 @@ export async function provisionNewUser(params: {
   }
 
   // Collega l'utente interno all'identita del provider OAuth.
-  await supabase.from('user_identities').upsert(
+  const { error: identityError } = await supabase.from('user_identities').upsert(
     {
       user_id: user.id,
       provider: params.provider,
@@ -124,26 +135,29 @@ export async function provisionNewUser(params: {
     },
     { onConflict: 'user_id,provider' }
   )
+  if (identityError) return { success: false, error: identityError.message }
 
   // Assegna il ruolo base `user` per autorizzazioni applicative.
-  const { data: userRole } = await supabase
+  const { data: userRole, error: roleLookupError } = await supabase
     .from('roles')
     .select('id')
     .eq('name', 'user')
     .single()
 
-  if (userRole) {
-    await supabase.from('user_roles').upsert(
-      { user_id: user.id, role_id: userRole.id },
-      { onConflict: 'user_id,role_id' }
-    )
-  }
+  if (roleLookupError || !userRole) return { success: false, error: roleLookupError?.message ?? 'Ruolo base non configurato' }
+
+  const { error: roleError } = await supabase.from('user_roles').upsert(
+    { user_id: user.id, role_id: userRole.id },
+    { onConflict: 'user_id,role_id' }
+  )
+  if (roleError) return { success: false, error: roleError.message }
 
   // Crea watchlist iniziale per rendere subito utilizzabile la UI privata.
-  await supabase.from('watchlists').upsert(
+  const { error: watchlistError } = await supabase.from('watchlists').upsert(
     { user_id: user.id, name: 'Da vedere', is_default: true },
     { onConflict: 'user_id,is_default' }
   )
+  if (watchlistError) return { success: false, error: watchlistError.message }
 
   return { success: true, userId: user.id }
 }

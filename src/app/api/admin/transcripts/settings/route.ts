@@ -7,7 +7,7 @@
 import { z } from 'zod'
 import { getAdminSession } from '@/lib/auth/admin'
 import { apiErr, apiOk } from '@/lib/http/apiResponse'
-import { getRequestId } from '@/lib/security/http'
+import { ensureJsonRequest, ensureSameOrigin, getRequestId } from '@/lib/security/http'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
   getTranscriptSettings,
@@ -34,9 +34,11 @@ export async function PUT(request: Request) {
   const requestId = getRequestId(request)
   const adminSession = await getAdminSession()
   if (!adminSession) return apiErr('UNAUTHORIZED', 'Unauthorized', 401, requestId)
-  const parsed = BodySchema.safeParse(await request.json().catch(() => null))
-  if (!parsed.success) return apiErr('VALIDATION_FAILED', 'Payload non valido: attesi enabled boolean e batch_limit intero 1-50', 400, requestId)
   try {
+    ensureSameOrigin(request)
+    ensureJsonRequest(request)
+    const parsed = BodySchema.safeParse(await request.json().catch(() => null))
+    if (!parsed.success) return apiErr('VALIDATION_FAILED', 'Payload non valido: attesi enabled boolean e batch_limit intero 1-50', 400, requestId)
     const admin = createAdminClient()
     const settings = await updateTranscriptSettings(admin, parsed.data)
     return apiOk({ settings, stats: await getTranscriptStats(admin) }, requestId)

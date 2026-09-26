@@ -1,0 +1,67 @@
+name: API Verifier
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Target environment
+        required: true
+        type: choice
+        options: [preview, production]
+        default: preview
+      mutations:
+        description: Run allowlisted fixture mutations
+        required: true
+        type: boolean
+        default: false
+      confirm_production_fixture:
+        description: Required acknowledgement for production fixture mutations
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target }}
+    timeout-minutes: 10
+    env:
+      OIDC_AUDIENCE: https://github.com/dardevlowcode-git/utraya-app
+    steps:
+      - name: Guard production mutations
+        run: |
+          if [ "${{ inputs.target }}" = "production" ] && [ "${{ inputs.mutations }}" = "true" ] && [ "${{ inputs.confirm_production_fixture }}" != "true" ]; then
+            echo "Production mutations require explicit fixture confirmation." >&2
+            exit 1
+          fi
+      - name: Run API verifier through OIDC broker
+        run: |
+          set -euo pipefail
+          mkdir -p api-verifier-report
+          oidc_token="$(curl --silent --show-error --fail --header "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${OIDC_AUDIENCE}" | node -e "process.stdin.on('data',d=>process.stdout.write(JSON.parse(d).value))")"
+          body='{"target":"${{ inputs.target }}","mutations":${{ inputs.mutations }},"confirmProductionFixture":${{ inputs.confirm_production_fixture }}}'
+          status="$(curl --silent --show-error --header "Authorization: Bearer ${oidc_token}" --header 'Content-Type: application/json' --data "${body}" --output api-verifier-report/result.json --write-out '%{http_code}' "${{ inputs.target == 'production' && 'https://utraya.com' || 'https://preview.utraya.com' }}/api/internal/api-verifier")"
+          if [ "${status}" != "200" ] && [ "${status}" != "207" ]; then
+            rm -f api-verifier-report/result.json
+            echo "API verifier broker returned HTTP ${status}" >&2
+            exit 1
+          fi
+
+      - name: Publish safe summary
+        if: always()
+        run: |
+          if [ -f api-verifier-report/result.json ]; then
+            node -e "const r=require('./api-verifier-report/result.json').data; console.log('### API verifier'); console.log(JSON.stringify(r.summary)); process.exit(r.summary.status === 'passed' ? 0 : 1);" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload sanitized report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: api-verifier-report
+          path: api-verifier-report/result.json
+          if-no-files-found: error

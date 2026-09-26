@@ -41,6 +41,16 @@ function isAsrTrack(track: CaptionTrack): boolean {
   return track.kind === 'asr' || (track.vssId ?? '').startsWith('a.')
 }
 
+function buildTimedtextUrl(baseUrl: string): string {
+  const url = new URL(baseUrl)
+  const isYouTubeHost = url.hostname === 'youtube.com' || url.hostname.endsWith('.youtube.com')
+  if (url.protocol !== 'https:' || !isYouTubeHost) {
+    throw new Error('caption track URL non autorizzato')
+  }
+  url.searchParams.set('fmt', 'json3')
+  return url.toString()
+}
+
 /**
  * Sceglie UNA sola traccia in lingua principale:
  * manuale standard > ASR > en di ripiego. Mai traduzioni (nessun parametro tlang).
@@ -159,7 +169,7 @@ export async function fetchMainTranscript(
     }
 
     // Mai `tlang`: solo la lingua originale della traccia scelta.
-    const timedtextUrl = track.baseUrl.includes('fmt=') ? track.baseUrl : `${track.baseUrl}&fmt=json3`
+    const timedtextUrl = buildTimedtextUrl(track.baseUrl)
     // GET timedtext: stessi header realistici della POST, senza Content-Type (GET senza body).
     const timedtextHeaders = { ...clientHeaders[client.clientName] }
     delete timedtextHeaders['Content-Type']

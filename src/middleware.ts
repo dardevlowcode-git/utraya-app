@@ -6,7 +6,6 @@
 
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
-import { isEmailAllowlisted } from '@/lib/auth/allowlist'
 
 const adminSessionCookieName = 'cf_admin_session'
 const textEncoder = new TextEncoder()
@@ -119,6 +118,8 @@ export async function middleware(request: NextRequest) {
     pathname === '/login' ||
     pathname === '/admin/login' ||
     pathname.startsWith('/api/auth/') ||
+    pathname.startsWith('/api/v1/') ||
+    pathname === '/api/internal/api-verifier' ||
     pathname.startsWith('/api/cron/') ||
     pathname.startsWith('/api/admin/auth/') ||
     pathname.startsWith('/api/account/cancel-deletion') ||
@@ -126,7 +127,8 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/favicon')
   ) {
     if ((pathname === '/login' || pathname === '/') && user?.email) {
-      const allowlisted = await isEmailAllowlisted(user.email)
+      const { data: allowlistedData, error: allowlistedError } = await supabase.rpc('is_current_user_allowlisted')
+      const allowlisted = !allowlistedError && allowlistedData === true
       if (allowlisted) {
         const { data: appUser } = await supabase
           .from('users')
@@ -176,11 +178,30 @@ export async function middleware(request: NextRequest) {
     return applySecurityHeaders(NextResponse.redirect(loginUrl))
   }
 
-  const isAllowlisted = await isEmailAllowlisted(user.email)
+  const { data: allowlistedData, error: allowlistedError } = await supabase.rpc('is_current_user_allowlisted')
+  const isAllowlisted = !allowlistedError && allowlistedData === true
   if (!isAllowlisted) {
     const loginUrl = new URL('/login', request.url)
     loginUrl.searchParams.set('error', 'access_denied')
     return applySecurityHeaders(NextResponse.redirect(loginUrl))
+  }
+
+  const { data: activeAppUser } = await supabase
+    .from('users')
+    .select('id')
+    .eq('id', user.id)
+    .eq('status', 'active')
+    .maybeSingle()
+  if (!activeAppUser) {
+    const loginUrl = new URL('/login', request.url)
+    loginUrl.searchParams.set('error', 'account_inactive')
+    const response = applySecurityHeaders(NextResponse.redirect(loginUrl))
+    for (const cookie of request.cookies.getAll()) {
+      if (cookie.name.startsWith('sb-')) {
+        response.cookies.set({ name: cookie.name, value: '', path: '/', maxAge: 0 })
+      }
+    }
+    return response
   }
 
   return supabaseResponse

@@ -58,8 +58,8 @@ describe('fetchMainTranscript', () => {
         captions: {
           playerCaptionsTracklistRenderer: {
             captionTracks: [
-              { baseUrl: 'https://asr', languageCode: 'it', kind: 'asr', vssId: 'a.it' },
-              { baseUrl: 'https://manual', languageCode: 'it', kind: 'standard', vssId: 'it' },
+              { baseUrl: 'https://www.youtube.com/api/timedtext?v=yt-1&lang=it', languageCode: 'it', kind: 'asr', vssId: 'a.it' },
+              { baseUrl: 'https://www.youtube.com/api/timedtext?v=yt-1&lang=it', languageCode: 'it', kind: 'standard', vssId: 'it' },
             ],
           },
         },
@@ -104,7 +104,7 @@ describe('fetchMainTranscript', () => {
         captions: {
           playerCaptionsTracklistRenderer: {
             captionTracks: [
-              { baseUrl: 'https://it-asr', languageCode: 'it', kind: 'asr', vssId: 'a.it' },
+              { baseUrl: 'https://www.youtube.com/api/timedtext?v=yt-fallback&lang=it', languageCode: 'it', kind: 'asr', vssId: 'a.it' },
             ],
           },
         },

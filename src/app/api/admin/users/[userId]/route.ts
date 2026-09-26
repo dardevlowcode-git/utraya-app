@@ -6,19 +6,21 @@
 
 import { getAdminSession } from '@/lib/auth/admin'
 import { apiErr, apiOk } from '@/lib/http/apiResponse'
-import { getRequestId } from '@/lib/security/http'
+import { ensureJsonRequest, ensureSameOrigin, getRequestId } from '@/lib/security/http'
 import { forceDeleteUser } from '@/lib/services/account-deletion'
 
 export async function DELETE(request: Request, context: { params: Promise<{ userId: string }> }) {
   const requestId = getRequestId(request)
 
   try {
+    ensureSameOrigin(request)
+    ensureJsonRequest(request)
     const adminSession = await getAdminSession()
     if (!adminSession) return apiErr('UNAUTHORIZED', 'Unauthorized', 401, requestId)
 
     const { userId } = await context.params
     const body = (await request.json().catch(() => null)) as { reason?: string } | null
-    const reason = body?.reason?.trim()
+    const reason = body?.reason?.trim().slice(0, 500)
 
     if (!reason) {
       return apiErr('VALIDATION_FAILED', 'Motivo obbligatorio', 400, requestId)

@@ -10,6 +10,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { AppError, classifyError } from '@/lib/utils/errors'
 import type { CredentialStatus } from '@/lib/types/domain'
 import type { Database } from '@/lib/types/database'
+import type { AppSupabaseClient } from '@/lib/supabase/types'
 
 type Provider = 'youtube' | 'gemini'
 
@@ -118,8 +119,8 @@ function assertProvider(provider: string): asserts provider is Provider {
 /**
  * Carica la riga credenziali di un provider per l'utente.
  */
-async function getCredentialRow(userId: string, provider: Provider): Promise<CredentialRow | null> {
-  const supabase = await createClient()
+async function getCredentialRow(userId: string, provider: Provider, client?: AppSupabaseClient): Promise<CredentialRow | null> {
+  const supabase = client ?? await createClient()
 
   const { data, error } = await supabase
     .from('user_provider_credentials')
@@ -138,8 +139,8 @@ async function getCredentialRow(userId: string, provider: Provider): Promise<Cre
 /**
  * Restituisce la chiave in chiaro solo lato server quando necessaria ai service.
  */
-export async function getProviderApiKeyForUser(userId: string, provider: Provider): Promise<string | null> {
-  const row = await getCredentialRow(userId, provider)
+export async function getProviderApiKeyForUser(userId: string, provider: Provider, client?: AppSupabaseClient): Promise<string | null> {
+  const row = await getCredentialRow(userId, provider, client)
   if (!row?.encrypted_key || !row.is_configured) return null
 
   try {
@@ -183,8 +184,8 @@ export async function getProviderApiKeyForUserAsAdmin(userId: string, provider: 
  * Restituisce lo stato integrazioni per tutti i provider supportati.
  * La risposta e` uniforme anche quando un provider non e` ancora configurato.
  */
-export async function getCredentialStatusesForUser(userId: string): Promise<CredentialStatus[]> {
-  const supabase = await createClient()
+export async function getCredentialStatusesForUser(userId: string, client?: AppSupabaseClient): Promise<CredentialStatus[]> {
+  const supabase = client ?? await createClient()
 
   const { data, error } = await supabase
     .from('user_provider_credentials')
@@ -239,6 +240,7 @@ export async function saveApiKey(params: {
   provider: Provider
   apiKey: string
   validateNow?: boolean
+  supabase?: AppSupabaseClient
 }): Promise<{ provider: Provider; maskedKey: string; isValid: boolean | null; validationMessage: string | null }> {
   assertProvider(params.provider)
 
@@ -247,7 +249,7 @@ export async function saveApiKey(params: {
     throw new AppError('Chiave API non valida: lunghezza troppo corta', 'validation', 400)
   }
 
-  const supabase = await createClient()
+  const supabase = params.supabase ?? await createClient()
   const encrypted = encryptSecret(normalized)
 
   // Upsert per provider: aggiorna in-place senza creare record duplicati.
@@ -282,6 +284,7 @@ export async function saveApiKey(params: {
   const validation = await validateApiKey({
     userId: params.userId,
     provider: params.provider,
+    supabase: params.supabase,
   })
 
   return {
@@ -343,15 +346,16 @@ async function validateGeminiApiKey(apiKey: string): Promise<void> {
 export async function validateApiKey(params: {
   userId: string
   provider: Provider
+  supabase?: AppSupabaseClient
 }): Promise<{ provider: Provider; isValid: boolean; message: string | null }> {
   assertProvider(params.provider)
 
-  const apiKey = await getProviderApiKeyForUser(params.userId, params.provider)
+  const apiKey = await getProviderApiKeyForUser(params.userId, params.provider, params.supabase)
   if (!apiKey) {
     throw new AppError('Chiave API non configurata', 'validation', 400)
   }
 
-  const supabase = await createClient()
+  const supabase = params.supabase ?? await createClient()
   let isValid = false
   let errorMessage: string | null = null
 
@@ -386,15 +390,16 @@ export async function validateApiKey(params: {
     })
   }
 
-  const credential = await getCredentialRow(params.userId, params.provider)
+  const credential = await getCredentialRow(params.userId, params.provider, params.supabase)
   if (credential) {
     // Audit storico tentativi di validazione (utile per diagnosi operative).
-    await supabase.from('credential_checks').insert({
+    const { error: auditError } = await createAdminClient().from('credential_checks').insert({
       credential_id: credential.id,
       is_valid: isValid,
       error_message: errorMessage,
       error_type: isValid ? null : (classifyError(errorMessage) === 'temporary' ? 'temporary' : 'structural'),
     })
+    if (auditError) throw new AppError('Impossibile registrare audit validazione', 'unknown', 500, { cause: auditError.message })
   }
 
   return {
@@ -410,10 +415,11 @@ export async function validateApiKey(params: {
 export async function removeApiKey(params: {
   userId: string
   provider: Provider
+  supabase?: AppSupabaseClient
 }): Promise<void> {
   assertProvider(params.provider)
 
-  const supabase = await createClient()
+  const supabase = params.supabase ?? await createClient()
 
   // Soft reset dello stato: mantiene il record ma azzera dati sensibili e flag.
   const { error } = await supabase
