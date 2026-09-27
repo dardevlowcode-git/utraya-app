@@ -4,7 +4,7 @@
  * Flusso: mocka player/timedtext e catena Supabase, verifica lingua scelta e skip su riga fetched.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   fetchAndStoreForVideo,
   fetchMainTranscript,
@@ -12,7 +12,12 @@ import {
 } from '@/lib/services/video-transcripts'
 
 function jsonResponse(payload: unknown, ok = true, status = 200): Response {
-  return { ok, status, json: async () => payload } as Response
+  return {
+    ok,
+    status,
+    headers: new Headers({ 'content-type': 'application/json; charset=utf-8' }),
+    json: async () => payload,
+  } as Response
 }
 
 describe('pickMainTrack', () => {
@@ -120,6 +125,7 @@ describe('fetchMainTranscript', () => {
     expect(result.transcript?.language_code).toBe('it')
     expect(result.transcript?.is_asr).toBe(true)
     expect(result.transcript?.text).toBe('Prova fallback')
+    expect(result.diagnosticAttempts.map((attempt) => attempt.outcome)).toEqual(['no_usable_track', 'fetched'])
     expect(result.diagnostics).toContain('ANDROID')
     expect(result.diagnostics).toContain('TVHTML5')
     expect(fetchMock).toHaveBeenCalledTimes(3)
@@ -129,17 +135,24 @@ describe('fetchMainTranscript', () => {
 describe('fetchAndStoreForVideo idempotenza', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.spyOn(console, 'info').mockImplementation(() => undefined)
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
     process.env.YOUTUBEI_API_KEY = 'test-key'
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
   })
 
   function buildAdminMock(existing: Array<{ transcript_status: string }>) {
     const eqSelect = vi.fn().mockResolvedValue({ data: existing, error: null })
     const select = vi.fn(() => ({ eq: eqSelect }))
     const upsert = vi.fn().mockResolvedValue({ error: null })
+    const insert = vi.fn().mockResolvedValue({ error: null })
     const eqUpdate = vi.fn().mockResolvedValue({ error: null })
     const update = vi.fn((payload: Record<string, unknown>) => ({ eq: eqUpdate }))
-    const admin = { from: vi.fn(() => ({ select, upsert, update })) }
-    return { admin, eqSelect, upsert, update, eqUpdate }
+    const admin = { from: vi.fn(() => ({ select, upsert, update, insert })) }
+    return { admin, eqSelect, upsert, update, insert, eqUpdate }
   }
 
   it('salta il fetch quando la riga e gia fetched senza chiamare la rete', async () => {
@@ -207,5 +220,267 @@ describe('fetchAndStoreForVideo idempotenza', () => {
     const errorDetails = String(update.mock.calls[0]?.[0]?.error_details ?? '')
     expect(errorDetails).toContain('ANDROID')
     expect(errorDetails).toContain('TVHTML5')
+  })
+
+  it('salva reason e subreason per client senza conservare il payload player', async () => {
+    const { admin, insert } = buildAdminMock([])
+    const playerResponse = {
+      playabilityStatus: {
+        status: 'LOGIN_REQUIRED',
+        reason: 'Sign in to confirm this request is allowed',
+        errorScreen: {
+          errorCode: 'LOGIN_REQUIRED',
+          playerErrorMessageRenderer: {
+            reason: { simpleText: 'Sign in to confirm this request is allowed' },
+            subreason: { simpleText: 'Diagnostic-only subreason' },
+          },
+        },
+      },
+      captions: { playerCaptionsTracklistRenderer: { captionTracks: [] } },
+    }
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(playerResponse))
+      .mockResolvedValueOnce(jsonResponse(playerResponse))
+
+    const result = await fetchAndStoreForVideo(
+      admin as never,
+      'video-uuid-diagnostic',
+      'yt-diagnostic',
+      fetchMock as unknown as typeof fetch,
+      'request-id-test'
+    )
+
+    expect(result).toEqual({ outcome: 'missing' })
+    const rows = insert.mock.calls[0]?.[0] as Array<Record<string, unknown>>
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toMatchObject({
+      request_id: 'request-id-test',
+      client_name: 'ANDROID',
+      playability_status: 'LOGIN_REQUIRED',
+      player_reason: 'Sign in to confirm this request is allowed',
+      player_subreason: 'Diagnostic-only subreason',
+      player_error_code: 'LOGIN_REQUIRED',
+      track_count: 0,
+    })
+    expect(rows[1]?.client_name).toBe('TVHTML5')
+    expect(JSON.stringify(rows)).not.toContain('captionTracks')
+    expect(JSON.stringify(rows)).not.toContain('videoId')
+    const logOutput = vi.mocked(console.info).mock.calls.map(([entry]) => String(entry)).join('\n')
+    expect(logOutput).not.toContain('video-uuid-diagnostic')
+  })
+
+  it('registra HTTP timedtext e conserva il comportamento failed senza salvare il body', async () => {
+    const { admin, insert } = buildAdminMock([])
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({
+        playabilityStatus: { status: 'OK' },
+        captions: {
+          playerCaptionsTracklistRenderer: {
+            captionTracks: [
+              { baseUrl: 'https://www.youtube.com/api/timedtext?v=yt-http-error&lang=it&sig=private', languageCode: 'it', kind: 'asr' },
+            ],
+          },
+        },
+      }))
+      .mockResolvedValueOnce(jsonResponse({ privateResponseBody: 'must-not-be-stored' }, false, 503))
+
+    const result = await fetchAndStoreForVideo(
+      admin as never,
+      'video-uuid-http',
+      'yt-http-error',
+      fetchMock as unknown as typeof fetch
+    )
+
+    expect(result).toEqual({ outcome: 'failed' })
+    const rows = insert.mock.calls[0]?.[0] as Array<Record<string, unknown>>
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      stage: 'timedtext',
+      outcome: 'timedtext_error',
+      timedtext_http_status: 503,
+      error_code: 'HTTP_503',
+    })
+    expect(JSON.stringify(rows)).not.toContain('privateResponseBody')
+    expect(JSON.stringify(rows)).not.toContain('sig=private')
+    const logOutput = vi.mocked(console.info).mock.calls.map(([entry]) => String(entry)).join('\n')
+    expect(logOutput).not.toContain('sig=private')
+    expect(logOutput).not.toContain('yt-http-error')
+  })
+
+  it('estrae error code/message da HTTP player senza conservare URL o query', async () => {
+    const { admin, insert } = buildAdminMock([])
+    const errorResponse = {
+      error: {
+        code: 429,
+        message: 'Rate limited at https://www.youtube.com/player?key=secret-key&token=secret-token',
+      },
+    }
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(errorResponse, false, 429))
+      .mockResolvedValueOnce(jsonResponse(errorResponse, false, 429))
+
+    const result = await fetchAndStoreForVideo(
+      admin as never,
+      'video-uuid-player-http',
+      'yt-player-http',
+      fetchMock as unknown as typeof fetch
+    )
+
+    expect(result).toEqual({ outcome: 'failed' })
+    const rows = insert.mock.calls[0]?.[0] as Array<Record<string, unknown>>
+    expect(rows[0]).toMatchObject({
+      outcome: 'http_error',
+      player_http_status: 429,
+      player_error_code: '429',
+      error_code: '429',
+    })
+    expect(JSON.stringify(rows)).not.toContain('youtube.com')
+    expect(JSON.stringify(rows)).not.toContain('secret-key')
+    expect(JSON.stringify(rows)).not.toContain('secret-token')
+    const logOutput = vi.mocked(console.info).mock.calls.map(([entry]) => String(entry)).join('\n')
+    expect(logOutput).not.toContain('youtube.com')
+    expect(logOutput).not.toContain('secret-key')
+    expect(logOutput).not.toContain('secret-token')
+  })
+
+  it('registra timeout/rete senza salvare URL firmati contenuti nell errore', async () => {
+    const { admin, insert } = buildAdminMock([])
+    const networkError = Object.assign(
+      new TypeError('fetch failed https://www.youtube.com/player?key=test-key&sig=private-signature'),
+      { cause: { code: 'ECONNRESET' } }
+    )
+    const fetchMock = vi.fn().mockRejectedValue(networkError)
+
+    const result = await fetchAndStoreForVideo(
+      admin as never,
+      'video-uuid-network',
+      'yt-network',
+      fetchMock as unknown as typeof fetch
+    )
+
+    expect(result).toEqual({ outcome: 'failed' })
+    const rows = insert.mock.calls[0]?.[0] as Array<Record<string, unknown>>
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toMatchObject({ outcome: 'network_error', error_code: 'ECONNRESET' })
+    expect(JSON.stringify(rows)).not.toContain('youtube.com')
+    expect(JSON.stringify(rows)).not.toContain('test-key')
+    expect(JSON.stringify(rows)).not.toContain('private-signature')
+  })
+
+  it('registra JSON player non valido senza salvare estratti del body', async () => {
+    const { admin, insert } = buildAdminMock([])
+    const invalidJson = {
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      json: vi.fn().mockRejectedValue(new SyntaxError('invalid json; private body excerpt')),
+    } as unknown as Response
+    const fetchMock = vi.fn().mockResolvedValue(invalidJson)
+
+    const result = await fetchAndStoreForVideo(
+      admin as never,
+      'video-uuid-invalid-json',
+      'yt-invalid-json',
+      fetchMock as unknown as typeof fetch
+    )
+
+    expect(result).toEqual({ outcome: 'failed' })
+    const rows = insert.mock.calls[0]?.[0] as Array<Record<string, unknown>>
+    expect(rows[0]).toMatchObject({ outcome: 'invalid_json', error_code: 'PLAYER_INVALID_JSON' })
+    expect(JSON.stringify(rows)).not.toContain('private body excerpt')
+  })
+
+  it('registra risposta player JSON null come forma non valida invece di perdere il diagnostico', async () => {
+    const { admin, insert } = buildAdminMock([])
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(null))
+      .mockResolvedValueOnce(jsonResponse(null))
+
+    const result = await fetchAndStoreForVideo(
+      admin as never,
+      'video-uuid-player-null',
+      'yt-player-null',
+      fetchMock as unknown as typeof fetch
+    )
+
+    expect(result).toEqual({ outcome: 'failed' })
+    const rows = insert.mock.calls[0]?.[0] as Array<Record<string, unknown>>
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ outcome: 'invalid_json', error_code: 'PLAYER_INVALID_SHAPE' })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('distingue captionTracks con forma non valida dall array vuoto', async () => {
+    const { admin, insert } = buildAdminMock([])
+    const response = jsonResponse({
+      playabilityStatus: { status: 'OK' },
+      captions: { playerCaptionsTracklistRenderer: { captionTracks: { unexpected: true } } },
+    })
+    const fetchMock = vi.fn().mockResolvedValue(response)
+
+    const result = await fetchAndStoreForVideo(
+      admin as never,
+      'video-uuid-tracks-shape',
+      'yt-tracks-shape',
+      fetchMock as unknown as typeof fetch
+    )
+
+    expect(result).toEqual({ outcome: 'failed' })
+    const rows = insert.mock.calls[0]?.[0] as Array<Record<string, unknown>>
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      outcome: 'invalid_json',
+      player_error_code: null,
+      usable_track_count: 0,
+      error_code: 'CAPTION_TRACKS_INVALID_SHAPE',
+    })
+    expect(rows[0]?.track_count).toBeNull()
+  })
+
+  it('registra schema timedtext malformato senza conservare il body', async () => {
+    const { admin, insert } = buildAdminMock([])
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({
+        playabilityStatus: { status: 'OK' },
+        captions: {
+          playerCaptionsTracklistRenderer: {
+            captionTracks: [
+              { baseUrl: 'https://www.youtube.com/api/timedtext?v=yt-bad-json&lang=it', languageCode: 'it', kind: 'asr' },
+            ],
+          },
+        },
+      }))
+      .mockResolvedValueOnce(jsonResponse(null))
+
+    const result = await fetchAndStoreForVideo(
+      admin as never,
+      'video-uuid-timedtext-json',
+      'yt-timedtext-json',
+      fetchMock as unknown as typeof fetch
+    )
+
+    expect(result).toEqual({ outcome: 'failed' })
+    const rows = insert.mock.calls[0]?.[0] as Array<Record<string, unknown>>
+    expect(rows[0]).toMatchObject({ outcome: 'invalid_json', error_code: 'TIMEDTEXT_INVALID_SHAPE' })
+  })
+
+  it('un errore di persistenza diagnostica è fail-open e non cambia missing', async () => {
+    const { admin, insert, update } = buildAdminMock([])
+    insert.mockResolvedValue({ error: { code: '42P01' } })
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ playabilityStatus: { status: 'OK' } }))
+      .mockResolvedValueOnce(jsonResponse({ playabilityStatus: { status: 'OK' } }))
+
+    const result = await fetchAndStoreForVideo(
+      admin as never,
+      'video-uuid-diagnostic-db-error',
+      'yt-diagnostic-db-error',
+      fetchMock as unknown as typeof fetch
+    )
+
+    expect(result).toEqual({ outcome: 'missing' })
+    expect(update.mock.calls[0]?.[0]?.transcript_status).toBe('missing')
+    expect(console.error).toHaveBeenCalledOnce()
+    expect(String(vi.mocked(console.error).mock.calls[0]?.[0])).not.toContain('test-key')
   })
 })

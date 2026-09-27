@@ -753,6 +753,118 @@ export type Database = {
         }
         Relationships: []
       }
+      transcript_fetch_diagnostics: {
+        Row: {
+          id: string
+          fetch_run_id: string
+          video_id: string
+          request_id: string | null
+          attempt_no: number
+          client_name: 'ANDROID' | 'TVHTML5' | null
+          stage: 'configuration' | 'player' | 'timedtext'
+          outcome:
+            | 'configuration_error'
+            | 'http_error'
+            | 'playability_blocked'
+            | 'no_usable_track'
+            | 'timeout'
+            | 'network_error'
+            | 'invalid_json'
+            | 'timedtext_empty'
+            | 'timedtext_error'
+            | 'fetched'
+            | 'unknown_error'
+          player_http_status: number | null
+          player_status_text: string | null
+          player_content_type: string | null
+          playability_status: string | null
+          player_reason: string | null
+          player_subreason: string | null
+          player_error_code: string | null
+          player_error_message: string | null
+          track_count: number | null
+          usable_track_count: number | null
+          selected_track_language: string | null
+          selected_track_kind: string | null
+          timedtext_http_status: number | null
+          timedtext_status_text: string | null
+          timedtext_content_type: string | null
+          player_duration_ms: number | null
+          timedtext_duration_ms: number | null
+          error_type: string | null
+          error_code: string | null
+          error_message: string | null
+          attempt_started_at: string
+          completed_at: string
+          runtime_environment: string | null
+          runtime_region: string | null
+          deployment_id: string | null
+          git_commit_sha: string | null
+          git_commit_ref: string | null
+          node_version: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          fetch_run_id: string
+          video_id: string
+          request_id?: string | null
+          attempt_no: number
+          client_name?: 'ANDROID' | 'TVHTML5' | null
+          stage: 'configuration' | 'player' | 'timedtext'
+          outcome:
+            | 'configuration_error'
+            | 'http_error'
+            | 'playability_blocked'
+            | 'no_usable_track'
+            | 'timeout'
+            | 'network_error'
+            | 'invalid_json'
+            | 'timedtext_empty'
+            | 'timedtext_error'
+            | 'fetched'
+            | 'unknown_error'
+          player_http_status?: number | null
+          player_status_text?: string | null
+          player_content_type?: string | null
+          playability_status?: string | null
+          player_reason?: string | null
+          player_subreason?: string | null
+          player_error_code?: string | null
+          player_error_message?: string | null
+          track_count?: number | null
+          usable_track_count?: number | null
+          selected_track_language?: string | null
+          selected_track_kind?: string | null
+          timedtext_http_status?: number | null
+          timedtext_status_text?: string | null
+          timedtext_content_type?: string | null
+          player_duration_ms?: number | null
+          timedtext_duration_ms?: number | null
+          error_type?: string | null
+          error_code?: string | null
+          error_message?: string | null
+          attempt_started_at: string
+          completed_at: string
+          runtime_environment?: string | null
+          runtime_region?: string | null
+          deployment_id?: string | null
+          git_commit_sha?: string | null
+          git_commit_ref?: string | null
+          node_version?: string | null
+          created_at?: string
+        }
+        Update: Record<string, never>
+        Relationships: [
+          {
+            foreignKeyName: 'transcript_fetch_diagnostics_video_id_fkey'
+            columns: ['video_id']
+            isOneToOne: false
+            referencedRelation: 'videos'
+            referencedColumns: ['id']
+          },
+        ]
+      }
     }
     Views: Record<string, never>
     Functions: {

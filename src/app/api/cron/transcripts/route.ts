@@ -33,7 +33,7 @@ export async function GET(request: Request) {
     const settings = await getTranscriptSettings(createAdminClient())
     if (!settings.enabled) return apiOk({ skipped: true, reason: 'disabled' }, requestId)
     const limit = Math.min(parsed.data.limit, settings.batch_limit)
-    return apiOk(await processPendingTranscripts(limit), requestId)
+    return apiOk(await processPendingTranscripts(limit, fetch, { requestId }), requestId)
   } catch (error) {
     return apiErr('INTERNAL_ERROR', error instanceof Error ? error.message : 'Errore cron transcripts', 500, requestId)
   }

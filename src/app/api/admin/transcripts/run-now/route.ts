@@ -19,7 +19,7 @@ export async function POST(request: Request) {
     ensureSameOrigin(request)
     ensureJsonRequest(request)
     const settings = await getTranscriptSettings(createAdminClient())
-    return apiOk(await processPendingTranscripts(settings.batch_limit), requestId)
+    return apiOk(await processPendingTranscripts(settings.batch_limit, fetch, { requestId }), requestId)
   } catch (error) {
     return apiErr('INTERNAL_ERROR', error instanceof Error ? error.message : 'Errore esecuzione trascrizioni', 500, requestId)
   }
