@@ -74,6 +74,32 @@ export async function removeFromAllowlist(email: string): Promise<{ success: boo
 }
 
 /**
+ * Assicura che esista la watchlist predefinita senza sovrascrivere quella attuale.
+ * Se due callback OAuth inseriscono insieme, il vincolo univoco decide il vincitore.
+ */
+async function ensureDefaultWatchlist(supabase: ReturnType<typeof createAdminClient>, userId: string): Promise<string | null> {
+  const findDefaultWatchlist = () =>
+    supabase.from('watchlists').select('id').eq('user_id', userId).eq('is_default', true).maybeSingle()
+
+  const { data: existingDefault, error: lookupError } = await findDefaultWatchlist()
+  if (lookupError) return lookupError.message
+  if (existingDefault) return null
+
+  const { error: insertError } = await supabase.from('watchlists').insert({
+    user_id: userId,
+    name: 'Da vedere',
+    is_default: true,
+  })
+  if (!insertError) return null
+  if (insertError.code !== '23505') return insertError.message
+
+  // Un'altra callback può aver creato il default dopo il primo lookup.
+  const { data: concurrentDefault, error: rereadError } = await findDefaultWatchlist()
+  if (rereadError) return rereadError.message
+  return concurrentDefault ? null : insertError.message
+}
+
+/**
  * Provisioning utente al primo login riuscito.
  * Invocata dal callback OAuth (`api/auth/callback/route.ts`).
  *
@@ -152,12 +178,9 @@ export async function provisionNewUser(params: {
   )
   if (roleError) return { success: false, error: roleError.message }
 
-  // Crea watchlist iniziale per rendere subito utilizzabile la UI privata.
-  const { error: watchlistError } = await supabase.from('watchlists').upsert(
-    { user_id: user.id, name: 'Da vedere', is_default: true },
-    { onConflict: 'user_id,is_default' }
-  )
-  if (watchlistError) return { success: false, error: watchlistError.message }
+  // Crea il default solo se manca; i retry non cambiano il nome scelto dall'utente.
+  const watchlistError = await ensureDefaultWatchlist(supabase, user.id)
+  if (watchlistError) return { success: false, error: watchlistError }
 
   return { success: true, userId: user.id }
 }
