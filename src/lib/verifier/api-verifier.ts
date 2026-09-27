@@ -9,6 +9,7 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 export const verifierTargetOrigins = {
+  dev: 'https://dev.utraya.com',
   preview: 'https://preview.utraya.com',
   production: 'https://utraya.com',
 } as const

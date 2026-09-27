@@ -37,6 +37,25 @@ export interface MainTranscript {
 
 export type TranscriptOutcome = 'fetched' | 'missing' | 'failed' | 'skipped'
 
+export interface TranscriptFixtureFilter {
+  transcriptRowId: string
+  youtubeVideoId: string
+}
+
+export class TranscriptFixtureRunError extends Error {
+  constructor() {
+    super('Fixture transcript run failed')
+    this.name = 'TranscriptFixtureRunError'
+  }
+}
+
+export class TranscriptFixtureCleanupError extends Error {
+  constructor() {
+    super('Fixture transcript cleanup failed')
+    this.name = 'TranscriptFixtureCleanupError'
+  }
+}
+
 interface TranscriptDiagnosticContext {
   fetchRunId: string
   videoId: string
@@ -620,19 +639,29 @@ export async function fetchAndStoreForVideo(
   videoUuid: string,
   youtubeVideoId: string,
   fetchImpl: FetchImpl = fetch,
-  requestId: string | null = null
+  requestId: string | null = null,
+  transcriptRowId?: string
 ): Promise<{ outcome: TranscriptOutcome }> {
-  const { data: existing } = await admin
+  let existingQuery = admin
     .from('video_transcripts')
     .select('transcript_status')
     .eq('youtube_video_id', youtubeVideoId)
+  if (transcriptRowId) existingQuery = existingQuery.eq('id', transcriptRowId)
+  const { data: existing, error: existingError } = await existingQuery
+  if (transcriptRowId && existingError) throw new TranscriptFixtureRunError()
 
   const rows = (existing ?? []) as Array<{ transcript_status: string }>
   if (rows.some((row) => row.transcript_status === 'fetched' || row.transcript_status === 'legacy_missing')) {
     return { outcome: 'skipped' }
   }
 
-  await ensurePendingRow(admin, videoUuid, youtubeVideoId)
+  if (transcriptRowId) {
+    if (rows.length !== 1 || rows[0]?.transcript_status !== 'pending') {
+      throw new TranscriptFixtureRunError()
+    }
+  } else {
+    await ensurePendingRow(admin, videoUuid, youtubeVideoId)
+  }
 
   const fetchRunId = randomUUID()
   try {
@@ -645,14 +674,17 @@ export async function fetchAndStoreForVideo(
     await persistTranscriptDiagnostics(admin, diagnosticAttempts)
 
     if (!transcript) {
-      await admin
+      let updateQuery = admin
         .from('video_transcripts')
         .update({ transcript_status: 'missing', error_details: truncateError(diagnostics) })
         .eq('youtube_video_id', youtubeVideoId)
+      if (transcriptRowId) updateQuery = updateQuery.eq('id', transcriptRowId)
+      const { error: updateError } = await updateQuery
+      if (transcriptRowId && updateError) throw new TranscriptFixtureRunError()
       return { outcome: 'missing' }
     }
 
-    await admin
+    let updateQuery = admin
       .from('video_transcripts')
       .update({
         language_code: transcript.language_code,
@@ -665,16 +697,22 @@ export async function fetchAndStoreForVideo(
         error_details: null,
       })
       .eq('youtube_video_id', youtubeVideoId)
+    if (transcriptRowId) updateQuery = updateQuery.eq('id', transcriptRowId)
+    const { error: updateError } = await updateQuery
+    if (transcriptRowId && updateError) throw new TranscriptFixtureRunError()
     return { outcome: 'fetched' }
   } catch (error) {
     if (error instanceof TranscriptFetchError) {
       await persistTranscriptDiagnostics(admin, error.diagnosticAttempts)
     }
     const message = error instanceof Error ? error.message : 'transcript_fetch_failed'
-    await admin
+    let updateQuery = admin
       .from('video_transcripts')
       .update({ transcript_status: 'failed', error_details: truncateError(message) })
       .eq('youtube_video_id', youtubeVideoId)
+    if (transcriptRowId) updateQuery = updateQuery.eq('id', transcriptRowId)
+    const { error: updateError } = await updateQuery
+    if (transcriptRowId && updateError) throw new TranscriptFixtureRunError()
     return { outcome: 'failed' }
   }
 }
@@ -688,20 +726,120 @@ export interface PendingTranscriptsResult {
   skipped: number
 }
 
+export interface TranscriptFixtureResult extends PendingTranscriptsResult {
+  cleanup: 'completed'
+}
+
+interface ProcessPendingTranscriptsOptions {
+  requestId?: string
+  fixture?: TranscriptFixtureFilter
+  admin?: AdminClient
+}
+
+/**
+ * Esegue lo smoke test solo sulla riga fixture già autorizzata dal route handler.
+ * Il contenuto viene sempre cancellato e la riga riportata a pending prima del ritorno.
+ */
+export async function runTranscriptFixture(
+  youtubeVideoId: string,
+  fetchImpl: FetchImpl = fetch,
+  options: { requestId?: string; admin?: AdminClient } = {}
+): Promise<TranscriptFixtureResult> {
+  const admin = options.admin ?? createAdminClient()
+  const { data: row, error: lookupError } = await admin
+    .from('video_transcripts')
+    .select('id,video_id,youtube_video_id,transcript_status')
+    .eq('youtube_video_id', youtubeVideoId)
+    .maybeSingle()
+
+  if (lookupError || !row || row.youtube_video_id !== youtubeVideoId || row.transcript_status === 'legacy_missing') {
+    throw new TranscriptFixtureRunError()
+  }
+
+  const fixture = { transcriptRowId: row.id, youtubeVideoId }
+  let processingResult: PendingTranscriptsResult | null = null
+  let processingFailed = false
+  let cleanupFailed = false
+
+  try {
+    const { data: resetRow, error: resetError } = await admin
+      .from('video_transcripts')
+      .update({
+        language_code: 'unknown',
+        kind: 'unknown',
+        is_asr: null,
+        transcript_status: 'pending',
+        transcript_text: null,
+        segments: null,
+        fetched_at: null,
+        error_details: null,
+      })
+      .eq('id', row.id)
+      .eq('youtube_video_id', youtubeVideoId)
+      .select('id')
+      .maybeSingle()
+
+    if (resetError || resetRow?.id !== row.id) throw new TranscriptFixtureRunError()
+
+    processingResult = await processPendingTranscripts(1, fetchImpl, {
+      requestId: options.requestId,
+      fixture,
+      admin,
+    })
+    if (processingResult.checked !== 1) throw new TranscriptFixtureRunError()
+  } catch {
+    processingFailed = true
+  } finally {
+    try {
+      const { data: cleanedRow, error: cleanupError } = await admin
+        .from('video_transcripts')
+        .update({
+          language_code: 'unknown',
+          kind: 'unknown',
+          is_asr: null,
+          transcript_status: 'pending',
+          transcript_text: null,
+          segments: null,
+          fetched_at: null,
+          error_details: null,
+        })
+        .eq('id', row.id)
+        .eq('youtube_video_id', youtubeVideoId)
+        .select('id')
+        .maybeSingle()
+
+      if (cleanupError || cleanedRow?.id !== row.id) cleanupFailed = true
+    } catch {
+      cleanupFailed = true
+    }
+  }
+
+  if (cleanupFailed) throw new TranscriptFixtureCleanupError()
+  if (processingFailed || !processingResult) throw new TranscriptFixtureRunError()
+
+  return { ...processingResult, cleanup: 'completed' }
+}
+
 /**
  * Processa fino a `limit` righe pending (usato dal cron giornaliero). Mai testo in output.
  */
 export async function processPendingTranscripts(
   limit: number,
   fetchImpl: FetchImpl = fetch,
-  options: { requestId?: string } = {}
+  options: ProcessPendingTranscriptsOptions = {}
 ): Promise<PendingTranscriptsResult> {
-  const admin = createAdminClient()
-  const { data: pending } = await admin
+  const admin = options.admin ?? createAdminClient()
+  let pendingQuery = admin
     .from('video_transcripts')
     .select('video_id,youtube_video_id')
     .eq('transcript_status', 'pending')
-    .limit(limit)
+  if (options.fixture) {
+    pendingQuery = pendingQuery
+      .eq('youtube_video_id', options.fixture.youtubeVideoId)
+      .eq('id', options.fixture.transcriptRowId)
+  }
+  const { data: pending, error: pendingError } = await pendingQuery.limit(limit)
+  if (options.fixture && pendingError) throw new TranscriptFixtureRunError()
 
   const rows = (pending ?? []) as Array<{ video_id: string; youtube_video_id: string }>
   const result: PendingTranscriptsResult = {
@@ -719,7 +857,8 @@ export async function processPendingTranscripts(
       row.video_id,
       row.youtube_video_id,
       fetchImpl,
-      options.requestId ?? null
+      options.requestId ?? null,
+      options.fixture?.transcriptRowId
     )
     if (outcome === 'fetched') result.fetched += 1
     else if (outcome === 'missing') result.missing += 1

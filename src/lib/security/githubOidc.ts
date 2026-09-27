@@ -10,6 +10,7 @@ const issuer = 'https://token.actions.githubusercontent.com'
 const audience = 'https://github.com/dardevlowcode-git/utraya-app'
 const repository = 'dardevlowcode-git/utraya-app'
 const workflow = `${repository}/.github/workflows/api-verifier.yml`
+const targetBranches = { dev: 'dev', preview: 'preprod', production: 'main' } as const
 let jwksCache: { expiresAt: number; keys: Array<Record<string, unknown>> } | null = null
 
 export type GitHubOidcClaims = { jti: string; exp: number }
@@ -28,7 +29,7 @@ async function getSigningKeys(): Promise<Array<Record<string, unknown>>> {
   return keys
 }
 
-export async function verifyGitHubActionsOidc(token: string, target: 'preview' | 'production'): Promise<GitHubOidcClaims> {
+export async function verifyGitHubActionsOidc(token: string, target: keyof typeof targetBranches): Promise<GitHubOidcClaims> {
   const parts = token.split('.')
   if (parts.length !== 3) throw new Error('OIDC token malformato')
   const header = decodePart(parts[0])
@@ -42,7 +43,7 @@ export async function verifyGitHubActionsOidc(token: string, target: 'preview' |
   if (!validSignature) throw new Error('OIDC firma non valida')
 
   const now = Math.floor(Date.now() / 1000)
-  const expectedBranch = target === 'production' ? 'main' : 'preprod'
+  const expectedBranch = targetBranches[target]
   const workflowRef = `${workflow}@refs/heads/${expectedBranch}`
   const tokenAudience = Array.isArray(claims.aud) ? claims.aud : [claims.aud]
   if (

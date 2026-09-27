@@ -28,14 +28,14 @@ function signOidc(claims: Record<string, unknown>, kid = KID): string {
   return `${header}.${payload}.${signature}`
 }
 
-function previewClaims(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+function claimsForBranch(branch: string, overrides: Record<string, unknown> = {}): Record<string, unknown> {
   const now = Math.floor(Date.now() / 1000)
   return {
     iss: ISSUER,
     aud: AUDIENCE,
     repository: REPOSITORY,
-    workflow_ref: `${WORKFLOW}@refs/heads/preprod`,
-    ref: 'refs/heads/preprod',
+    workflow_ref: `${WORKFLOW}@refs/heads/${branch}`,
+    ref: `refs/heads/${branch}`,
     event_name: 'workflow_dispatch',
     jti: 'jti-test-1',
     exp: now + 300,
@@ -60,28 +60,40 @@ describe('verifyGitHubActionsOidc', () => {
   })
 
   it('accetta un token preprod valido e restituisce jti/exp', async () => {
-    const claims = previewClaims()
+    const claims = claimsForBranch('preprod')
     const result = await verifyGitHubActionsOidc(signOidc(claims), 'preview')
     expect(result).toMatchObject({ jti: 'jti-test-1', exp: claims.exp })
   })
 
-  it('rifiuta il branch sbagliato per il target', async () => {
-    await expect(verifyGitHubActionsOidc(signOidc(previewClaims()), 'production')).rejects.toThrow('OIDC claims non autorizzati')
+  it.each([
+    { target: 'dev', branch: 'dev' },
+    { target: 'preview', branch: 'preprod' },
+    { target: 'production', branch: 'main' },
+  ] as const)('accetta il mapping target $target → refs/heads/$branch', async ({ target, branch }) => {
+    await expect(verifyGitHubActionsOidc(signOidc(claimsForBranch(branch)), target)).resolves.toMatchObject({ jti: 'jti-test-1' })
+  })
+
+  it.each([
+    { target: 'dev', branch: 'preprod' },
+    { target: 'preview', branch: 'dev' },
+    { target: 'production', branch: 'preprod' },
+  ] as const)('rifiuta il mapping non autorizzato target $target con ref $branch', async ({ target, branch }) => {
+    await expect(verifyGitHubActionsOidc(signOidc(claimsForBranch(branch)), target)).rejects.toThrow('OIDC claims non autorizzati')
   })
 
   it('rifiuta i token oltre la tolleranza di scadenza', async () => {
     const now = Math.floor(Date.now() / 1000)
-    await expect(verifyGitHubActionsOidc(signOidc(previewClaims({ exp: now - 120 })), 'preview')).rejects.toThrow('OIDC claims non autorizzati')
+    await expect(verifyGitHubActionsOidc(signOidc(claimsForBranch('preprod', { exp: now - 120 })), 'preview')).rejects.toThrow('OIDC claims non autorizzati')
   })
 
   it('rifiuta la firma manomessa', async () => {
-    const token = signOidc(previewClaims())
+    const token = signOidc(claimsForBranch('preprod'))
     const [header, payload, signature] = token.split('.')
     const tampered = `${header}.${payload}.${signature.slice(0, -2)}aa`
     await expect(verifyGitHubActionsOidc(tampered, 'preview')).rejects.toThrow('OIDC firma non valida')
   })
 
   it('rifiuta gli eventi diversi da workflow_dispatch', async () => {
-    await expect(verifyGitHubActionsOidc(signOidc(previewClaims({ event_name: 'push' })), 'preview')).rejects.toThrow('OIDC claims non autorizzati')
+    await expect(verifyGitHubActionsOidc(signOidc(claimsForBranch('preprod', { event_name: 'push' })), 'preview')).rejects.toThrow('OIDC claims non autorizzati')
   })
 })

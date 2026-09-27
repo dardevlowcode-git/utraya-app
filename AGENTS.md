@@ -19,4 +19,10 @@ Repository pubblico del codice di Utraya, pubblicato per trasparenza.
   esplicitamente richiesto.
 - Dettaglio del flusso e del provisioning: runbook privato Utraya.doc
   (`flusso-sviluppo.md`, `env-procedura.md`).
+- Nel run DOC tracciare ogni modifica DEV a codice, Supabase e Vercel con esito,
+  classificazione `DEV-only`/`promuovi` e rollback/rimozione. Prima della
+  promozione consegnare a Dario l'elenco preciso delle migrazioni e dei delta
+  Vercel per gli ambienti condivisi: gli script DB preprod/main li applica
+  Dario, salvo autorizzazione specifica diversa. Non portare strumenti o
+  artefatti temporanei DEV nel candidato pulito.
 - Contributi umani solo via issue sul repository privato `utraya-doc`.

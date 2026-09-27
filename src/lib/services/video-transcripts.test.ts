@@ -9,6 +9,9 @@ import {
   fetchAndStoreForVideo,
   fetchMainTranscript,
   pickMainTrack,
+  runTranscriptFixture,
+  TranscriptFixtureCleanupError,
+  TranscriptFixtureRunError,
 } from '@/lib/services/video-transcripts'
 
 function jsonResponse(payload: unknown, ok = true, status = 200): Response {
@@ -482,5 +485,210 @@ describe('fetchAndStoreForVideo idempotenza', () => {
     expect(update.mock.calls[0]?.[0]?.transcript_status).toBe('missing')
     expect(console.error).toHaveBeenCalledOnce()
     expect(String(vi.mocked(console.error).mock.calls[0]?.[0])).not.toContain('test-key')
+  })
+})
+
+describe('runTranscriptFixture', () => {
+  const fixtureVideoId = 'Abcdefghijk'
+  const fixtureRow = {
+    id: 'transcript-row-fixture',
+    video_id: 'video-row-fixture',
+    youtube_video_id: fixtureVideoId,
+  }
+
+  beforeEach(() => {
+    process.env.YOUTUBEI_API_KEY = 'test-key'
+    vi.spyOn(console, 'info').mockImplementation(() => undefined)
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  function buildAdminMock(options: {
+    pendingQueryError?: boolean
+    cleanupFailure?: boolean
+    initialStatus?: string
+  } = {}) {
+    const calls: Array<{
+      table: string
+      operation: string
+      columns?: string
+      payload?: Record<string, unknown>
+      filters: Record<string, string>
+    }> = []
+    let fixturePendingUpdates = 0
+
+    const admin = {
+      from: vi.fn((table: string) => {
+        const call: (typeof calls)[number] = { table, operation: 'select', filters: {} }
+        calls.push(call)
+        const result = () => {
+          if (table === 'transcript_fetch_diagnostics') return { data: null, error: null }
+          if (call.operation === 'update') {
+            if (call.payload?.transcript_status === 'pending') {
+              fixturePendingUpdates += 1
+              if (options.cleanupFailure && fixturePendingUpdates === 2) {
+                return { data: null, error: { code: 'PRIVATE_DB_ERROR', message: 'private cleanup details' } }
+              }
+              return { data: { id: fixtureRow.id }, error: null }
+            }
+            return { data: null, error: null }
+          }
+          if (call.columns === 'id,video_id,youtube_video_id,transcript_status') {
+            return {
+              data: { ...fixtureRow, transcript_status: options.initialStatus ?? 'fetched' },
+              error: null,
+            }
+          }
+          if (call.columns === 'video_id,youtube_video_id') {
+            return options.pendingQueryError
+              ? { data: null, error: { code: 'PRIVATE_DB_ERROR', message: 'private query details' } }
+              : { data: [fixtureRow], error: null }
+          }
+          if (call.columns === 'transcript_status') {
+            return { data: [{ transcript_status: 'pending' }], error: null }
+          }
+          return { data: null, error: null }
+        }
+
+        const query = {
+          select: vi.fn((columns?: string) => {
+            call.columns = columns
+            return query
+          }),
+          update: vi.fn((payload: Record<string, unknown>) => {
+            call.operation = 'update'
+            call.payload = payload
+            return query
+          }),
+          eq: vi.fn((column: string, value: string) => {
+            call.filters[column] = value
+            return query
+          }),
+          maybeSingle: vi.fn(async () => result()),
+          limit: vi.fn(async () => result()),
+          insert: vi.fn(async () => ({ error: null })),
+          then: (resolve: (value: ReturnType<typeof result>) => unknown, reject: (error: unknown) => unknown) =>
+            Promise.resolve(result()).then(resolve, reject),
+        }
+        return query
+      }),
+    }
+
+    return { admin, calls }
+  }
+
+  function emptyTranscriptFetch() {
+    return vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ playabilityStatus: { status: 'OK' } }))
+      .mockResolvedValueOnce(jsonResponse({ playabilityStatus: { status: 'OK' } }))
+  }
+
+  function fetchedTranscriptFetch() {
+    return vi.fn()
+      .mockResolvedValueOnce(jsonResponse({
+        playabilityStatus: { status: 'OK' },
+        captions: {
+          playerCaptionsTracklistRenderer: {
+            captionTracks: [
+              { baseUrl: 'https://www.youtube.com/api/timedtext?v=fixture&lang=it', languageCode: 'it' },
+            ],
+          },
+        },
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        events: [{ tStartMs: 0, dDurationMs: 1000, segs: [{ utf8: 'fixture-private-transcript' }] }],
+      }))
+  }
+
+  it('pulisce il testo fetched e tocca esclusivamente la riga fixture', async () => {
+    const { admin, calls } = buildAdminMock()
+    const result = await runTranscriptFixture(fixtureVideoId, fetchedTranscriptFetch() as unknown as typeof fetch, {
+      admin: admin as never,
+      requestId: 'fixture-request',
+    })
+
+    expect(result).toEqual({
+      success: true,
+      checked: 1,
+      fetched: 1,
+      missing: 0,
+      failed: 0,
+      skipped: 0,
+      cleanup: 'completed',
+    })
+    expect(JSON.stringify(result)).not.toContain('fixture-private-transcript')
+    const pendingQuery = calls.find((call) => call.columns === 'video_id,youtube_video_id')
+    expect(pendingQuery?.filters).toMatchObject({
+      transcript_status: 'pending',
+      youtube_video_id: fixtureVideoId,
+      id: fixtureRow.id,
+    })
+    const updates = calls.filter((call) => call.table === 'video_transcripts' && call.operation === 'update')
+    expect(updates.every((call) => call.filters.id === fixtureRow.id)).toBe(true)
+    expect(updates.every((call) => call.filters.youtube_video_id === fixtureVideoId)).toBe(true)
+    expect(updates.some((call) => call.payload?.transcript_status === 'fetched')).toBe(true)
+    const resetAndCleanup = updates.filter((call) => call.payload?.transcript_status === 'pending')
+    expect(resetAndCleanup).toHaveLength(2)
+    for (const update of resetAndCleanup) {
+      expect(update.payload).toMatchObject({
+        language_code: 'unknown',
+        kind: 'unknown',
+        is_asr: null,
+        transcript_text: null,
+        segments: null,
+        fetched_at: null,
+        error_details: null,
+      })
+    }
+  })
+
+  it('esegue comunque il cleanup quando il service filtrato fallisce', async () => {
+    const { admin, calls } = buildAdminMock({ pendingQueryError: true })
+
+    await expect(runTranscriptFixture(fixtureVideoId, fetch, { admin: admin as never }))
+      .rejects.toBeInstanceOf(TranscriptFixtureRunError)
+
+    const resetAndCleanup = calls.filter((call) => call.payload?.transcript_status === 'pending')
+    expect(resetAndCleanup).toHaveLength(2)
+    expect(resetAndCleanup.every((call) => call.filters.id === fixtureRow.id)).toBe(true)
+    for (const update of resetAndCleanup) {
+      expect(update.payload).toMatchObject({
+        language_code: 'unknown',
+        kind: 'unknown',
+        is_asr: null,
+        transcript_text: null,
+        segments: null,
+        fetched_at: null,
+        error_details: null,
+      })
+    }
+  })
+
+  it('rifiuta legacy_missing prima di qualunque aggiornamento', async () => {
+    const { admin, calls } = buildAdminMock({ initialStatus: 'legacy_missing' })
+    const fetchMock = vi.fn()
+
+    await expect(runTranscriptFixture(fixtureVideoId, fetchMock as unknown as typeof fetch, {
+      admin: admin as never,
+    })).rejects.toBeInstanceOf(TranscriptFixtureRunError)
+
+    expect(calls.filter((call) => call.operation === 'update')).toHaveLength(0)
+    expect(calls.some((call) => call.columns === 'video_id,youtube_video_id')).toBe(false)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('fallisce in modo esplicito e senza dettagli DB quando il cleanup non riesce', async () => {
+    const { admin } = buildAdminMock({ cleanupFailure: true })
+
+    const error = await runTranscriptFixture(fixtureVideoId, emptyTranscriptFetch() as unknown as typeof fetch, {
+      admin: admin as never,
+    }).catch((caught: unknown) => caught)
+
+    expect(error).toBeInstanceOf(TranscriptFixtureCleanupError)
+    expect((error as Error).message).toBe('Fixture transcript cleanup failed')
+    expect((error as Error).message).not.toContain('private cleanup details')
   })
 })

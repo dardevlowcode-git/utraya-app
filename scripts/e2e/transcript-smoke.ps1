@@ -1,87 +1,81 @@
 <# Commento didattico:
- # Scopo del file: smoke test E2E trascrizioni in preview AD USO MANUALE di Dario (ha i segreti, li compila in .env.local).
- # Gli agenti NON usano questo script: usano il workflow GitHub Actions `.github/workflows/e2e-transcripts.yml`
- # (segreti solo in GitHub Secrets, mai in locale — vedi OPERATIONS.md Sez.15 e vincolo zero-esportazione in AGENTS.md).
- # Uso manuale: .\scripts\e2e\transcript-smoke.ps1 -VideoId "rHshDCGPzdk" -BaseUrl "https://preview.utraya.com"
+ # Scopo del file: smoke test transcript limitato alla fixture DEV autorizzata.
+ # Moduli richiamati: Invoke-RestMethod verso il solo endpoint cron DEV.
+ # Flusso: legge CRON_SECRET e TRANSCRIPT_E2E_VIDEO_ID dal percorso DEV approvato,
+ # invoca la fixture sincrona e stampa esclusivamente conteggi/esito sintetico.
+ # Mai leggere Supabase, transcript_text, error_details o payload diagnostici.
  #>
-param(
-  [Parameter(Mandatory = $true)][string]$VideoId,
-  [string]$BaseUrl = "https://preview.utraya.com",
-  [string]$EnvFile = ".env.local",
-  [int]$Limit = 10,
-  [int]$PollSeconds = 180,
-  [int]$PollIntervalSeconds = 15
-)
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = 'Stop'
+$TargetUrl = 'https://dev.utraya.com'
+$DevEnvPath = 'C:\Users\darde\.config\utraya-dev\dev.env'
 
-function Fail([string]$msg) { Write-Output ("ERRORE: " + $msg); exit 2 }
+function Fail([string]$message) {
+  Write-Output ("ESITO: fallito (" + $message + ").")
+  exit 1
+}
 
-if (-not (Test-Path -LiteralPath $EnvFile)) { Fail ("file env non trovato: " + $EnvFile + " (crearlo con 'vercel env pull .env.local' e compilarne i valori)") }
+if (-not (Test-Path -LiteralPath $DevEnvPath -PathType Leaf)) {
+  Fail 'credenziali DEV non disponibili nel percorso approvato'
+}
+
 $envMap = @{}
-Get-Content -LiteralPath $EnvFile | Where-Object { $_ -match "=" -and $_ -notmatch "^#" } | ForEach-Object {
-  $parts = $_ -split "=", 2
-  $envMap[$parts[0]] = $parts[1].Trim('"').Trim("'")
-}
-foreach ($k in @("NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "CRON_SECRET")) {
-  if ([string]::IsNullOrEmpty($envMap[$k]) -or ($envMap[$k] -match "SENSITIVE") -or ($envMap[$k] -match "^YOUR_")) {
-    Fail ("env mancante o placeholder: " + $k)
-  }
-}
-$sbUrl = $envMap["NEXT_PUBLIC_SUPABASE_URL"]
-$sbKey = $envMap["SUPABASE_SERVICE_ROLE_KEY"]
-$cronSecret = $envMap["CRON_SECRET"]
-$sbHeaders = @{ apikey = $sbKey; Authorization = ("Bearer " + $sbKey) }
-$browserUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
-
-function Get-Row() {
-  $u = $sbUrl + "/rest/v1/video_transcripts?youtube_video_id=eq." + $VideoId + "&select=transcript_status,language_code,kind,error_details,transcript_text"
-  return Invoke-RestMethod -Uri $u -Headers $sbHeaders -TimeoutSec 20
-}
-
-Write-Output ("[1/4] Stato iniziale riga " + $VideoId)
-$before = Get-Row
-if ($null -eq $before) { Fail "nessuna riga video_transcripts per questo video (migrazione 008 applicata?)" }
-Write-Output ("stato iniziale: " + $before.transcript_status)
-
-Write-Output "[2/4] Reset a pending via Supabase REST"
-$patchHeaders = @{ apikey = $sbKey; Authorization = ("Bearer " + $sbKey); Prefer = "return=representation"; "Content-Type" = "application/json" }
-$patchBody = '{"transcript_status":"pending","error_details":null}'
-Invoke-RestMethod -Uri ($sbUrl + "/rest/v1/video_transcripts?youtube_video_id=eq." + $VideoId) -Method Patch -Headers $patchHeaders -Body $patchBody -TimeoutSec 20 | Out-Null
-Write-Output "reset ok"
-
-Write-Output "[3/4] Trigger cron trascrizioni"
-$cronHeaders = @{ Authorization = ("Bearer " + $cronSecret); "User-Agent" = $browserUA }
 try {
-  $cronOut = Invoke-RestMethod -Uri ($BaseUrl + "/api/cron/transcripts?limit=" + $Limit) -Headers $cronHeaders -TimeoutSec 120
-  Write-Output ("risposta cron: checked=" + $cronOut.data.checked + " fetched=" + $cronOut.data.fetched + " missing=" + $cronOut.data.missing + " failed=" + $cronOut.data.failed)
-}
-catch {
-  $code = $null
-  try { $code = [int]$_.Exception.Response.StatusCode } catch { $code = "sconosciuto" }
-  if ($code -eq 429) { Fail "cron risponde 429 (firewall bot-protection su traffico script): lanciare da console browser o aggiungere regola firewall, vedi runbook OPERATIONS.md Sez.15" }
-  if ($code -eq 401) { Fail "cron risponde 401 (CRON_SECRET errato per questo ambiente)" }
-  Fail ("trigger cron fallito, status: " + $code + " - " + $_.Exception.Message)
+  Get-Content -LiteralPath $DevEnvPath | Where-Object { $_ -match '=' -and $_ -notmatch '^\s*#' } | ForEach-Object {
+    $parts = $_ -split '=', 2
+    $envMap[$parts[0].Trim()] = $parts[1].Trim().Trim('"').Trim("'")
+  }
+} catch {
+  Fail 'configurazione DEV non leggibile'
 }
 
-Write-Output "[4/4] Poll esito"
-$elapsed = 0
-$final = $null
-while ($elapsed -lt $PollSeconds) {
-  Start-Sleep -Seconds $PollIntervalSeconds
-  $elapsed = $elapsed + $PollIntervalSeconds
-  $final = Get-Row
-  if ($final.transcript_status -ne "pending") { break }
+$cronSecret = $envMap['CRON_SECRET']
+$fixtureVideoId = $envMap['TRANSCRIPT_E2E_VIDEO_ID']
+if ([string]::IsNullOrWhiteSpace($cronSecret) -or [string]::IsNullOrWhiteSpace($fixtureVideoId)) {
+  Fail 'variabili DEV richieste mancanti'
 }
-if ($null -eq $final) { Fail "riga sparita dopo il trigger" }
-$textLen = 0
-if ($null -ne $final.transcript_text) { $textLen = $final.transcript_text.Length }
-Write-Output ("ESITO: status=" + $final.transcript_status + " lang=" + $final.language_code + " kind=" + $final.kind + " testo_len=" + $textLen)
-if (-not [string]::IsNullOrEmpty($final.error_details)) { Write-Output ("diagnostica: " + $final.error_details) }
-if ($null -ne $final.transcript_text -and $final.transcript_text.Length -gt 0) {
-  $prevLen = [Math]::Min(200, $final.transcript_text.Length)
-  Write-Output ("anteprima: " + $final.transcript_text.Substring(0, $prevLen))
+if ($envMap['NEXT_PUBLIC_SITE_URL'] -cne $TargetUrl) {
+  Fail 'URL applicativo non corrispondente a DEV'
 }
-if ($final.transcript_status -eq "fetched") { exit 0 }
-if ($final.transcript_status -eq "missing") { exit 1 }
-exit 2
+if ($fixtureVideoId -notmatch '^[A-Za-z0-9_-]{11}$') {
+  Fail 'fixture DEV non valida'
+}
+
+$uri = $TargetUrl + '/api/cron/transcripts?fixture_video_id=' + $fixtureVideoId + '&limit=1'
+try {
+  $cronOut = Invoke-RestMethod `
+    -Method Get `
+    -Uri $uri `
+    -Headers @{ Authorization = ('Bearer ' + $cronSecret) } `
+    -TimeoutSec 300 `
+    -ErrorAction Stop
+} catch {
+  $cleanupFailed = $false
+  try {
+    $cleanupFailed = $_.Exception.Response.Headers['X-Transcript-Fixture-Cleanup'] -eq 'failed'
+  } catch {
+    $cleanupFailed = $false
+  }
+  if ($cleanupFailed) {
+    Fail 'cleanup fixture DEV non riuscito; intervento richiesto'
+  }
+  Fail 'richiesta cron DEV non riuscita; payload non esposto'
+}
+
+if ($null -eq $cronOut -or $cronOut.ok -ne $true -or $null -eq $cronOut.data) {
+  Fail 'risposta cron DEV non valida; payload non esposto'
+}
+$result = $cronOut.data
+if ($result.cleanup -ne 'completed') {
+  Fail 'cleanup fixture DEV non confermato'
+}
+
+$summary = 'checked=' + $result.checked + ' fetched=' + $result.fetched + ' missing=' + $result.missing +
+  ' failed=' + $result.failed + ' skipped=' + $result.skipped + ' cleanup=' + $result.cleanup
+if ($result.checked -eq 1 -and $result.fetched -eq 1 -and $result.failed -eq 0) {
+  Write-Output ('ESITO: superato (' + $summary + ')')
+  exit 0
+}
+
+Write-Output ('ESITO: fallito (' + $summary + ')')
+exit 1

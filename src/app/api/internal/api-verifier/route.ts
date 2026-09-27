@@ -13,7 +13,7 @@ import { checkRateLimit } from '@/lib/security/rate-limit'
 import { runApiVerification, verifierTargetOrigins, type VerifierTarget } from '@/lib/verifier/api-verifier'
 
 const requestSchema = z.object({
-  target: z.enum(['preview', 'production']),
+  target: z.enum(['dev', 'preview', 'production']),
   mutations: z.boolean().default(false),
   confirmProductionFixture: z.boolean().default(false),
 }).strict()

@@ -21,15 +21,15 @@ vi.mock('@/lib/security/githubOidcReplay', () => ({
 }))
 
 vi.mock('@/lib/verifier/api-verifier', () => ({
-  verifierTargetOrigins: { preview: 'https://preview.utraya.com', production: 'https://utraya.com' },
+  verifierTargetOrigins: { dev: 'https://dev.utraya.com', preview: 'https://preview.utraya.com', production: 'https://utraya.com' },
   runApiVerification: runVerificationMock,
 }))
 
 // Import statico dopo i mock: vitest solleva le factory prima dell'import.
 import { POST } from '@/app/api/internal/api-verifier/route'
 
-function brokerRequest(body: unknown, ip: string) {
-  return new Request('https://preview.utraya.com/api/internal/api-verifier', {
+function brokerRequest(body: unknown, ip: string, origin = 'https://preview.utraya.com') {
+  return new Request(`${origin}/api/internal/api-verifier`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-real-ip': ip, authorization: 'Bearer oidc-test' },
     body: JSON.stringify(body),
@@ -59,9 +59,40 @@ describe('POST /api/internal/api-verifier', () => {
     expect(runVerificationMock).not.toHaveBeenCalled()
   })
 
+  it('accetta il target dev solo sull’origine esatta e passa il target alla suite', async () => {
+    runVerificationMock.mockResolvedValue({ schemaVersion: 1, target: 'dev', summary: { status: 'passed' }, checks: [], failedCount: 0 })
+    const response = await POST(brokerRequest({ target: 'dev' }, '10.0.0.5', 'https://dev.utraya.com'))
+
+    expect(response.status).toBe(200)
+    expect(verifyOidcMock).toHaveBeenCalledWith('oidc-test', 'dev')
+    expect(runVerificationMock).toHaveBeenCalledWith({ target: 'dev', mutations: false })
+    const payload = (await response.json()) as { data: { target: string } }
+    expect(payload.data.target).toBe('dev')
+  })
+
+  it.each([
+    { target: 'dev', origin: 'https://preview.utraya.com' },
+    { target: 'preview', origin: 'https://dev.utraya.com' },
+    { target: 'dev', origin: 'https://dev.utraya.com.attacker.invalid' },
+  ] as const)('rifiuta target $target con origin $origin prima di OIDC e suite', async ({ target, origin }) => {
+    const response = await POST(brokerRequest({ target }, '10.0.0.6', origin))
+
+    expect(response.status).toBe(403)
+    expect(verifyOidcMock).not.toHaveBeenCalled()
+    expect(consumeJtiMock).not.toHaveBeenCalled()
+    expect(runVerificationMock).not.toHaveBeenCalled()
+  })
+
   it('blocca le mutazioni quando il flag server e` spento', async () => {
     const response = await POST(brokerRequest({ target: 'preview', mutations: true }, '10.0.0.3'))
     expect(response.status).toBe(403)
+    expect(runVerificationMock).not.toHaveBeenCalled()
+  })
+
+  it('mantiene la conferma esplicita per le mutazioni production', async () => {
+    const response = await POST(brokerRequest({ target: 'production', mutations: true }, '10.0.0.7', 'https://utraya.com'))
+
+    expect(response.status).toBe(400)
     expect(runVerificationMock).not.toHaveBeenCalled()
   })
 
