@@ -120,8 +120,6 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/api/auth/') ||
     pathname.startsWith('/api/v1/') ||
     pathname === '/api/internal/api-verifier' ||
-    // Temporaneo T3 2026-10-02-0253: bypass per la mono-prova Gemini (rimozione in T4).
-    pathname === '/api/internal/gemini-single-probe-20261002-0253' ||
     pathname.startsWith('/api/cron/') ||
     pathname.startsWith('/api/admin/auth/') ||
     pathname.startsWith('/api/account/cancel-deletion') ||
