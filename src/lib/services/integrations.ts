@@ -392,20 +392,38 @@ export async function validateApiKey(params: {
 
   const credential = await getCredentialRow(params.userId, params.provider, params.supabase)
   if (credential) {
-    // Audit storico tentativi di validazione (utile per diagnosi operative).
-    const { error: auditError } = await createAdminClient().from('credential_checks').insert({
+    await writeCredentialCheckAudit({
       credential_id: credential.id,
       is_valid: isValid,
       error_message: errorMessage,
       error_type: isValid ? null : (classifyError(errorMessage) === 'temporary' ? 'temporary' : 'structural'),
     })
-    if (auditError) throw new AppError('Impossibile registrare audit validazione', 'unknown', 500, { cause: auditError.message })
   }
 
   return {
     provider: params.provider,
     isValid,
     message: isValid ? null : errorMessage,
+  }
+}
+
+/**
+ * Scrive lo storico usando il client server-side con service role: `credential_checks`
+ * non espone una policy INSERT agli utenti autenticati. Un errore di audit non deve
+ * trasformare una validazione provider già conclusa in un errore per l'utente.
+ */
+export async function writeCredentialCheckAudit(params: {
+  credential_id: string
+  is_valid: boolean
+  error_message: string | null
+  error_type: 'temporary' | 'structural' | null
+}): Promise<void> {
+  try {
+    const { error } = await createAdminClient().from('credential_checks').insert(params)
+    if (error) throw error
+  } catch {
+    // Non loggare errori provider o credenziali; segnala solo la perdita della riga audit.
+    console.error('credential_checks audit insert failed; validation result retained')
   }
 }
 
