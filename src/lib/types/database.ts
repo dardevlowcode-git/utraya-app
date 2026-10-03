@@ -910,6 +910,35 @@ export type Database = {
         }
         Returns: Json
       }
+      claim_scan_job_with_attempt: {
+        Args: {
+          p_job_id: string
+          p_started_at: string
+          p_lease_id: string
+          p_lease_expires_at: string
+        }
+        Returns: { job_id: string; lease_id: string; attempt_id: string; attempt_number: number }[]
+      }
+      finish_scan_job_attempt: {
+        Args: {
+          p_job_id: string
+          p_lease_id: string
+          p_attempt_id: string
+          p_status: 'completed' | 'failed'
+          p_completed_at: string
+          p_error_message: string | null
+          p_error_details: Json | null
+        }
+        Returns: boolean
+      }
+      requeue_scan_job_if_expired: {
+        Args: {
+          p_job_id: string
+          p_expected_lease_id: string | null
+          p_legacy_cutoff: string
+        }
+        Returns: boolean
+      }
     }
     Enums: Record<string, never>
   }

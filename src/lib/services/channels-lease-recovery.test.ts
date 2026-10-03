@@ -7,9 +7,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { processPendingScanJobs } from './channels'
 
-const { createAdminClientMock, createClientMock } = vi.hoisted(() => ({
+const { createAdminClientMock, createClientMock, rpcMock } = vi.hoisted(() => ({
   createAdminClientMock: vi.fn(),
   createClientMock: vi.fn(),
+  rpcMock: vi.fn(),
 }))
 
 vi.mock('@/lib/supabase/admin', () => ({
@@ -51,7 +52,12 @@ describe('processPendingScanJobs recovery', () => {
     queue = []
     updates = []
     fromMock.mockImplementation(() => builder(queue.length > 0 ? queue.shift() : { error: null }, updates))
-    createAdminClientMock.mockReturnValue({ from: fromMock })
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'requeue_scan_job_if_expired') return Promise.resolve({ data: true, error: null })
+      if (name === 'claim_scan_job_with_attempt') return Promise.resolve({ data: [], error: null })
+      return Promise.resolve({ data: null, error: { message: `Unexpected RPC: ${name}` } })
+    })
+    createAdminClientMock.mockReturnValue({ from: fromMock, rpc: rpcMock })
   })
 
   it('non processa nulla con code vuote', async () => {
@@ -79,7 +85,11 @@ describe('processPendingScanJobs recovery', () => {
       { data: null, error: null }
     )
     await expect(processPendingScanJobs(5)).resolves.toEqual({ processed: 0, failed: 0 })
-    expect(updates).toContainEqual(expect.objectContaining({ status: 'pending', error_message: 'requeued_without_lease' }))
+    expect(rpcMock).toHaveBeenCalledWith('requeue_scan_job_if_expired', expect.objectContaining({
+      p_job_id: 'job-legacy',
+      p_expected_lease_id: null,
+    }))
+    expect(updates).not.toContainEqual(expect.objectContaining({ error_message: 'requeued_without_lease' }))
   })
 
   it('riaccoda le lease scadute con fencing sulla lease', async () => {
@@ -91,6 +101,10 @@ describe('processPendingScanJobs recovery', () => {
       { data: null, error: null }
     )
     await expect(processPendingScanJobs(5)).resolves.toEqual({ processed: 0, failed: 0 })
-    expect(updates).toContainEqual(expect.objectContaining({ status: 'pending', error_message: 'requeued_after_timeout' }))
+    expect(rpcMock).toHaveBeenCalledWith('requeue_scan_job_if_expired', expect.objectContaining({
+      p_job_id: 'job-stale',
+      p_expected_lease_id: 'lease-old',
+    }))
+    expect(updates).not.toContainEqual(expect.objectContaining({ error_message: 'requeued_after_timeout' }))
   })
 })

@@ -694,10 +694,10 @@ export async function importChannelVideos(params: {
   supabase?: AppSupabaseClient
   lease?: { jobId: string; leaseId: string }
 }): Promise<{ channelId: string; importedCount: number; scannedCount: number }> {
-  const supabase = params.supabase ?? await createClient()
   const admin = createAdminClient()
-
-  const queryClient = params.bypassUserChannelGuard ? admin : supabase
+  const queryClient = params.bypassUserChannelGuard
+    ? admin
+    : params.supabase ?? await createClient()
   const { data: userChannel, error: ucError } = await queryClient
     .from('user_channels')
     .select('id')

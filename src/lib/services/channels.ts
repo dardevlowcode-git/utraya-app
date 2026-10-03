@@ -607,25 +607,18 @@ export async function runScanJob(params: { userId: string; channelId: string; jo
   const startedAt = new Date().toISOString()
   const leaseId = randomUUID()
   const leaseExpiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
-  const { data: claimed, error: claimError } = await admin
-    .from('jobs')
-    .update({ status: 'running', started_at: startedAt, lease_id: leaseId, lease_expires_at: leaseExpiresAt, error_message: null })
-    .eq('id', params.jobId)
-    .eq('status', 'pending')
-    .select('id, lease_id')
-    .maybeSingle()
+  const { data: claims, error: claimError } = await admin.rpc('claim_scan_job_with_attempt', {
+    p_job_id: params.jobId,
+    p_started_at: startedAt,
+    p_lease_id: leaseId,
+    p_lease_expires_at: leaseExpiresAt,
+  })
   if (claimError) throw new AppError('Impossibile acquisire job scansione', 'unknown', 500, { cause: claimError.message })
-  if (!claimed) return { claimed: false }
-
-  const { data: lastAttempt, error: attemptLookupError } = await admin
-    .from('job_attempts')
-    .select('attempt_number')
-    .eq('job_id', params.jobId)
-    .order('attempt_number', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  if (attemptLookupError) throw new AppError('Impossibile leggere tentativi job', 'unknown', 500, { cause: attemptLookupError.message })
-  const attemptNumber = (lastAttempt?.attempt_number ?? 0) + 1
+  const claim = claims?.[0]
+  if (!claim) return { claimed: false }
+  if (!claim.attempt_id || claim.lease_id !== leaseId) {
+    throw new AppError('Claim job scansione incompleto', 'structural', 500)
+  }
 
   let operationError: unknown = null
   try {
@@ -651,26 +644,17 @@ export async function runScanJob(params: { userId: string; channelId: string; jo
     const details = operationError instanceof AppError
       ? { type: operationError.type, statusCode: operationError.statusCode ?? null, ...(operationError.context ?? {}) }
       : operationError instanceof Error ? { message: operationError.message } : { message: 'scan_failed' }
-    const completedAt = new Date().toISOString()
-    const { data: failedJob, error: failedJobError } = await admin
-      .from('jobs')
-      .update({ status: 'failed', completed_at: completedAt, lease_id: null, lease_expires_at: null, error_message: message })
-      .eq('id', params.jobId)
-      .eq('lease_id', leaseId)
-      .gt('lease_expires_at', new Date().toISOString())
-      .select('id')
-      .maybeSingle()
-    if (!failedJob && !failedJobError) throw new AppError('Lease job scaduta durante la scansione', 'temporary', 409)
-
-    const { error: failedAttemptError } = await admin.from('job_attempts').insert({
-      job_id: params.jobId,
-      attempt_number: attemptNumber,
-      status: 'failed',
-      started_at: startedAt,
-      completed_at: completedAt,
-      error_message: message,
-      error_details: details,
+    const { data: finished, error: finishError } = await admin.rpc('finish_scan_job_attempt', {
+      p_job_id: params.jobId,
+      p_lease_id: leaseId,
+      p_attempt_id: claim.attempt_id,
+      p_status: 'failed',
+      p_completed_at: new Date().toISOString(),
+      p_error_message: message,
+      p_error_details: details,
     })
+    if (finishError) throw new AppError('Impossibile persistere esito errore scansione', 'unknown', 500, { cause: finishError.message })
+    if (!finished) throw new AppError('Lease job scaduta durante la scansione', 'temporary', 409)
 
     const { error: logError } = await admin.from('app_logs').insert({
       level: 'error',
@@ -684,45 +668,22 @@ export async function runScanJob(params: { userId: string; channelId: string; jo
       },
     })
 
-    if (failedJobError || failedAttemptError || logError) {
-      throw new AppError('Impossibile persistere esito errore scansione', 'unknown', 500, {
-        cause: failedJobError?.message ?? failedAttemptError?.message ?? logError?.message,
-      })
-    }
+    if (logError) throw new AppError('Impossibile persistere log errore scansione', 'unknown', 500, { cause: logError.message })
 
     throw operationError
   }
 
-  const completedAt = new Date().toISOString()
-  const { data: completedJob, error: completedError } = await admin
-    .from('jobs')
-    .update({ status: 'completed', completed_at: completedAt, lease_id: null, lease_expires_at: null, error_message: null })
-    .eq('id', params.jobId)
-    .eq('lease_id', leaseId)
-    .gt('lease_expires_at', new Date().toISOString())
-    .select('id')
-    .maybeSingle()
-  if (completedError) throw new AppError('Impossibile chiudere job scansione', 'unknown', 500, { cause: completedError.message })
-  if (!completedJob) throw new AppError('Lease job scaduta durante la scansione', 'temporary', 409)
-
-  const { error: attemptError } = await admin.from('job_attempts').insert({
-    job_id: params.jobId,
-    attempt_number: attemptNumber,
-    status: 'completed',
-    started_at: startedAt,
-    completed_at: completedAt,
-    error_message: null,
-    error_details: null,
+  const { data: finished, error: finishError } = await admin.rpc('finish_scan_job_attempt', {
+    p_job_id: params.jobId,
+    p_lease_id: leaseId,
+    p_attempt_id: claim.attempt_id,
+    p_status: 'completed',
+    p_completed_at: new Date().toISOString(),
+    p_error_message: null,
+    p_error_details: null,
   })
-  if (attemptError) {
-    const { error: auditLogError } = await admin.from('app_logs').insert({
-      level: 'error',
-      message: 'Job completato ma audit attempt non persistito',
-      context: { jobId: params.jobId, error: attemptError.message },
-    })
-    if (auditLogError) throw new AppError('Impossibile persistere audit job completato', 'unknown', 500, { cause: auditLogError.message })
-    throw new AppError('Impossibile registrare esito scansione', 'unknown', 500, { cause: attemptError.message })
-  }
+  if (finishError) throw new AppError('Impossibile chiudere job scansione', 'unknown', 500, { cause: finishError.message })
+  if (!finished) throw new AppError('Lease job scaduta durante la scansione', 'temporary', 409)
 
   return { claimed: true }
 }
@@ -766,34 +727,29 @@ export async function processPendingScanJobs(limit = 5): Promise<{ processed: nu
     .limit(safeLimit)
   if (legacyError) throw new AppError('Impossibile leggere job legacy senza lease', 'unknown', 500, { cause: legacyError.message })
 
-  for (const item of [...(running ?? []), ...(legacyRunning ?? [])]) {
-    if (!item.lease_id) {
-      const { error: legacyRequeueError } = await admin
-        .from('jobs')
-        .update({ status: 'pending', started_at: null, lease_id: null, lease_expires_at: null, error_message: 'requeued_without_lease' })
-        .eq('id', item.id)
-        .eq('status', 'running')
-        .is('lease_id', null)
-        .is('lease_expires_at', null)
-        .lt('started_at', legacyCutoffIso)
-      if (legacyRequeueError) throw new AppError('Impossibile recuperare job senza lease', 'unknown', 500, { cause: legacyRequeueError.message })
-      continue
-    }
-    const { error: requeueError } = await admin
-      .from('jobs')
-      .update({ status: 'pending', started_at: null, lease_id: null, lease_expires_at: null, error_message: 'requeued_after_timeout' })
-      .eq('id', item.id)
-      .eq('status', 'running')
-      .eq('lease_id', item.lease_id)
-    if (requeueError) throw new AppError('Impossibile recuperare job scansione bloccato', 'unknown', 500, { cause: requeueError.message })
+  // Il budget e` globale anche per le mutazioni di recovery, non solo per l'esecuzione.
+  const candidates = [
+    ...(pending ?? []).map((item) => ({ ...item, recoveryRequired: false })),
+    ...(running ?? []).map((item) => ({ ...item, recoveryRequired: true })),
+    ...(legacyRunning ?? []).map((item) => ({ ...item, recoveryRequired: true })),
+  ].slice(0, safeLimit)
+  const recoveredJobIds = new Set<string>()
+
+  for (const item of candidates) {
+    if (!item.recoveryRequired) continue
+    const { data: recovered, error: recoveryError } = await admin.rpc('requeue_scan_job_if_expired', {
+      p_job_id: item.id,
+      p_expected_lease_id: item.lease_id,
+      p_legacy_cutoff: legacyCutoffIso,
+    })
+    if (recoveryError) throw new AppError('Impossibile recuperare job scansione scaduto', 'unknown', 500, { cause: recoveryError.message })
+    if (recovered === true) recoveredJobIds.add(item.id)
   }
-  // Il limite e` globale: le query separate servono a distinguere le lease,
-  // ma non devono triplicare il budget di un singolo giro cron.
-  const data = [...(pending ?? []), ...(running ?? []), ...(legacyRunning ?? [])].slice(0, safeLimit)
 
   let processed = 0
   let failed = 0
-  for (const item of data ?? []) {
+  for (const item of candidates) {
+    if (item.recoveryRequired && !recoveredJobIds.has(item.id)) continue
     const payload = item.payload
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
       const { error: invalidPayloadError } = await admin.from('jobs').update({ status: 'failed', completed_at: new Date().toISOString(), error_message: 'invalid_payload' }).eq('id', item.id).eq('status', 'pending')
