@@ -84,7 +84,7 @@ export async function POST(request: Request) {
     if ((body.action ?? 'import_channel') === 'import_channel') {
       if (!body.channelId?.trim()) return apiV1Validation('channelId obbligatorio', requestId)
       const scan = await queueChannelScan({ userId: current.user.id, channelId: body.channelId.trim(), supabase: current.supabase, source: 'import_channel', maxResults: body.maxResults, dedupeKey: request.headers.get('idempotency-key') ?? undefined })
-      if (scan.background) after(() => { void scan.background?.() })
+      if (scan.background) after(() => scan.background?.())
       return apiOk({ jobId: scan.jobId, deduplicated: scan.deduplicated }, requestId, 202)
     }
 

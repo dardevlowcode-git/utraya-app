@@ -109,6 +109,56 @@ describe('POST /api/v1/channels', () => {
     expect(queueChannelScanMock).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user-1', channelId: CHANNEL_UUID, source: 'manual_scan' }))
   })
 
+  it('restituisce a after la Promise del worker così il runtime ne attende il completamento', async () => {
+    let releaseBackground!: () => void
+    const backgroundPromise = new Promise<void>((resolve) => { releaseBackground = resolve })
+    const background = vi.fn(() => backgroundPromise)
+    queueChannelScanMock.mockResolvedValue({ jobId: 'job-1', deduplicated: false, background })
+
+    const response = await POST(jsonRequest('http://localhost/api/v1/channels', 'POST', { action: 'scan_now', channelId: CHANNEL_UUID }))
+    expect(response.status).toBe(202)
+
+    const scheduledCallback = afterMock.mock.calls[0]?.[0] as (() => unknown) | undefined
+    expect(scheduledCallback).toBeTypeOf('function')
+    let scheduledWork: unknown
+    try {
+      scheduledWork = scheduledCallback?.()
+      expect(scheduledWork).toBe(backgroundPromise)
+      expect(background).toHaveBeenCalledOnce()
+    } finally {
+      releaseBackground()
+    }
+    await scheduledWork
+  })
+
+  it('propaga anche la Promise dello scan iniziale dopo aver aggiunto un canale', async () => {
+    let releaseBackground!: () => void
+    const backgroundPromise = new Promise<void>((resolve) => { releaseBackground = resolve })
+    const background = vi.fn(() => backgroundPromise)
+    addChannelAndQueueScanMock.mockResolvedValue({
+      channel: { channelId: CHANNEL_UUID },
+      scan: { jobId: 'job-2', deduplicated: false, background },
+    })
+
+    const response = await POST(jsonRequest('http://localhost/api/v1/channels', 'POST', {
+      action: 'add',
+      channelUrl: 'https://www.youtube.com/@dev-fixture',
+    }))
+    expect(response.status).toBe(202)
+
+    const scheduledCallback = afterMock.mock.calls[0]?.[0] as (() => unknown) | undefined
+    expect(scheduledCallback).toBeTypeOf('function')
+    let scheduledWork: unknown
+    try {
+      scheduledWork = scheduledCallback?.()
+      expect(scheduledWork).toBe(backgroundPromise)
+      expect(background).toHaveBeenCalledOnce()
+    } finally {
+      releaseBackground()
+    }
+    await scheduledWork
+  })
+
   it('valida channelUrl obbligatorio per action add', async () => {
     const response = await POST(jsonRequest('http://localhost/api/v1/channels', 'POST', { action: 'add' }))
     expect(response.status).toBe(400)

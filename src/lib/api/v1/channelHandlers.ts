@@ -58,13 +58,13 @@ export async function POST(request: Request) {
     if (action === 'scan_now') {
       if (!body.channelId?.trim()) return apiV1Validation('channelId obbligatorio', requestId)
       const scan = await queueChannelScan({ userId: current.user.id, channelId: body.channelId.trim(), supabase: current.supabase, source: 'manual_scan', maxResults: body.maxResults, dedupeKey: request.headers.get('idempotency-key') ?? undefined })
-      if (scan.background) after(() => { void scan.background?.() })
+      if (scan.background) after(() => scan.background?.())
       return apiOk({ jobId: scan.jobId, deduplicated: scan.deduplicated }, requestId, 202)
     }
 
     if (!body.channelUrl?.trim()) return apiV1Validation('channelUrl obbligatorio', requestId)
     const added = await addChannelAndQueueScan({ userId: current.user.id, channelUrl: body.channelUrl.trim(), markExistingVideosAsSeen: body.markExistingVideosAsSeen, supabase: current.supabase, maxResults: body.maxResults, dedupeKey: request.headers.get('idempotency-key') ?? undefined })
-    if (added.scan.background) after(() => { void added.scan.background?.() })
+    if (added.scan.background) after(() => added.scan.background?.())
     return apiOk({ ...added.channel, scan: { status: 'queued', jobId: added.scan.jobId, deduplicated: added.scan.deduplicated } }, requestId, 202)
   } catch (error) {
     return apiV1Error(error, requestId)
