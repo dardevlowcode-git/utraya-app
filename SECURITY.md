@@ -38,9 +38,10 @@ Segnalazioni accettate in italiano e inglese.
 
 | Branch / Versione | Supportata |
 | --- | --- |
+| `dev` (`dev.utraya.com`, ambiente tecnico isolato) | Sì per test e fix tecnici; non è una release di produzione |
 | `main` (produzione, utraya.com) | Sì |
 | `preprod` (preview.utraya.com) | Sì |
-| Altri branch / vecchi tag | No — aggiornare a `main` prima di segnalare |
+| Altri branch / vecchi tag | No — indicare il branch supportato prima della disclosure |
 
 ## Come segnalare una vulnerabilità (preferito)
 
