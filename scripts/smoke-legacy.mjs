@@ -3,11 +3,12 @@ import { spawn } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { createServer } from 'node:net'
 import path from 'node:path'
+import { isRunningInContainer } from './container-check.mjs'
 
 const require = createRequire(import.meta.url)
 const projectRoot = process.cwd()
 
-if (!existsSync('/.dockerenv')) {
+if (!isRunningInContainer()) {
   console.error('Smoke legacy consentito solo dentro un container Docker temporaneo.')
   process.exit(1)
 }
@@ -51,8 +52,10 @@ const protectedPages = [
   ['tracker', '/tracker', '/login'],
   ['watchlist', '/watchlist', '/login'],
   ['account', '/settings/account', '/login'],
+  ['pannello utilizzo API', '/usage', '/login'],
   ['video', '/video/smoke-video-id', '/login'],
   ['admin', '/admin', '/admin/login'],
+  ['pannello trascrizioni admin', '/admin/jobs', '/admin/login'],
 ]
 
 function findFreePort() {
@@ -193,17 +196,44 @@ try {
     })
   }
 
-  for (const [name, pathname] of [
-    ['API v1 me', '/api/v1/me'],
-    ['API v1 channels', '/api/v1/channels'],
-    ['API v1 watchlist', '/api/v1/watchlist'],
-  ]) {
-    await check(name, pathname, (response, body) =>
+  const apiV1Cases = [
+    ['me', 'GET', '/api/v1/me'],
+    ['channels list', 'GET', '/api/v1/channels'],
+    ['channels add', 'POST', '/api/v1/channels'],
+    ['channels delete', 'DELETE', '/api/v1/channels'],
+    ['videos list', 'GET', '/api/v1/videos'],
+    ['videos mutate', 'POST', '/api/v1/videos'],
+    ['video detail', 'GET', '/api/v1/videos/00000000-0000-4000-8000-000000000001'],
+    ['job detail', 'GET', '/api/v1/jobs/00000000-0000-4000-8000-000000000001'],
+    ['watchlist list', 'GET', '/api/v1/watchlist'],
+    ['watchlist add', 'POST', '/api/v1/watchlist'],
+    ['watchlist remove', 'DELETE', '/api/v1/watchlist'],
+    ['integrations list', 'GET', '/api/v1/integrations'],
+    ['integrations save/validate', 'POST', '/api/v1/integrations'],
+    ['integrations remove', 'DELETE', '/api/v1/integrations'],
+    ['account status', 'GET', '/api/v1/account'],
+    ['account deletion', 'DELETE', '/api/v1/account'],
+    ['legal acceptance status', 'GET', '/api/v1/legal/acceptance'],
+    ['legal acceptance update', 'POST', '/api/v1/legal/accept'],
+  ]
+  for (const [name, method, pathname] of apiV1Cases) {
+    const init = method === 'GET'
+      ? undefined
+      : { method, headers: { 'content-type': 'application/json' }, body: '{}' }
+    await check(`API v1 ${method} ${name}`, pathname, (response, body) =>
       response.status === 401
       && response.headers.get('content-type')?.includes('application/json') === true
-      && body.includes('UNAUTHORIZED')
-    )
+      && body.includes('UNAUTHORIZED'), init)
   }
+
+  await check('API v1 POST cancel deletion senza token', '/api/v1/account/cancel-deletion', (response, body) =>
+    response.status === 400
+    && response.headers.get('content-type')?.includes('application/json') === true
+    && body.includes('VALIDATION_FAILED'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    })
 
   for (const [name, pathname] of [
     ['cron daily-sync', '/api/cron/daily-sync'],

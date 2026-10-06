@@ -7,16 +7,22 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppSupabaseClient } from '@/lib/supabase/types'
 
-const { createAdminClientMock, fromMock, insertMock } = vi.hoisted(() => ({
+const { createAdminClientMock, createClientMock, fromMock, insertMock, getCurrentSessionMock } = vi.hoisted(() => ({
   createAdminClientMock: vi.fn(),
+  createClientMock: vi.fn(),
   fromMock: vi.fn(),
   insertMock: vi.fn(),
+  getCurrentSessionMock: vi.fn(),
 }))
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: createAdminClientMock,
 }))
 
+vi.mock('@/lib/supabase/server', () => ({ createClient: createClientMock }))
+vi.mock('@/lib/auth/provider', () => ({ getCurrentSession: getCurrentSessionMock }))
+
+import { POST as postIntegrations } from '@/app/api/integrations/route'
 import { saveApiKey, writeCredentialCheckAudit } from '@/lib/services/integrations'
 
 describe('writeCredentialCheckAudit', () => {
@@ -112,6 +118,84 @@ describe('writeCredentialCheckAudit', () => {
       expect(selectQuery.eq).toHaveBeenCalledWith('user_id', ownerId)
       expect(fromMock.mock.calls.map(([table]) => table)).toEqual(['api_usage_events', 'credential_checks'])
       expect(new URL(String(fetchMock.mock.calls[0]?.[0])).searchParams.get('key')).toBe(apiKey)
+      expect(JSON.stringify(insertMock.mock.calls)).not.toContain(apiKey)
+    } finally {
+      vi.unstubAllGlobals()
+      if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY
+      else process.env.CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey
+    }
+  })
+
+  it('registra separatamente il fallimento e il retry manuale nel flusso di validazione credenziali', async () => {
+    const ownerId = 'retry-flow-owner'
+    const apiKey = 'test-youtube-key-for-manual-retry'
+    const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
+    let credentialRow: Record<string, unknown> | null = null
+    const selectQuery = {
+      eq: vi.fn(() => selectQuery),
+      maybeSingle: vi.fn(async () => ({ data: credentialRow, error: null })),
+    }
+    let updateFilterCount = 0
+    const updateQuery = {
+      eq: vi.fn(() => {
+        updateFilterCount += 1
+        return updateFilterCount % 2 === 0 ? Promise.resolve({ error: null }) : updateQuery
+      }),
+    }
+    const supabase = {
+      from: vi.fn(() => ({
+        select: vi.fn(() => selectQuery),
+        upsert: vi.fn(async (values: Record<string, unknown>) => {
+          credentialRow = { id: 'credential-retry', ...values }
+          return { error: null }
+        }),
+        update: vi.fn((values: Record<string, unknown>) => {
+          credentialRow = { ...(credentialRow ?? {}), ...values }
+          return updateQuery
+        }),
+      })),
+    }
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response('{}', { status: 503 }))
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+
+    process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
+    vi.stubGlobal('fetch', fetchMock)
+    createClientMock.mockResolvedValue(supabase)
+
+    try {
+      getCurrentSessionMock.mockResolvedValue({ userId: ownerId })
+      const post = (body: Record<string, string>) => postIntegrations(new Request('http://localhost/api/integrations', {
+        method: 'POST',
+        headers: { origin: 'http://localhost', 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      }))
+      const firstResponse = await post({ provider: 'youtube', apiKey, action: 'save' })
+      const firstAttempt = await firstResponse.json()
+      const retryResponse = await post({ provider: 'youtube', action: 'validate' })
+      const retry = await retryResponse.json()
+
+      expect(firstResponse.status).toBe(200)
+      expect(firstAttempt.data.isValid).toBe(false)
+      expect(retryResponse.status).toBe(200)
+      expect(retry.data).toMatchObject({ provider: 'youtube', isValid: true, message: null })
+      expect(getCurrentSessionMock).toHaveBeenCalledTimes(2)
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(fetchMock.mock.calls.map(([url]) => new URL(String(url)).pathname)).toEqual([
+        '/youtube/v3/search',
+        '/youtube/v3/search',
+      ])
+
+      const insertedRows = insertMock.mock.calls.map(([row]) => row as Record<string, unknown>)
+      expect(insertedRows.filter((row) => row.provider === 'youtube')).toMatchObject([
+        { user_id: ownerId, operation: 'search.list', outcome: 'http_error', http_status: 503, quota_units: 1 },
+        { user_id: ownerId, operation: 'search.list', outcome: 'success', http_status: 200, quota_units: 1 },
+      ])
+      expect(insertedRows.filter((row) => 'credential_id' in row)).toMatchObject([
+        { credential_id: 'credential-retry', is_valid: false },
+        { credential_id: 'credential-retry', is_valid: true, error_type: null },
+      ])
+      expect(credentialRow).toMatchObject({ user_id: ownerId, is_valid: true })
       expect(JSON.stringify(insertMock.mock.calls)).not.toContain(apiKey)
     } finally {
       vi.unstubAllGlobals()
