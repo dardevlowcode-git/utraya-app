@@ -983,14 +983,16 @@ export type Database = {
       }
       get_my_api_usage_summary: {
         Args: { p_since: string }
+        // The DB type generator omits nullable SUM results; preserve their SQL NULL semantics here.
         Returns: {
           provider: string
           request_count: number
-          input_tokens: number
-          output_tokens: number
-          total_tokens: number
-          estimated_cost_usd: number
-          quota_units: number
+          input_tokens: number | null
+          output_tokens: number | null
+          total_tokens: number | null
+          estimated_cost_usd: number | null
+          quota_units: number | null
+          unknown_usage_count: number
         }[]
       }
     }

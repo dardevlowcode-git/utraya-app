@@ -20,6 +20,10 @@ type CredentialRow = Database['public']['Tables']['user_provider_credentials']['
 const PROVIDERS: Provider[] = ['youtube', 'gemini']
 const AES_GCM_IV_LENGTH = 12
 const AES_GCM_AUTH_TAG_LENGTH = 16
+const YOUTUBE_VALIDATION_TIMEOUT_MS = 10_000
+const GEMINI_VALIDATION_TIMEOUT_MS = 5_000
+const GEMINI_VALIDATION_MAX_ATTEMPTS = 3
+const GEMINI_VALIDATION_RETRY_BASE_MS = 250
 
 /**
  * Legge la chiave applicativa usata per cifrare le API key utente.
@@ -317,6 +321,7 @@ async function validateYouTubeApiKey(apiKey: string, userId: string): Promise<vo
       method: 'GET',
       headers: { Accept: 'application/json' },
       cache: 'no-store',
+      signal: AbortSignal.timeout(YOUTUBE_VALIDATION_TIMEOUT_MS),
     },
   })
 
@@ -334,17 +339,38 @@ async function validateGeminiApiKey(apiKey: string, userId: string): Promise<voi
   const url = new URL('https://generativelanguage.googleapis.com/v1beta/models')
   url.searchParams.set('key', apiKey)
 
-  const response = await fetchAndRecordProviderRequest({
-    userId,
-    provider: 'gemini',
-    operation: 'models.list',
-    url: url.toString(),
-    init: {
-      method: 'GET',
-      headers: { Accept: 'application/json' },
-      cache: 'no-store',
-    },
-  })
+  let response: Response | undefined
+  for (let attempt = 1; attempt <= GEMINI_VALIDATION_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      response = await fetchAndRecordProviderRequest({
+        userId,
+        provider: 'gemini',
+        operation: 'models.list',
+        url: url.toString(),
+        init: {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+          cache: 'no-store',
+          signal: AbortSignal.timeout(GEMINI_VALIDATION_TIMEOUT_MS),
+        },
+      })
+    } catch (error) {
+      const isTemporaryTransportError = error instanceof TypeError
+        || (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError'))
+      if (!isTemporaryTransportError || attempt === GEMINI_VALIDATION_MAX_ATTEMPTS) throw error
+    }
+
+    if (response) {
+      const isTemporaryServerError = response.status >= 500 && response.status <= 599
+      if (!isTemporaryServerError || attempt === GEMINI_VALIDATION_MAX_ATTEMPTS) break
+      await response.body?.cancel().catch(() => undefined)
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, GEMINI_VALIDATION_RETRY_BASE_MS * 2 ** (attempt - 1)))
+    response = undefined
+  }
+
+  if (!response) throw new Error('Gemini validation retry ended without a response')
 
   if (!response.ok) {
     const text = await response.text().catch(() => '')

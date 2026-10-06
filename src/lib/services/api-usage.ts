@@ -6,17 +6,26 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
-import type { ApiUsageEventRow } from '@/lib/types/domain'
 import type { Database } from '@/lib/types/database'
 import type { AppSupabaseClient } from '@/lib/supabase/types'
+import { toApiUsageEventViewModel } from '@/lib/view-models/api-usage'
+import type {
+  ApiUsageDashboardViewModel,
+  ApiUsageProvider,
+  ApiUsageSummaryViewModel,
+} from '@/lib/view-models/api-usage'
+
+export type { ApiUsageProvider } from '@/lib/view-models/api-usage'
 
 export const API_USAGE_WINDOW_DAYS = 30
 export const GEMINI_INPUT_RATE_USD_PER_MILLION = 0.3
 export const GEMINI_OUTPUT_RATE_USD_PER_MILLION = 2.5
 export const API_USAGE_PAGE_SIZE = 25
 
-export type ApiUsageProvider = 'youtube' | 'gemini'
 export type ApiUsageOutcome = 'success' | 'http_error' | 'network_error' | 'timeout'
+
+export type ApiUsageSummary = ApiUsageSummaryViewModel
+export type ApiUsageDashboard = ApiUsageDashboardViewModel
 
 export interface RecordApiUsageInput {
   userId: string
@@ -28,6 +37,7 @@ export interface RecordApiUsageInput {
   model?: string | null
   inputTokens?: number | null
   outputTokens?: number | null
+  totalTokens?: number | null
   quotaUnits?: number | null
   quotaBucket?: 'default' | 'search' | null
   occurredAt?: string
@@ -75,7 +85,7 @@ export function buildApiUsageEventInsert(input: RecordApiUsageInput): Database['
     model: isGemini ? input.model ?? null : null,
     input_tokens: inputTokens,
     output_tokens: outputTokens,
-    total_tokens: hasTokenUsage ? inputTokens + outputTokens : null,
+    total_tokens: isGemini ? input.totalTokens ?? null : null,
     estimated_cost_usd: hasTokenUsage ? estimateGeminiCostUsd(inputTokens, outputTokens) : null,
     input_rate_usd_per_million: hasTokenUsage ? GEMINI_INPUT_RATE_USD_PER_MILLION : null,
     output_rate_usd_per_million: hasTokenUsage ? GEMINI_OUTPUT_RATE_USD_PER_MILLION : null,
@@ -120,7 +130,7 @@ export async function recordGeminiUsage(params: {
   outcome: ApiUsageOutcome
   httpStatus?: number | null
   errorCategory?: 'provider_error' | 'network_error' | 'timeout' | 'unknown' | null
-  usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number }
+  usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number }
 }): Promise<boolean> {
   return recordApiUsageEvent({
     userId: params.userId,
@@ -132,6 +142,7 @@ export async function recordGeminiUsage(params: {
     errorCategory: params.errorCategory,
     inputTokens: params.usageMetadata?.promptTokenCount,
     outputTokens: params.usageMetadata?.candidatesTokenCount,
+    totalTokens: params.usageMetadata?.totalTokenCount,
   })
 }
 
@@ -170,27 +181,7 @@ export async function cleanupExpiredApiUsageEvents(
   return count ?? 0
 }
 
-export interface ApiUsageSummary {
-  provider: ApiUsageProvider
-  requestCount: number
-  inputTokens: number
-  outputTokens: number
-  totalTokens: number
-  estimatedCostUsd: number
-  quotaUnits: number
-}
-
-export interface ApiUsageDashboard {
-  since: string
-  page: number
-  pageSize: number
-  totalEvents: number
-  totalPages: number
-  summaries: ApiUsageSummary[]
-  events: ApiUsageEventRow[]
-}
-
-const EMPTY_SUMMARY = (provider: ApiUsageProvider): ApiUsageSummary => ({
+const EMPTY_SUMMARY = (provider: ApiUsageProvider): ApiUsageSummaryViewModel => ({
   provider,
   requestCount: 0,
   inputTokens: 0,
@@ -198,14 +189,20 @@ const EMPTY_SUMMARY = (provider: ApiUsageProvider): ApiUsageSummary => ({
   totalTokens: 0,
   estimatedCostUsd: 0,
   quotaUnits: 0,
+  unknownUsageCount: 0,
+  usageQuality: 'none',
 })
+
+function nullableNumber(value: number | null): number | null {
+  return value === null ? null : Number(value)
+}
 
 export async function getApiUsageDashboard(
   userId: string,
   requestedPage = 1,
   client?: AppSupabaseClient,
   now = new Date()
-): Promise<ApiUsageDashboard> {
+): Promise<ApiUsageDashboardViewModel> {
   const supabase = client ?? await createClient()
   const since = new Date(now.getTime() - API_USAGE_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString()
   const { data: summaryRows, error: summaryError } = await supabase.rpc('get_my_api_usage_summary', { p_since: since })
@@ -220,14 +217,33 @@ export async function getApiUsageDashboard(
   for (const row of summaryRows ?? []) {
     const provider = row.provider as ApiUsageProvider
     if (provider !== 'gemini' && provider !== 'youtube') continue
+    const requestCount = Number(row.request_count)
+    const inputTokens = nullableNumber(row.input_tokens)
+    const outputTokens = nullableNumber(row.output_tokens)
+    const totalTokens = nullableNumber(row.total_tokens)
+    const estimatedCostUsd = nullableNumber(row.estimated_cost_usd)
+    const quotaUnits = nullableNumber(row.quota_units)
+    const unknownUsageCount = Number(row.unknown_usage_count)
+    const hasKnownUsage = provider === 'gemini'
+      ? inputTokens !== null || outputTokens !== null || totalTokens !== null || estimatedCostUsd !== null
+      : quotaUnits !== null
+
     summaries.set(provider, {
       provider,
-      requestCount: Number(row.request_count),
-      inputTokens: Number(row.input_tokens),
-      outputTokens: Number(row.output_tokens),
-      totalTokens: Number(row.total_tokens),
-      estimatedCostUsd: Number(row.estimated_cost_usd),
-      quotaUnits: Number(row.quota_units),
+      requestCount,
+      inputTokens,
+      outputTokens,
+      totalTokens,
+      estimatedCostUsd,
+      quotaUnits,
+      unknownUsageCount,
+      usageQuality: requestCount === 0
+        ? 'none'
+        : !hasKnownUsage
+          ? 'unknown'
+          : unknownUsageCount > 0
+            ? 'partial'
+            : 'recorded',
     })
   }
 
@@ -237,7 +253,7 @@ export async function getApiUsageDashboard(
   const start = (page - 1) * API_USAGE_PAGE_SIZE
   const { data: eventRows, error: eventsError } = await supabase
     .from('api_usage_events')
-    .select('id, user_id, provider, operation, occurred_at, outcome, http_status, error_category, model, input_tokens, output_tokens, total_tokens, estimated_cost_usd, input_rate_usd_per_million, output_rate_usd_per_million, quota_units, quota_bucket')
+    .select('id, provider, operation, occurred_at, outcome, http_status, error_category, model, input_tokens, output_tokens, total_tokens, estimated_cost_usd, quota_units, quota_bucket')
     .eq('user_id', userId)
     .gte('occurred_at', since)
     .order('occurred_at', { ascending: false })
@@ -255,6 +271,6 @@ export async function getApiUsageDashboard(
     totalEvents,
     totalPages,
     summaries: [summaries.get('gemini')!, summaries.get('youtube')!],
-    events: (eventRows ?? []) as ApiUsageEventRow[],
+    events: (eventRows ?? []).map(toApiUsageEventViewModel),
   }
 }

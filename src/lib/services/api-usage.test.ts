@@ -18,6 +18,10 @@ const apiUsageMigration = readFileSync(
   new URL('../../../supabase/migrations/20261004120000_api_usage_events.sql', import.meta.url),
   'utf8'
 )
+const apiUsageSummaryMigration = readFileSync(
+  new URL('../../../supabase/migrations/20261006213338_api_usage_summary_quality.sql', import.meta.url),
+  'utf8'
+)
 
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: createAdminClientMock }))
 
@@ -53,12 +57,13 @@ describe('api usage accounting', () => {
       httpStatus: 200,
       inputTokens: 50_768,
       outputTokens: 149,
+      totalTokens: 50_918,
     })).toMatchObject({
       user_id: 'owner-1',
       provider: 'gemini',
       input_tokens: 50_768,
       output_tokens: 149,
-      total_tokens: 50_917,
+      total_tokens: 50_918,
       estimated_cost_usd: 0.0156029,
       input_rate_usd_per_million: 0.3,
       output_rate_usd_per_million: 2.5,
@@ -72,16 +77,31 @@ describe('api usage accounting', () => {
       model: 'gemini-3.5-flash-lite',
       outcome: 'success',
       httpStatus: 200,
-      usageMetadata: { promptTokenCount: 50_768, candidatesTokenCount: 149 },
+      usageMetadata: { promptTokenCount: 50_768, candidatesTokenCount: 149, totalTokenCount: 50_918 },
     })
 
     expect(insertMock).toHaveBeenCalledWith(expect.objectContaining({
       user_id: 'credential-owner',
       input_tokens: 50_768,
       output_tokens: 149,
-      total_tokens: 50_917,
+      total_tokens: 50_918,
       estimated_cost_usd: 0.0156029,
     }))
+  })
+
+  it('non deduce il totale Gemini dalla somma input/output se il provider non lo restituisce', () => {
+    expect(buildApiUsageEventInsert({
+      userId: 'owner-1',
+      provider: 'gemini',
+      operation: 'generateContent',
+      outcome: 'success',
+      inputTokens: 8,
+      outputTokens: 3,
+    })).toMatchObject({
+      input_tokens: 8,
+      output_tokens: 3,
+      total_tokens: null,
+    })
   })
 
   it('non inventa token/costi Gemini quando il provider non fornisce usage metadata', () => {
@@ -263,6 +283,13 @@ describe('api usage accounting', () => {
     expect(policy).toMatch(/occurred_at\s*>=\s*NOW\(\)\s*-\s*INTERVAL\s*'30 days'/)
   })
 
+  it('aggiorna la RPC senza trasformare somme sconosciute in zero', () => {
+    expect(apiUsageSummaryMigration).toMatch(/DROP FUNCTION IF EXISTS public\.get_my_api_usage_summary\(TIMESTAMPTZ\)/)
+    expect(apiUsageSummaryMigration).toMatch(/unknown_usage_count/)
+    expect(apiUsageSummaryMigration).toMatch(/usage\.total_tokens IS NULL/)
+    expect(apiUsageSummaryMigration).not.toMatch(/COALESCE\(SUM\(usage\.(input_tokens|output_tokens|total_tokens|estimated_cost_usd|quota_units)\)/)
+  })
+
   it('applica il cutoff della retention di 30 giorni nel cleanup schedulato', async () => {
     const ltMock = vi.fn().mockResolvedValue({ count: 3, error: null })
     const deleteMock = vi.fn().mockReturnValue({ lt: ltMock })
@@ -306,6 +333,7 @@ describe('api usage accounting', () => {
           total_tokens: 0,
           estimated_cost_usd: 0,
           quota_units: 30,
+          unknown_usage_count: 0,
         }],
         error: null,
       }),
@@ -329,5 +357,100 @@ describe('api usage accounting', () => {
     expect(query.gte).toHaveBeenCalledWith('occurred_at', '2026-09-04T00:00:00.000Z')
     expect(query.range).toHaveBeenCalledWith(25, 49)
     expect(clientObject.rpc).toHaveBeenCalledWith('get_my_api_usage_summary', { p_since: '2026-09-04T00:00:00.000Z' })
+  })
+
+  it('mantiene ignoti gli aggregati Gemini quando tutti gli eventi registrati non hanno usage', async () => {
+    const query = {
+      select: vi.fn(),
+      eq: vi.fn(),
+      gte: vi.fn(),
+      order: vi.fn(),
+      range: vi.fn().mockResolvedValue({ data: [], error: null }),
+    }
+    query.select.mockReturnValue(query)
+    query.eq.mockReturnValue(query)
+    query.gte.mockReturnValue(query)
+    query.order.mockReturnValue(query)
+    const client = {
+      from: vi.fn().mockReturnValue(query),
+      rpc: vi.fn().mockResolvedValue({
+        data: [{
+          provider: 'gemini',
+          request_count: 2,
+          input_tokens: null,
+          output_tokens: null,
+          total_tokens: null,
+          estimated_cost_usd: null,
+          quota_units: 0,
+          unknown_usage_count: 2,
+        }],
+        error: null,
+      }),
+    } as unknown as AppSupabaseClient
+
+    const dashboard = await getApiUsageDashboard(
+      'credential-owner',
+      1,
+      client,
+      new Date('2026-10-04T00:00:00.000Z')
+    )
+
+    expect(dashboard.summaries[0]).toMatchObject({
+      provider: 'gemini',
+      requestCount: 2,
+      inputTokens: null,
+      outputTokens: null,
+      totalTokens: null,
+      estimatedCostUsd: null,
+      unknownUsageCount: 2,
+      usageQuality: 'unknown',
+    })
+  })
+
+  it('marca parziali le somme Gemini quando alcuni eventi registrati non hanno metadati completi', async () => {
+    const query = {
+      select: vi.fn(),
+      eq: vi.fn(),
+      gte: vi.fn(),
+      order: vi.fn(),
+      range: vi.fn().mockResolvedValue({ data: [], error: null }),
+    }
+    query.select.mockReturnValue(query)
+    query.eq.mockReturnValue(query)
+    query.gte.mockReturnValue(query)
+    query.order.mockReturnValue(query)
+    const client = {
+      from: vi.fn().mockReturnValue(query),
+      rpc: vi.fn().mockResolvedValue({
+        data: [{
+          provider: 'gemini',
+          request_count: 2,
+          input_tokens: 100,
+          output_tokens: 20,
+          total_tokens: 123,
+          estimated_cost_usd: 0.00008,
+          quota_units: 0,
+          unknown_usage_count: 1,
+        }],
+        error: null,
+      }),
+    } as unknown as AppSupabaseClient
+
+    const dashboard = await getApiUsageDashboard(
+      'credential-owner',
+      1,
+      client,
+      new Date('2026-10-04T00:00:00.000Z')
+    )
+
+    expect(dashboard.summaries[0]).toMatchObject({
+      requestCount: 2,
+      inputTokens: 100,
+      outputTokens: 20,
+      totalTokens: 123,
+      estimatedCostUsd: 0.00008,
+      unknownUsageCount: 1,
+      usageQuality: 'partial',
+    })
   })
 })

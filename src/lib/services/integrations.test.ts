@@ -22,8 +22,39 @@ vi.mock('@/lib/supabase/admin', () => ({
 vi.mock('@/lib/supabase/server', () => ({ createClient: createClientMock }))
 vi.mock('@/lib/auth/provider', () => ({ getCurrentSession: getCurrentSessionMock }))
 
-import { POST as postIntegrations } from '@/app/api/integrations/route'
+import { maxDuration as integrationsMaxDuration, POST as postIntegrations } from '@/app/api/integrations/route'
 import { saveApiKey, writeCredentialCheckAudit } from '@/lib/services/integrations'
+
+/** Crea un client minimo per salvare, rileggere e aggiornare una credenziale di test. */
+function createCredentialSupabase(credentialId: string) {
+  let credentialRow: Record<string, unknown> | null = null
+  const selectQuery = {
+    eq: vi.fn(() => selectQuery),
+    maybeSingle: vi.fn(async () => ({ data: credentialRow, error: null })),
+  }
+  let updateFilterCount = 0
+  const updateQuery = {
+    eq: vi.fn(() => {
+      updateFilterCount += 1
+      return updateFilterCount % 2 === 0 ? Promise.resolve({ error: null }) : updateQuery
+    }),
+  }
+  const supabase = {
+    from: vi.fn(() => ({
+      select: vi.fn(() => selectQuery),
+      upsert: vi.fn(async (values: Record<string, unknown>) => {
+        credentialRow = { id: credentialId, ...values }
+        return { error: null }
+      }),
+      update: vi.fn((values: Record<string, unknown>) => {
+        credentialRow = { ...(credentialRow ?? {}), ...values }
+        return updateQuery
+      }),
+    })),
+  }
+
+  return { supabase, getCredentialRow: () => credentialRow }
+}
 
 describe('writeCredentialCheckAudit', () => {
   beforeEach(() => {
@@ -31,6 +62,10 @@ describe('writeCredentialCheckAudit', () => {
     fromMock.mockReturnValue({ insert: insertMock })
     createAdminClientMock.mockReturnValue({ from: fromMock })
     insertMock.mockResolvedValue({ error: null })
+  })
+
+  it('riserva 30 secondi alla route integrazioni per il retry provider limitato', () => {
+    expect(integrationsMaxDuration).toBe(30)
   })
 
   it('scrive lo storico con il client privilegiato e il payload minimo', async () => {
@@ -115,6 +150,8 @@ describe('writeCredentialCheckAudit', () => {
         operation: 'search.list',
         outcome: 'success',
       })
+      expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: 'GET' })
+      expect(fetchMock.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal)
       expect(selectQuery.eq).toHaveBeenCalledWith('user_id', ownerId)
       expect(fromMock.mock.calls.map(([table]) => table)).toEqual(['api_usage_events', 'credential_checks'])
       expect(new URL(String(fetchMock.mock.calls[0]?.[0])).searchParams.get('key')).toBe(apiKey)
@@ -263,6 +300,77 @@ describe('writeCredentialCheckAudit', () => {
       ])
       expect(credentialRow).toMatchObject({ user_id: ownerId, is_valid: true })
       expect(JSON.stringify(insertMock.mock.calls)).not.toContain(apiKey)
+    } finally {
+      vi.unstubAllGlobals()
+      if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY
+      else process.env.CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey
+    }
+  })
+
+  it('ritenta errori temporanei Gemini solo sulla GET idempotente e registra ogni tentativo', async () => {
+    const ownerId = 'gemini-retry-owner'
+    const apiKey = 'test-gemini-key-for-retry'
+    const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
+    const { supabase } = createCredentialSupabase('credential-gemini-retry')
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new TypeError('temporary network failure'))
+      .mockResolvedValueOnce(new Response('{}', { status: 503 }))
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+
+    process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
+    vi.stubGlobal('fetch', fetchMock)
+
+    try {
+      const result = await saveApiKey({
+        userId: ownerId,
+        provider: 'gemini',
+        apiKey,
+        supabase: supabase as unknown as AppSupabaseClient,
+      })
+
+      expect(result.isValid).toBe(true)
+      expect(fetchMock).toHaveBeenCalledTimes(3)
+      expect(fetchMock.mock.calls.every(([, init]) => init?.method === 'GET')).toBe(true)
+      expect(fetchMock.mock.calls.every(([, init]) => init?.signal instanceof AbortSignal)).toBe(true)
+      expect(insertMock.mock.calls
+        .map(([row]) => row as Record<string, unknown>)
+        .filter((row) => row.provider === 'gemini')).toMatchObject([
+        { provider: 'gemini', outcome: 'network_error' },
+        { provider: 'gemini', outcome: 'http_error', http_status: 503 },
+        { provider: 'gemini', outcome: 'success', http_status: 200 },
+      ])
+      expect(JSON.stringify(insertMock.mock.calls)).not.toContain(apiKey)
+    } finally {
+      vi.unstubAllGlobals()
+      if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY
+      else process.env.CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey
+    }
+  })
+
+  it('non ritenta gli errori Gemini 429/quota', async () => {
+    const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
+    const { supabase } = createCredentialSupabase('credential-gemini-quota')
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 429 }))
+
+    process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
+    vi.stubGlobal('fetch', fetchMock)
+
+    try {
+      const result = await saveApiKey({
+        userId: 'gemini-quota-owner',
+        provider: 'gemini',
+        apiKey: 'test-gemini-key-for-quota',
+        supabase: supabase as unknown as AppSupabaseClient,
+      })
+
+      expect(result.isValid).toBe(false)
+      expect(fetchMock).toHaveBeenCalledOnce()
+      expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('GET')
+      expect(insertMock.mock.calls
+        .map(([row]) => row as Record<string, unknown>)
+        .filter((row) => row.provider === 'gemini')).toMatchObject([
+        { provider: 'gemini', outcome: 'http_error', http_status: 429 },
+      ])
     } finally {
       vi.unstubAllGlobals()
       if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY

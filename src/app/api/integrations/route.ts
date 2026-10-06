@@ -14,6 +14,8 @@ import {
 import { AppError, errorResponse } from '@/lib/utils/errors'
 import { ensureJsonRequest, ensureSameOrigin, getRequestId } from '@/lib/security/http'
 
+export const maxDuration = 30
+
 interface IntegrationPostBody {
   provider?: 'youtube' | 'gemini'
   apiKey?: string

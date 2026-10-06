@@ -6,17 +6,24 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
+import enMessages from '../../../../messages/en.json'
+import itMessages from '../../../../messages/it.json'
 
-const { getCurrentSessionMock, getApiUsageDashboardMock, getLocaleMock, getTranslationsMock } = vi.hoisted(() => ({
+const { getCurrentSessionMock, getApiUsageDashboardMock, getLocaleMock, getTranslationsMock, getFormatterMock } = vi.hoisted(() => ({
   getCurrentSessionMock: vi.fn(),
   getApiUsageDashboardMock: vi.fn(),
   getLocaleMock: vi.fn(),
   getTranslationsMock: vi.fn(),
+  getFormatterMock: vi.fn(),
 }))
 
 vi.mock('@/lib/auth/provider', () => ({ getCurrentSession: getCurrentSessionMock }))
 vi.mock('@/lib/services/api-usage', () => ({ getApiUsageDashboard: getApiUsageDashboardMock }))
-vi.mock('next-intl/server', () => ({ getLocale: getLocaleMock, getTranslations: getTranslationsMock }))
+vi.mock('next-intl/server', () => ({
+  getLocale: getLocaleMock,
+  getTranslations: getTranslationsMock,
+  getFormatter: getFormatterMock,
+}))
 vi.mock('next/link', async () => {
   const React = await import('react')
   return {
@@ -34,8 +41,8 @@ const emptyDashboard = {
   totalEvents: 0,
   totalPages: 1,
   summaries: [
-    { provider: 'gemini', requestCount: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCostUsd: 0, quotaUnits: 0 },
-    { provider: 'youtube', requestCount: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCostUsd: 0, quotaUnits: 0 },
+    { provider: 'gemini', requestCount: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCostUsd: 0, quotaUnits: 0, unknownUsageCount: 0, usageQuality: 'none' },
+    { provider: 'youtube', requestCount: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCostUsd: 0, quotaUnits: 0, unknownUsageCount: 0, usageQuality: 'none' },
   ],
   events: [],
 }
@@ -48,6 +55,16 @@ function mockTranslations(messages: Record<string, string>) {
       messages[key] ?? key
     )
   )
+}
+
+/** Fornisce formattatori deterministici con la stessa locale usata dai messaggi del test. */
+function mockFormatter(locale: string) {
+  getFormatterMock.mockResolvedValue({
+    number: (value: number, options?: Intl.NumberFormatOptions) =>
+      new Intl.NumberFormat(locale, options).format(value),
+    dateTime: (value: Date | number, options?: Intl.DateTimeFormatOptions) =>
+      new Intl.DateTimeFormat(locale, options).format(value),
+  })
 }
 
 describe('pagina utilizzo API', () => {
@@ -63,6 +80,7 @@ describe('pagina utilizzo API', () => {
     })
     getApiUsageDashboardMock.mockResolvedValue(emptyDashboard)
     getLocaleMock.mockResolvedValue('it')
+    mockFormatter('it')
     getTranslationsMock.mockResolvedValue((key: string) => key)
   })
 
@@ -124,9 +142,11 @@ describe('pagina utilizzo API', () => {
       'usage.networkError': 'Network error',
       'usage.timeout': 'Timeout',
       'usage.quotaUnitsShort': 'quota units',
+      'usage.searchBucket': 'search',
       'usage.tokenUnavailable': 'Tokens unavailable',
     })
     getLocaleMock.mockResolvedValue('en')
+    mockFormatter('en')
     getCurrentSessionMock.mockResolvedValue({
       userId: 'owner-1',
       email: 'owner@example.invalid',
@@ -140,27 +160,24 @@ describe('pagina utilizzo API', () => {
       totalEvents: 26,
       totalPages: 2,
       summaries: [
-        { provider: 'gemini', requestCount: 2, inputTokens: 1_000, outputTokens: 250, totalTokens: 1_250, estimatedCostUsd: 0.000925, quotaUnits: 0 },
-        { provider: 'youtube', requestCount: 26, inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCostUsd: 0, quotaUnits: 30 },
+        { provider: 'gemini', requestCount: 2, inputTokens: 1_000, outputTokens: 250, totalTokens: 1_250, estimatedCostUsd: 0.000925, quotaUnits: 0, unknownUsageCount: 0, usageQuality: 'recorded' },
+        { provider: 'youtube', requestCount: 26, inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCostUsd: 0, quotaUnits: 30, unknownUsageCount: 0, usageQuality: 'recorded' },
       ],
       events: [{
         id: 'event-1',
-        user_id: 'owner-1',
         provider: 'youtube',
         operation: 'search.list',
-        occurred_at: '2026-10-05T12:00:00.000Z',
+        occurredAt: '2026-10-05T12:00:00.000Z',
         outcome: 'http_error',
-        http_status: 503,
-        error_category: 'provider_error',
+        httpStatus: 503,
+        errorCategory: 'provider_error',
         model: null,
-        input_tokens: null,
-        output_tokens: null,
-        total_tokens: null,
-        estimated_cost_usd: null,
-        input_rate_usd_per_million: null,
-        output_rate_usd_per_million: null,
-        quota_units: 100,
-        quota_bucket: 'search',
+        inputTokens: null,
+        outputTokens: null,
+        totalTokens: null,
+        estimatedCostUsd: null,
+        quotaUnits: 100,
+        quotaBucket: 'search',
         api_key: sensitiveValue,
         prompt: sensitiveValue,
         response_body: sensitiveValue,
@@ -220,5 +237,104 @@ describe('pagina utilizzo API', () => {
       title: 'API usage',
       description: 'Requests made with your personal API keys during the last 30 days.',
     })
+  })
+
+  it('mostra in italiano e inglese un avviso best-effort senza promettere gli eventi persi', async () => {
+    const cases = [
+      { locale: 'it', messages: itMessages },
+      { locale: 'en', messages: enMessages },
+    ]
+
+    for (const { locale, messages } of cases) {
+      const warning = messages.usage.bestEffortWarning
+      mockFormatter(locale)
+      mockTranslations(Object.fromEntries(
+        Object.entries(messages.usage).map(([key, value]) => [`usage.${key}`, value])
+      ))
+
+      const page = await ApiUsagePage({ searchParams: Promise.resolve({}) })
+      const html = renderToStaticMarkup(page!)
+
+      expect(html).toContain(warning)
+    }
+  })
+
+  it('mostra gli aggregati Gemini ignoti come non disponibili, non come zero', async () => {
+    mockTranslations({
+      'usage.title': 'API usage',
+      'usage.subtitle': 'Requests from personal keys.',
+      'usage.notAvailable': 'Not available',
+      'usage.summaryUnknown': 'Usage metadata is unavailable for {count} recorded requests.',
+    })
+    getApiUsageDashboardMock.mockResolvedValue({
+      ...emptyDashboard,
+      totalEvents: 2,
+      summaries: [
+        {
+          provider: 'gemini',
+          requestCount: 2,
+          inputTokens: null,
+          outputTokens: null,
+          totalTokens: null,
+          estimatedCostUsd: null,
+          quotaUnits: null,
+          unknownUsageCount: 2,
+          usageQuality: 'unknown',
+        },
+        emptyDashboard.summaries[1],
+      ],
+    })
+
+    const page = await ApiUsagePage({ searchParams: Promise.resolve({}) })
+    const html = renderToStaticMarkup(page!)
+
+    expect(html).toContain('Usage metadata is unavailable for 2 recorded requests.')
+    expect(html).toContain('Not available')
+    expect(html).not.toContain('$0.000000')
+  })
+
+  it('indica aggregati parziali e mostra il total token restituito dal provider', async () => {
+    mockTranslations({
+      'usage.title': 'API usage',
+      'usage.subtitle': 'Requests from personal keys.',
+      'usage.tokens': 'tokens',
+      'usage.totalTokens': 'Total tokens',
+      'usage.inputTokens': 'Input tokens',
+      'usage.outputTokens': 'Output tokens',
+      'usage.requests': 'requests',
+      'usage.estimatedCost': 'Estimated cost',
+      'usage.costNote': 'Estimated cost, not an invoice.',
+      'usage.youtube': 'YouTube Data API',
+      'usage.quotaUnits': 'Estimated quota units',
+      'usage.quotaNote': 'Quota units are estimates.',
+      'usage.notAvailable': 'Not available',
+      'usage.summaryPartial': 'Partial totals: usage metadata is missing for {count} recorded requests.',
+    })
+    mockFormatter('en')
+    getApiUsageDashboardMock.mockResolvedValue({
+      ...emptyDashboard,
+      totalEvents: 2,
+      summaries: [
+        {
+          provider: 'gemini',
+          requestCount: 2,
+          inputTokens: 100,
+          outputTokens: 20,
+          totalTokens: 123,
+          estimatedCostUsd: 0.00008,
+          quotaUnits: null,
+          unknownUsageCount: 1,
+          usageQuality: 'partial',
+        },
+        emptyDashboard.summaries[1],
+      ],
+    })
+
+    const page = await ApiUsagePage({ searchParams: Promise.resolve({}) })
+    const html = renderToStaticMarkup(page!)
+
+    expect(html).toContain('123')
+    expect(html).toContain('Partial totals: usage metadata is missing for 1 recorded requests.')
+    expect(html).toContain('$0.000080')
   })
 })
