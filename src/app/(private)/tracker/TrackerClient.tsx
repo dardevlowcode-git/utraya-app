@@ -413,7 +413,7 @@ function FilterMenu({
 
       {isOpen ? (
         <div className="absolute z-20 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-2xl bg-surface-container-lowest border border-surface-container-high p-4 shadow-ambient">
-          <p className="text-[11px] font-bold uppercase tracking-[0.05em] text-on-surface-variant mb-2">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant mb-2">
             {labels.state}
           </p>
           <div className="space-y-2 mb-4">
@@ -434,7 +434,7 @@ function FilterMenu({
             />
           </div>
 
-          <p className="text-[11px] font-bold uppercase tracking-[0.05em] text-on-surface-variant mb-2">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant mb-2">
             {labels.duration}
           </p>
           <div className="space-y-2">
@@ -502,7 +502,7 @@ function MetricCard({
 
   return (
     <article className={`rounded-2xl p-5 shadow-ambient ${toneClasses[tone]}`}>
-      <p className="text-xs uppercase tracking-[0.05em] font-black opacity-80">{label}</p>
+      <p className="text-xs uppercase tracking-wider font-black opacity-80">{label}</p>
       <p className="font-headline text-3xl font-extrabold mt-2">{value}</p>
     </article>
   )

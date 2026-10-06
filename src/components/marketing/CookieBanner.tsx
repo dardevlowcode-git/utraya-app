@@ -47,7 +47,7 @@ export default function CookieBanner() {
   }
 
   return (
-    <aside role="dialog" aria-modal="true" aria-labelledby="cookie-banner-title" className="fixed bottom-0 left-0 right-0 z-[70] border-t border-stroke-subtle bg-surface-statement p-4 md:p-5 shadow-hero">
+    <aside role="dialog" aria-modal="true" aria-labelledby="cookie-banner-title" className="fixed bottom-0 left-0 right-0 z-70 border-t border-stroke-subtle bg-surface-statement p-4 md:p-5 shadow-hero">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-3">
         <h2 id="cookie-banner-title" className="text-sm font-semibold text-on-surface">{t('marketing.cookies.title')}</h2>
         <p className="text-sm text-on-surface">{t('marketing.cookies.description')}</p>

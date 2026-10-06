@@ -10,6 +10,7 @@ import { AppError } from '@/lib/utils/errors'
 import type { VideoWithContext } from '@/lib/types/domain'
 import type { Database, Json } from '@/lib/types/database'
 import { getProviderApiKeyForUser, getProviderApiKeyForUserAsAdmin } from '@/lib/services/integrations'
+import { fetchAndRecordProviderRequest } from '@/lib/services/api-usage'
 import { parseYouTubeDurationToSeconds } from '@/lib/utils/video-duration'
 import type { AppSupabaseClient } from '@/lib/supabase/types'
 
@@ -495,14 +496,20 @@ function getBestThumbnail(item: YouTubePlaylistItem): string | null {
 /**
  * Helper fetch JSON con errore strutturato per risposte non-2xx.
  */
-async function fetchJson<T>(url: URL): Promise<T> {
+async function fetchJson<T>(params: { url: URL; userId: string; operation: string }): Promise<T> {
   let response: Response
   try {
-    response = await fetch(url.toString(), {
-      method: 'GET',
-      headers: { Accept: 'application/json' },
-      cache: 'no-store',
-      signal: AbortSignal.timeout(10_000),
+    response = await fetchAndRecordProviderRequest({
+      userId: params.userId,
+      provider: 'youtube',
+      operation: params.operation,
+      url: params.url.toString(),
+      init: {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+        signal: AbortSignal.timeout(10_000),
+      },
     })
   } catch (error) {
     if (error instanceof Error && error.name === 'TimeoutError') {
@@ -527,7 +534,7 @@ async function fetchJson<T>(url: URL): Promise<T> {
 /**
  * Recupera snapshot canale YouTube (playlist uploads + metadati/statistiche utili).
  */
-async function getChannelSnapshot(youtubeApiKey: string, youtubeChannelId: string): Promise<{
+async function getChannelSnapshot(youtubeApiKey: string, youtubeChannelId: string, userId: string): Promise<{
   uploadsPlaylistId: string
   title: string | null
   description: string | null
@@ -562,7 +569,7 @@ async function getChannelSnapshot(youtubeApiKey: string, youtubeChannelId: strin
     }>
   }
 
-  const json = await fetchJson<ChannelsResponse>(url)
+  const json = await fetchJson<ChannelsResponse>({ url, userId, operation: 'channels.list' })
   const item = json.items?.[0]
   const uploads = item?.contentDetails?.relatedPlaylists?.uploads
 
@@ -595,7 +602,7 @@ async function getChannelSnapshot(youtubeApiKey: string, youtubeChannelId: strin
 /**
  * Elenca gli ultimi elementi della playlist uploads del canale.
  */
-async function listRecentPlaylistItems(youtubeApiKey: string, playlistId: string, maxResults: number): Promise<YouTubePlaylistItem[]> {
+async function listRecentPlaylistItems(youtubeApiKey: string, playlistId: string, maxResults: number, userId: string): Promise<YouTubePlaylistItem[]> {
   const url = new URL('https://www.googleapis.com/youtube/v3/playlistItems')
   url.searchParams.set('part', 'snippet,contentDetails')
   url.searchParams.set('playlistId', playlistId)
@@ -604,7 +611,7 @@ async function listRecentPlaylistItems(youtubeApiKey: string, playlistId: string
 
   type PlaylistItemsResponse = { items?: YouTubePlaylistItem[] }
 
-  const json = await fetchJson<PlaylistItemsResponse>(url)
+  const json = await fetchJson<PlaylistItemsResponse>({ url, userId, operation: 'playlistItems.list' })
   return json.items ?? []
 }
 
@@ -613,7 +620,8 @@ async function listRecentPlaylistItems(youtubeApiKey: string, playlistId: string
  */
 async function listVideoDurations(
   youtubeApiKey: string,
-  videoIds: string[]
+  videoIds: string[],
+  userId: string
 ): Promise<Map<string, number | null>> {
   const normalizedIds = Array.from(new Set(videoIds.filter(Boolean)))
   const durationByVideoId = new Map<string, number | null>()
@@ -636,7 +644,7 @@ async function listVideoDurations(
       items?: YouTubeVideoDetailItem[]
     }
 
-    const json = await fetchJson<VideosListResponse>(url)
+    const json = await fetchJson<VideosListResponse>({ url, userId, operation: 'videos.list' })
     for (const item of json.items ?? []) {
       const videoId = item.id?.trim()
       if (!videoId) continue
@@ -650,7 +658,7 @@ async function listVideoDurations(
 /**
  * Risolve un handle `@name` nel relativo channel ID canonico `UC...`.
  */
-async function resolveChannelIdFromHandle(youtubeApiKey: string, handle: string): Promise<{ channelId: string; title: string | null }> {
+async function resolveChannelIdFromHandle(youtubeApiKey: string, handle: string, userId: string): Promise<{ channelId: string; title: string | null }> {
   const normalizedHandle = handle.replace(/^@/, '').trim().toLowerCase()
   if (!normalizedHandle) {
     throw new AppError('Handle canale non valido', 'validation', 400)
@@ -668,7 +676,7 @@ async function resolveChannelIdFromHandle(youtubeApiKey: string, handle: string)
     }>
   }
 
-  const json = await fetchJson<HandleResolveResponse>(url)
+  const json = await fetchJson<HandleResolveResponse>({ url, userId, operation: 'channels.list' })
   const item = json.items?.[0]
   const resolvedId = item?.id
 
@@ -730,7 +738,7 @@ export async function importChannelVideos(params: {
 
   if (channel.youtube_channel_id.startsWith('handle:')) {
     const handle = channel.youtube_channel_id.slice('handle:'.length)
-    const resolved = await resolveChannelIdFromHandle(youtubeApiKey, handle)
+    const resolved = await resolveChannelIdFromHandle(youtubeApiKey, handle, params.userId)
 
     if (params.lease) {
       // Il worker con lease non scrive qui: la canonicalizzazione viene
@@ -825,7 +833,7 @@ export async function importChannelVideos(params: {
   }
 
   const maxResults = params.maxResults ?? 20
-  const channelSnapshot = await getChannelSnapshot(youtubeApiKey, channel.youtube_channel_id)
+  const channelSnapshot = await getChannelSnapshot(youtubeApiKey, channel.youtube_channel_id, params.userId)
   const uploadsPlaylistId = channelSnapshot.uploadsPlaylistId
 
   if (!params.lease) {
@@ -844,14 +852,14 @@ export async function importChannelVideos(params: {
     if (channelMetadataError) throw new AppError('Aggiornamento metadata canale fallito', 'unknown', 500, { cause: channelMetadataError.message })
   }
 
-  const items = await listRecentPlaylistItems(youtubeApiKey, uploadsPlaylistId, maxResults)
+  const items = await listRecentPlaylistItems(youtubeApiKey, uploadsPlaylistId, maxResults, params.userId)
   const videoIds = items
     .map((item) => item.contentDetails?.videoId)
     .filter((videoId): videoId is string => Boolean(videoId))
 
   let durationsByVideoId = new Map<string, number | null>()
   try {
-    durationsByVideoId = await listVideoDurations(youtubeApiKey, videoIds)
+    durationsByVideoId = await listVideoDurations(youtubeApiKey, videoIds, params.userId)
   } catch {
     // Fail-open: se il fetch delle durate fallisce manteniamo sync attiva con duration null.
     durationsByVideoId = new Map<string, number | null>()

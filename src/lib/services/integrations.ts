@@ -7,6 +7,7 @@
 import { createHash, createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { fetchAndRecordProviderRequest } from '@/lib/services/api-usage'
 import { AppError, classifyError } from '@/lib/utils/errors'
 import type { CredentialStatus } from '@/lib/types/domain'
 import type { Database } from '@/lib/types/database'
@@ -298,7 +299,7 @@ export async function saveApiKey(params: {
 /**
  * Verifica una chiave YouTube con una chiamata minima read-only.
  */
-async function validateYouTubeApiKey(apiKey: string): Promise<void> {
+async function validateYouTubeApiKey(apiKey: string, userId: string): Promise<void> {
   // Chiamata minima a endpoint YouTube per confermare validita credenziale.
   const url = new URL('https://www.googleapis.com/youtube/v3/search')
   url.searchParams.set('part', 'snippet')
@@ -307,10 +308,16 @@ async function validateYouTubeApiKey(apiKey: string): Promise<void> {
   url.searchParams.set('type', 'video')
   url.searchParams.set('key', apiKey)
 
-  const response = await fetch(url.toString(), {
-    method: 'GET',
-    headers: { Accept: 'application/json' },
-    cache: 'no-store',
+  const response = await fetchAndRecordProviderRequest({
+    userId,
+    provider: 'youtube',
+    operation: 'search.list',
+    url: url.toString(),
+    init: {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+    },
   })
 
   if (!response.ok) {
@@ -322,15 +329,21 @@ async function validateYouTubeApiKey(apiKey: string): Promise<void> {
 /**
  * Verifica una chiave Gemini con una chiamata minima read-only.
  */
-async function validateGeminiApiKey(apiKey: string): Promise<void> {
+async function validateGeminiApiKey(apiKey: string, userId: string): Promise<void> {
   // Chiamata minima a endpoint Gemini: se risponde 2xx la chiave e valida.
   const url = new URL('https://generativelanguage.googleapis.com/v1beta/models')
   url.searchParams.set('key', apiKey)
 
-  const response = await fetch(url.toString(), {
-    method: 'GET',
-    headers: { Accept: 'application/json' },
-    cache: 'no-store',
+  const response = await fetchAndRecordProviderRequest({
+    userId,
+    provider: 'gemini',
+    operation: 'models.list',
+    url: url.toString(),
+    init: {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+    },
   })
 
   if (!response.ok) {
@@ -361,9 +374,9 @@ export async function validateApiKey(params: {
 
   try {
     if (params.provider === 'youtube') {
-      await validateYouTubeApiKey(apiKey)
+      await validateYouTubeApiKey(apiKey, params.userId)
     } else {
-      await validateGeminiApiKey(apiKey)
+      await validateGeminiApiKey(apiKey, params.userId)
     }
     isValid = true
   } catch (error) {

@@ -62,7 +62,7 @@ Rispondi SOLO con un oggetto JSON valido contenente questi campi. Non aggiungere
             defaultValue={defaultPrompt}
             rows={20}
             className="w-full bg-surface-container-low rounded-xl px-4 py-3 font-mono text-sm text-on-surface
-                       focus:ring-2 focus:ring-tertiary focus:outline-none resize-y transition-all"
+                       focus:ring-2 focus:ring-tertiary focus:outline-hidden resize-y transition-all"
           />
         </div>
 

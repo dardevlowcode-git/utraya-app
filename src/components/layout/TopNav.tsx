@@ -80,6 +80,7 @@ export default function TopNav({ variant, session }: TopNavProps) {
               <NavLink href="/traker">{t('nav.traker')}</NavLink>
               <NavLink href="/watchlist">{t('nav.watchlist')}</NavLink>
               <NavLink href="/integrations">{t('nav.integrations')}</NavLink>
+              <NavLink href="/usage">{t('nav.usage')}</NavLink>
             </nav>
           )}
 

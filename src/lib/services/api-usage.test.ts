@@ -103,6 +103,11 @@ describe('api usage accounting', () => {
 
   it('conteggia ogni richiesta YouTube, compresi gli errori, nel bucket endpoint corretto', () => {
     expect(getYouTubeQuotaEstimate('search.list')).toEqual({ units: 1, bucket: 'search' })
+    expect(['channels.list', 'playlistItems.list', 'videos.list'].map(getYouTubeQuotaEstimate)).toEqual([
+      { units: 1, bucket: 'default' },
+      { units: 1, bucket: 'default' },
+      { units: 1, bucket: 'default' },
+    ])
     expect(buildApiUsageEventInsert({
       userId: 'owner-1',
       provider: 'youtube',
@@ -177,6 +182,27 @@ describe('api usage accounting', () => {
     expect(JSON.stringify(insertMock.mock.calls)).not.toContain('secret')
   })
 
+  it('classifica un errore di rete non-timeout senza persistere il messaggio upstream', async () => {
+    const networkError = new Error('private transport detail')
+
+    await expect(fetchAndRecordProviderRequest({
+      userId: 'credential-owner',
+      provider: 'youtube',
+      operation: 'channels.list',
+      url: 'https://www.googleapis.com/youtube/v3/channels?key=not-persisted',
+      fetcher: vi.fn().mockRejectedValue(networkError),
+    })).rejects.toBe(networkError)
+
+    expect(insertMock).toHaveBeenCalledWith(expect.objectContaining({
+      user_id: 'credential-owner',
+      outcome: 'network_error',
+      error_category: 'network_error',
+      quota_units: 1,
+    }))
+    expect(JSON.stringify(insertMock.mock.calls)).not.toContain('private transport detail')
+    expect(JSON.stringify(insertMock.mock.calls)).not.toContain('not-persisted')
+  })
+
   it('conserva un evento distinto per ogni tentativo, incluso il retry dopo un errore HTTP', async () => {
     const fetcher = vi.fn()
       .mockResolvedValueOnce(new Response('{}', { status: 503 }))
@@ -204,6 +230,29 @@ describe('api usage accounting', () => {
     expect(JSON.stringify(insertMock.mock.calls)).not.toContain('not-persisted')
   })
 
+  it('mantiene la risposta upstream quando la scrittura del ledger fallisce senza loggare dettagli DB', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    insertMock.mockResolvedValue({ error: { message: 'private database response' } })
+
+    try {
+      const response = await fetchAndRecordProviderRequest({
+        userId: 'credential-owner',
+        provider: 'youtube',
+        operation: 'videos.list',
+        url: 'https://www.googleapis.com/youtube/v3/videos?key=not-persisted',
+        fetcher: vi.fn().mockResolvedValue(new Response('{}', { status: 200 })),
+      })
+
+      expect(response.status).toBe(200)
+      expect(insertMock).toHaveBeenCalledOnce()
+      expect(errorSpy).toHaveBeenCalledWith('API usage event could not be persisted')
+      expect(JSON.stringify(errorSpy.mock.calls)).not.toContain('private database response')
+      expect(JSON.stringify(insertMock.mock.calls)).not.toContain('not-persisted')
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
   it('mantiene in RLS solo gli eventi dell’account autenticato e nella retention prevista', () => {
     const policy = apiUsageMigration.match(
       /CREATE POLICY "API usage: read own" ON public\.api_usage_events\s+FOR SELECT USING \(([\s\S]*?)\);/
@@ -222,6 +271,16 @@ describe('api usage accounting', () => {
     await expect(cleanupExpiredApiUsageEvents(new Date('2026-10-04T00:00:00.000Z'), adminClient)).resolves.toBe(3)
 
     expect(ltMock).toHaveBeenCalledWith('occurred_at', '2026-09-04T00:00:00.000Z')
+  })
+
+  it('non propaga dettagli DB se il cleanup rifiuta la cancellazione', async () => {
+    const ltMock = vi.fn().mockResolvedValue({ count: null, error: { message: 'private database response' } })
+    const adminClient = {
+      from: vi.fn().mockReturnValue({ delete: vi.fn().mockReturnValue({ lt: ltMock }) }),
+    } as never
+
+    await expect(cleanupExpiredApiUsageEvents(new Date('2026-10-04T00:00:00.000Z'), adminClient))
+      .rejects.toThrow('Impossibile eliminare gli eventi API scaduti')
   })
 
   it('mostra solo l’owner, delimita 30 giorni e corregge la pagina rispetto ai dati aggregati', async () => {

@@ -210,6 +210,48 @@ export type Database = {
         Update: Record<string, never>
         Relationships: []
       }
+      api_usage_events: {
+        Row: {
+          id: string
+          user_id: string
+          provider: 'youtube' | 'gemini'
+          operation: string
+          occurred_at: string
+          outcome: 'success' | 'http_error' | 'network_error' | 'timeout'
+          http_status: number | null
+          error_category: 'provider_error' | 'network_error' | 'timeout' | 'unknown' | null
+          model: string | null
+          input_tokens: number | null
+          output_tokens: number | null
+          total_tokens: number | null
+          estimated_cost_usd: number | null
+          input_rate_usd_per_million: number | null
+          output_rate_usd_per_million: number | null
+          quota_units: number | null
+          quota_bucket: 'default' | 'search' | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          provider: 'youtube' | 'gemini'
+          operation: string
+          occurred_at?: string
+          outcome: 'success' | 'http_error' | 'network_error' | 'timeout'
+          http_status?: number | null
+          error_category?: 'provider_error' | 'network_error' | 'timeout' | 'unknown' | null
+          model?: string | null
+          input_tokens?: number | null
+          output_tokens?: number | null
+          total_tokens?: number | null
+          estimated_cost_usd?: number | null
+          input_rate_usd_per_million?: number | null
+          output_rate_usd_per_million?: number | null
+          quota_units?: number | null
+          quota_bucket?: 'default' | 'search' | null
+        }
+        Update: Record<string, never>
+        Relationships: []
+      }
       // --- Canonical Layer ---
       channels: {
         Row: {
@@ -938,6 +980,18 @@ export type Database = {
           p_legacy_cutoff: string
         }
         Returns: boolean
+      }
+      get_my_api_usage_summary: {
+        Args: { p_since: string }
+        Returns: {
+          provider: string
+          request_count: number
+          input_tokens: number
+          output_tokens: number
+          total_tokens: number
+          estimated_cost_usd: number
+          quota_units: number
+        }[]
       }
     }
     Enums: Record<string, never>

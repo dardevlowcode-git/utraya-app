@@ -293,7 +293,7 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
                       }
                       placeholder={t('integrations.keyPlaceholder')}
                       className="flex-1 bg-surface-container-low rounded-xl px-3 py-2.5 text-sm text-on-surface
-                                 placeholder:text-on-surface-variant outline-none"
+                                 placeholder:text-on-surface-variant outline-hidden"
                       disabled={isBusy}
                     />
                     <button

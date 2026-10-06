@@ -9,6 +9,10 @@
       "schedule": "10 3 * * *"
     },
     {
+      "path": "/api/cron/cleanup-api-usage",
+      "schedule": "20 3 * * *"
+    },
+    {
       "path": "/api/cron/transcripts",
       "schedule": "0 2 * * *"
     }

@@ -1,8 +1,8 @@
 # Informativa Privacy Utraya
 
 > **Stato**: ✅ versione pubblicata
-> **Versione documento**: `2026-05-16-1`
-> **Data di entrata in vigore**: 2026-05-16
+> **Versione documento**: `2026-10-04-1`
+> **Data di entrata in vigore**: 2026-10-04
 > **Hash canonico**: calcolato da `npm run legal:hash` su questo file.
 > **Lingua sorgente**: italiano. Il testo italiano prevale in caso di discrepanza con la traduzione inglese.
 > **Riferimenti normativi**: Reg. (UE) 2016/679 (GDPR), in particolare artt. 6, 12-22, 28, 30, 32-34, 44-49, 82; D.Lgs. 196/2003 come modificato dal D.Lgs. 101/2018; Reg. (UE) 910/2014 (eIDAS); Provv. Garante 10/06/2021 n. 231; Linee guida EDPB.
@@ -54,6 +54,7 @@ Per accedere a Utraya è richiesta l'autenticazione tramite account Google. Tram
 | Stato video (visto / nascosto) | Booleano per video | Personalizzazione interfaccia utente |
 | Riassunti AI generati | Testo + lingua + timestamp | Erogazione servizio |
 | Chiave API Gemini personale (BYOK, opzionale) | Cifrata AES-GCM | Custodia per generazione riassunti con chiave utente |
+| Eventi di utilizzo API personali | Provider, metodo, data, esito, token Gemini e costo stimato oppure unità quota YouTube stimate | Trasparenza e consultazione dei consumi delle API usate tramite Utraya; non include prompt, transcript, parametri o risposte |
 | Preferenze utente | Lingua, tema | Personalizzazione |
 
 ### 3.3 Dati tecnici di sicurezza e audit
@@ -80,7 +81,7 @@ Ogni trattamento ha una finalità specifica e una **base giuridica** ai sensi de
 | Finalità | Base giuridica (art. 6 GDPR) | Conseguenze del rifiuto |
 |---|---|---|
 | Autenticazione utente e creazione account | Lett. b (esecuzione del contratto) | Senza questi dati non è possibile usare il servizio |
-| Erogazione delle funzionalità (watchlist, riassunti, chiavi API) | Lett. b (esecuzione del contratto) | Senza questi dati il servizio non funziona |
+| Erogazione delle funzionalità (watchlist, riassunti, chiavi API e relativo pannello consumi) | Lett. b (esecuzione del contratto) | Senza questi dati il servizio non funziona |
 | Comunicazioni di servizio (avvisi sicurezza, conferme operative) | Lett. b (esecuzione del contratto) | Non disattivabili finché l'account è attivo |
 | Sicurezza, prevenzione abusi, audit log | Lett. f (legittimo interesse del Titolare a tutelare il servizio e gli utenti) | Non disattivabile — bilanciamento favorevole al Titolare |
 | Registrazione probatoria accettazione TOS | Lett. f (legittimo interesse alla difesa giudiziale) | Non disattivabile — necessaria per provabilità contrattuale |
@@ -96,6 +97,7 @@ Conserviamo i dati solo per il tempo strettamente necessario alle finalità.
 | Categoria dati | Durata di conservazione |
 |---|---|
 | Dati account (email, sub, watchlist, riassunti, chiavi API cifrate) | Per la durata dell'account, + 30 giorni dopo richiesta di cancellazione (finestra tecnica di esecuzione cancellazione) |
+| Eventi di utilizzo API (metadati minimizzati per account) | 30 giorni; eliminazione automatica giornaliera, quindi retention tecnica massima 31 giorni |
 | Log applicativi di sicurezza (IP, accessi) | **12 mesi** dal generazione |
 | Registrazione accettazione TOS (audit probatorio) | **10 anni** dal momento dell'accettazione (termine ordinario di prescrizione ex art. 2946 c.c.) — sopravvive alla cancellazione account in forma anonimizzata (user_id rimosso, ma rimangono versione documento, hash, timestamp, email denormalizzata, IP, user agent) |
 | Backup database (cifrati, snapshot Supabase) | Fino a 30 giorni di rolling retention; oltre questo termine i backup contenenti dati cancellati vengono purgati naturalmente |

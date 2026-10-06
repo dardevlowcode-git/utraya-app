@@ -101,6 +101,15 @@ export default function SideNav({
         </svg>
       ),
     },
+    {
+      href: '/usage',
+      label: t('nav.usage'),
+      icon: (
+        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3.75 19.5V4.5m0 15h16.5M7.5 15v-3m4.5 3V6m4.5 9V9m4.5 6v-2.25" />
+        </svg>
+      ),
+    },
   ]
 
   const bottomItems = [
@@ -135,7 +144,7 @@ export default function SideNav({
         <button
           type="button"
           onClick={onToggleMenu}
-          className="fixed left-4 top-[4.75rem] z-50 inline-flex h-11 w-11 items-center justify-center rounded-full bg-primary text-on-primary shadow-medium transition-colors hover:bg-primary-container"
+          className="fixed left-4 top-19 z-50 inline-flex h-11 w-11 items-center justify-center rounded-full bg-primary text-on-primary shadow-medium transition-colors hover:bg-primary-container"
           aria-label={t('common.openSideMenu')}
         >
           <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

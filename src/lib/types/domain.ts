@@ -21,6 +21,7 @@ export type UserProviderCredential = Database['public']['Tables']['user_provider
 export type AppLog = Database['public']['Tables']['app_logs']['Row']
 export type AuditLog = Database['public']['Tables']['audit_logs']['Row']
 export type Incident = Database['public']['Tables']['incidents']['Row']
+export type ApiUsageEventRow = Database['public']['Tables']['api_usage_events']['Row']
 
 // --- Domain types (enriched / composed) ---
 
