@@ -5,6 +5,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { AppSupabaseClient } from '@/lib/supabase/types'
 
 const { createAdminClientMock, fromMock, insertMock } = vi.hoisted(() => ({
   createAdminClientMock: vi.fn(),
@@ -16,7 +17,7 @@ vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: createAdminClientMock,
 }))
 
-import { writeCredentialCheckAudit } from '@/lib/services/integrations'
+import { saveApiKey, writeCredentialCheckAudit } from '@/lib/services/integrations'
 
 describe('writeCredentialCheckAudit', () => {
   beforeEach(() => {
@@ -54,5 +55,68 @@ describe('writeCredentialCheckAudit', () => {
 
     expect(errorSpy).toHaveBeenCalledWith('credential_checks audit insert failed; validation result retained')
     errorSpy.mockRestore()
+  })
+
+  it('attribuisce al proprietario della chiave la chiamata effettiva di validazione YouTube', async () => {
+    const ownerId = 'credential-owner'
+    const apiKey = 'test-youtube-key-for-owner'
+    const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
+    let credentialRow: Record<string, unknown> | null = null
+    const selectQuery = {
+      eq: vi.fn(() => selectQuery),
+      maybeSingle: vi.fn(async () => ({ data: credentialRow, error: null })),
+    }
+    let updateFilterCount = 0
+    const updateQuery = {
+      eq: vi.fn(() => {
+        updateFilterCount += 1
+        return updateFilterCount === 2 ? Promise.resolve({ error: null }) : updateQuery
+      }),
+    }
+    const supabase = {
+      from: vi.fn(() => ({
+        select: vi.fn(() => selectQuery),
+        upsert: vi.fn(async (values: Record<string, unknown>) => {
+          credentialRow = { id: 'credential-1', ...values }
+          return { error: null }
+        }),
+        update: vi.fn((values: Record<string, unknown>) => {
+          credentialRow = { ...(credentialRow ?? {}), ...values }
+          return updateQuery
+        }),
+      })),
+    }
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }))
+
+    process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
+    vi.stubGlobal('fetch', fetchMock)
+
+    try {
+      await saveApiKey({
+        userId: ownerId,
+        provider: 'youtube',
+        apiKey,
+        supabase: supabase as unknown as AppSupabaseClient,
+      })
+
+      const requestEvent = insertMock.mock.calls
+        .map(([payload]) => payload)
+        .find((payload) => typeof payload === 'object' && payload !== null && 'provider' in payload)
+
+      expect(requestEvent).toMatchObject({
+        user_id: ownerId,
+        provider: 'youtube',
+        operation: 'search.list',
+        outcome: 'success',
+      })
+      expect(selectQuery.eq).toHaveBeenCalledWith('user_id', ownerId)
+      expect(fromMock.mock.calls.map(([table]) => table)).toEqual(['api_usage_events', 'credential_checks'])
+      expect(new URL(String(fetchMock.mock.calls[0]?.[0])).searchParams.get('key')).toBe(apiKey)
+      expect(JSON.stringify(insertMock.mock.calls)).not.toContain(apiKey)
+    } finally {
+      vi.unstubAllGlobals()
+      if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY
+      else process.env.CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey
+    }
   })
 })
