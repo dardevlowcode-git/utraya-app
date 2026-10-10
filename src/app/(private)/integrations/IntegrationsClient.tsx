@@ -10,6 +10,7 @@ import { useMemo, useState, type FormEvent } from 'react'
 import type { CredentialStatus } from '@/lib/types/domain'
 import { useTranslations } from 'next-intl'
 import YouTubeApiKeyGuide from '@/components/integrations/YouTubeApiKeyGuide'
+import GeminiApiKeyGuide from '@/components/integrations/GeminiApiKeyGuide'
 
 type Provider = 'youtube' | 'gemini'
 
@@ -244,6 +245,7 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
                     <h3 className="font-headline font-bold text-on-surface">{t(connector.title)}</h3>
                     <p className="text-sm text-on-surface-variant mb-3">{t(connector.description)}</p>
                     {provider === 'youtube' && <YouTubeApiKeyGuide />}
+                    {provider === 'gemini' && <GeminiApiKeyGuide />}
 
                     <div className="flex flex-wrap items-center gap-3 text-xs mb-2">
                       <span

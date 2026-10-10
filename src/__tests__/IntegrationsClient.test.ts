@@ -84,10 +84,10 @@ describe('IntegrationsClient YouTube setup guide', () => {
     expect(html).not.toContain('<img')
   })
 
-  it('rende contenuti coerenti in inglese e non mostra una copia della guida nel card Gemini', () => {
+  it('rende la guida YouTube in inglese senza confonderla con quella Gemini', () => {
     const html = renderIntegrations('en')
 
-    expect((html.match(/<details/g) ?? [])).toHaveLength(1)
+    expect((html.match(/<details/g) ?? [])).toHaveLength(2)
     expect(html).toContain('Create or select a Google Cloud project')
     expect(html).toContain('HTTP referrers')
     expect(html).toContain('API key')
@@ -105,6 +105,8 @@ describe('IntegrationsClient YouTube setup guide', () => {
     expect(html).not.toContain('Crea o seleziona un progetto Google Cloud')
     expect(html).not.toContain('Credenziali')
     expect(html).not.toContain('integrations.youtubeKey')
+    expect(html).toContain('How to get and configure a Gemini API key')
+    expect(html).not.toContain('Come ottenere e configurare una chiave Gemini API')
     expect(html).toContain('Save key')
     const englishPasswordInput = html.match(/<input\b[^>]*type="password"[^>]*>/)?.[0] ?? ''
     expect(englishPasswordInput).toContain('aria-label="YouTube Data API v3: Paste your API key here"')
@@ -118,5 +120,65 @@ describe('IntegrationsClient YouTube setup guide', () => {
     expect(Object.keys(italianMessages.integrations.youtubeGuide).sort()).toEqual(
       Object.keys(englishMessages.integrations.youtubeGuide).sort()
     )
+    expect(Object.keys(italianMessages.integrations.geminiGuide).sort()).toEqual(
+      Object.keys(englishMessages.integrations.geminiGuide).sort()
+    )
+  })
+})
+
+describe('IntegrationsClient Gemini setup guide', () => {
+  it('mostra in italiano una disclosure nativa, accessibile da tastiera e adatta al mobile con link AI Studio', () => {
+    const html = renderIntegrations('it')
+    const geminiGuide = [...html.matchAll(/<details\b[^>]*>[\s\S]*?<\/details>/g)]
+      .map(([markup]) => markup)
+      .find((markup) => markup.includes('Come ottenere e configurare una chiave Gemini API')) ?? ''
+    const summary = geminiGuide.match(/<summary\b[^>]*>/)?.[0] ?? ''
+    const guideLinks = [...geminiGuide.matchAll(/<a\b[^>]*>/g)].map(([tag]) => tag)
+
+    expect(geminiGuide).not.toBe('')
+    expect(geminiGuide).not.toMatch(/<details[^>]*\sopen(?:[=>\s])/)
+    expect(geminiGuide).toContain('https://aistudio.google.com/api-keys')
+    expect(summary).toContain('min-h-11')
+    expect(summary).toContain('focus-visible:ring-2')
+    expect(summary).not.toContain('role="button"')
+    expect(geminiGuide).toContain('flex flex-wrap')
+    expect(geminiGuide).toContain('w-full')
+    expect(guideLinks.length).toBeGreaterThan(0)
+    expect(guideLinks.every((tag) => tag.includes('min-h-11'))).toBe(true)
+  })
+
+  it('distingue in italiano Free e Paid, privacy, costo e vincoli SEE con fonti ufficiali', () => {
+    const html = renderIntegrations('it')
+    const geminiGuide = [...html.matchAll(/<details\b[^>]*>[\s\S]*?<\/details>/g)]
+      .map(([markup]) => markup)
+      .find((markup) => markup.includes('Come ottenere e configurare una chiave Gemini API')) ?? ''
+
+    expect(geminiGuide).toContain('Free Tier è disponibile solo per alcuni modelli')
+    expect(geminiGuide).toContain('Paid Tier richiede di collegare un account Google Cloud Billing')
+    expect(geminiGuide).toContain('abbonamento non paga automaticamente')
+    expect(geminiGuide).toContain('SEE, Svizzera e Regno Unito solo usando Paid Services')
+    expect(geminiGuide).toContain('revisori umani potrebbero leggerli o annotarli')
+    expect(geminiGuide).toContain('possono comunque essere conservati per un periodo limitato')
+    expect(geminiGuide).toContain('https://ai.google.dev/gemini-api/docs/billing')
+    expect(geminiGuide).toContain('https://ai.google.dev/gemini-api/docs/rate-limits')
+    expect(geminiGuide).toContain('https://ai.google.dev/gemini-api/docs/pricing')
+    expect(geminiGuide).toContain('https://ai.google.dev/gemini-api/terms')
+    expect(geminiGuide).toContain('https://ai.google.dev/gemini-api/docs/available-regions')
+    expect(geminiGuide).toContain('non abilita un nuovo generatore permanente')
+  })
+
+  it('rende in inglese gli stessi avvisi su Free/Paid, territori e privacy', () => {
+    const html = renderIntegrations('en')
+    const geminiGuide = [...html.matchAll(/<details\b[^>]*>[\s\S]*?<\/details>/g)]
+      .map(([markup]) => markup)
+      .find((markup) => markup.includes('How to get and configure a Gemini API key')) ?? ''
+
+    expect(geminiGuide).toContain('Free Tier is available only for some models')
+    expect(geminiGuide).toContain('Paid Tier requires linking a Google Cloud Billing account')
+    expect(geminiGuide).toContain('only on Paid Services')
+    expect(geminiGuide).toContain('human reviewers may read or annotate them')
+    expect(geminiGuide).toContain('may still be retained for a limited period')
+    expect(geminiGuide).toContain('does not enable a new permanent generator')
+    expect(geminiGuide).not.toContain('SEE, Svizzera e Regno Unito')
   })
 })
