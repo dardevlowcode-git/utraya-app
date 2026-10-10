@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "test": "vitest run",
+    "prelint": "npm run check-next-rootdir",
     "lint": "eslint . --ext .ts,.tsx,.js,.mjs,.cjs --ignore-pattern node_modules --ignore-pattern .next",
+    "check-next-rootdir": "node scripts/security-contract/check-next-rootdir.mjs",
+    "test:security-contract": "vitest run scripts/security-contract",
     "type-check": "tsc --noEmit",
     "check-comments": "node scripts/check-comments.mjs",
     "validate": "npm run check-comments && npm run lint && npm run type-check",
@@ -36,6 +39,7 @@
     "@typescript-eslint/parser": "^8.71.0",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.3.8",
+    "fast-glob": "file:./scripts/security-contract/fast-glob",
     "postcss": "8.5.28",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.23.13",
@@ -43,13 +47,18 @@
     "vitest": "^5.0.1"
   },
   "overrides": {
+    "@next/eslint-plugin-next": {
+      "fast-glob": "$fast-glob"
+    },
     "@swc/helpers": "0.5.21",
     "esbuild": "0.25.0",
     "glob": "10.5.0",
     "minimatch": "9.0.7",
     "vite": "6.4.3",
     "nanoid": "3.3.18",
+    "sharp": "0.35.5",
     "js-yaml": "4.3.2",
+    "source-map-js": "1.2.2",
     "postcss-selector-parser": "6.1.4",
     "browserslist": "4.28.7",
     "brace-expansion": "5.0.12"
