@@ -137,6 +137,11 @@ jobs:
 
       - name: Esegui Gitleaks
         # Gitleaks scansiona TUTTO il repo (incluso .git/), non serve working-directory
+        # .gitleaksignore contiene solo il fingerprint dell'occorrenza storica della
+        # chiave client pubblicamente distribuita da YouTube come INNERTUBE_API_KEY.
+        # Non prova proprietà/restrizioni di un progetto Google Cloud né riguarda una
+        # credenziale privata; regole, file, commit e nuove occorrenze restano scansionati.
+        # Il fingerprint ignore è sperimentale: ogni altra eccezione richiede prove proprie.
         uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
