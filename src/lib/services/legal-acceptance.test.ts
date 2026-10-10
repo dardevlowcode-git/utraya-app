@@ -56,6 +56,24 @@ describe('legal-acceptance service', () => {
     })
   })
 
+  it('richiede una nuova accettazione TOS quando è registrata solo la versione precedente', async () => {
+    const inMock = vi.fn().mockResolvedValue({
+      data: [
+        { document_kind: 'tos', document_version: '2026-05-16-1' },
+        { document_kind: 'tos_vexatorious', document_version: TOS_VEX_REQUIRED_VERSION },
+      ],
+      error: null,
+    })
+    const eqMock = vi.fn(() => ({ in: inMock }))
+    const selectMock = vi.fn(() => ({ eq: eqMock }))
+    createAdminClientMock.mockReturnValue({ from: vi.fn(() => ({ select: selectMock })) })
+
+    const result = await getLegalAcceptanceStatus('user-with-previous-tos')
+
+    expect(result.needsAcceptance).toBe(true)
+    expect(result.missing).toEqual(['tos'])
+  })
+
   it('getLegalAcceptanceStatus segnala entrambe le accettazioni come mancanti quando tabella vuota', async () => {
     const inMock = vi.fn().mockResolvedValue({ data: [], error: null })
     const eqMock = vi.fn(() => ({ in: inMock }))
