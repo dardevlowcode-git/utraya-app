@@ -9,6 +9,7 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import type { CredentialStatus } from '@/lib/types/domain'
 import { useTranslations } from 'next-intl'
+import YouTubeApiKeyGuide from '@/components/integrations/YouTubeApiKeyGuide'
 
 type Provider = 'youtube' | 'gemini'
 
@@ -177,7 +178,7 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
   }
 
   return (
-    <div className="p-8 max-w-4xl">
+    <div className="p-4 max-w-4xl sm:p-8">
       <header className="mb-10">
         <h1 className="font-headline text-4xl font-extrabold tracking-tight text-on-surface mb-2">
           {t('integrations.title')}
@@ -220,7 +221,7 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
 
           return (
             <div key={provider} className="bg-surface-container-lowest rounded-2xl p-6 shadow-ambient">
-              <div className="flex items-start justify-between gap-6">
+              <div className="flex flex-col items-stretch gap-6 lg:flex-row lg:items-start lg:justify-between">
                 <div className="flex items-start gap-4">
                   <div className={`w-12 h-12 ${connector.iconBg} rounded-xl flex items-center justify-center text-white shrink-0`}>
                     {provider === 'youtube' ? (
@@ -242,6 +243,7 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
                   <div>
                     <h3 className="font-headline font-bold text-on-surface">{t(connector.title)}</h3>
                     <p className="text-sm text-on-surface-variant mb-3">{t(connector.description)}</p>
+                    {provider === 'youtube' && <YouTubeApiKeyGuide />}
 
                     <div className="flex flex-wrap items-center gap-3 text-xs mb-2">
                       <span
@@ -280,8 +282,8 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
                   </div>
                 </div>
 
-                <div className="shrink-0 w-[340px]">
-                  <form onSubmit={(event) => handleSave(provider, event)} className="flex items-center gap-2">
+                <div className="w-full lg:shrink-0 lg:w-[340px]">
+                  <form onSubmit={(event) => handleSave(provider, event)} className="flex flex-col gap-2 sm:flex-row sm:items-center">
                     <input
                       type="password"
                       value={providerInput[provider]}
@@ -292,14 +294,20 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
                         }))
                       }
                       placeholder={t('integrations.keyPlaceholder')}
-                      className="flex-1 bg-surface-container-low rounded-xl px-3 py-2.5 text-sm text-on-surface
-                                 placeholder:text-on-surface-variant outline-hidden"
+                      aria-label={`${t(connector.title)}: ${t('integrations.keyPlaceholder')}`}
+                      inputMode="text"
+                      autoComplete="off"
+                      enterKeyHint="done"
+                      className="w-full flex-1 bg-surface-container-low rounded-xl px-3 py-2.5 text-base text-on-surface
+                                 placeholder:text-on-surface-variant outline-none
+                                 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
                       disabled={isBusy}
                     />
                     <button
                       type="submit"
                       disabled={isBusy}
-                      className="gradient-primary text-on-primary px-4 py-2.5 rounded-xl font-bold text-sm
+                      className="w-full min-h-11 gradient-primary text-on-primary px-4 py-2.5 rounded-xl font-bold text-sm
+                                 sm:w-auto
                                  disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       {t('integrations.saveKey')}
