@@ -8,16 +8,15 @@
 
 import { useRouter } from 'next/navigation'
 import { useLocale } from 'next-intl'
-import { localeCookieName, localeNames, locales, type Locale } from '@/lib/i18n/config'
-
-const oneYearInSeconds = 60 * 60 * 24 * 365
+import { localeNames, locales, type Locale } from '@/lib/i18n/config'
+import { writeLocaleCookie } from '@/lib/i18n/locale-cookie'
 
 export default function MarketingLanguageSwitcher() {
   const locale = useLocale()
   const router = useRouter()
 
   function setLocale(nextLocale: Locale) {
-    document.cookie = `${localeCookieName}=${nextLocale}; path=/; max-age=${oneYearInSeconds}; samesite=lax`
+    writeLocaleCookie(nextLocale)
     router.refresh()
   }
 

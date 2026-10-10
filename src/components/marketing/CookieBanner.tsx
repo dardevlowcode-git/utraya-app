@@ -11,17 +11,26 @@ import Link from 'next/link'
 import { useTranslations } from 'next-intl'
 import { useConsent } from '@/lib/consent/ConsentProvider'
 
+/** Crea il draft modificabile a partire dalle preferenze di consenso salvate. */
+export function createCookiePreferencesDraft(consentState: { analytics: boolean; marketing: boolean } | null) {
+  return {
+    consentState,
+    analytics: consentState?.analytics ?? false,
+    marketing: consentState?.marketing ?? false,
+  }
+}
+
 export default function CookieBanner() {
   const t = useTranslations()
   const { isBannerOpen, closeBanner, saveConsent, state } = useConsent()
   const [showCustomize, setShowCustomize] = useState(false)
-  const [analytics, setAnalytics] = useState(false)
-  const [marketing, setMarketing] = useState(false)
+  const [preferences, setPreferences] = useState(() => createCookiePreferencesDraft(state))
 
-  useEffect(() => {
-    setAnalytics(state?.analytics ?? false)
-    setMarketing(state?.marketing ?? false)
-  }, [state])
+  if (preferences.consentState !== state) {
+    setPreferences(createCookiePreferencesDraft(state))
+  }
+
+  const { analytics, marketing } = preferences
 
   useEffect(() => {
     function onEsc(event: KeyboardEvent) {
@@ -86,11 +95,11 @@ export default function CookieBanner() {
               </label>
               <label className="flex items-center justify-between gap-3">
                 <span>{t('marketing.cookies.analytics')}</span>
-                <input type="checkbox" checked={analytics} onChange={(event) => setAnalytics(event.target.checked)} aria-label={t('marketing.cookies.analytics')} />
+                <input type="checkbox" checked={analytics} onChange={(event) => setPreferences((previous) => ({ ...previous, analytics: event.target.checked }))} aria-label={t('marketing.cookies.analytics')} />
               </label>
               <label className="flex items-center justify-between gap-3">
                 <span>{t('marketing.cookies.marketing')}</span>
-                <input type="checkbox" checked={marketing} onChange={(event) => setMarketing(event.target.checked)} aria-label={t('marketing.cookies.marketing')} />
+                <input type="checkbox" checked={marketing} onChange={(event) => setPreferences((previous) => ({ ...previous, marketing: event.target.checked }))} aria-label={t('marketing.cookies.marketing')} />
               </label>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">

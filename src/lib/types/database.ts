@@ -432,6 +432,53 @@ export type Database = {
         }
         Relationships: []
       }
+      video_transcripts: {
+        Row: {
+          id: string
+          video_id: string
+          youtube_video_id: string
+          language_code: string
+          kind: 'standard' | 'asr' | 'unknown'
+          is_asr: boolean | null
+          transcript_status: 'pending' | 'fetched' | 'missing' | 'failed' | 'legacy_missing'
+          transcript_text: string | null
+          segments: Json | null
+          source: string
+          fetched_at: string | null
+          error_details: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          video_id: string
+          youtube_video_id: string
+          language_code?: string
+          kind?: 'standard' | 'asr' | 'unknown'
+          is_asr?: boolean | null
+          transcript_status?: 'pending' | 'fetched' | 'missing' | 'failed' | 'legacy_missing'
+          transcript_text?: string | null
+          segments?: Json | null
+          source?: string
+          fetched_at?: string | null
+          error_details?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          language_code?: string
+          kind?: 'standard' | 'asr' | 'unknown'
+          is_asr?: boolean | null
+          transcript_status?: 'pending' | 'fetched' | 'missing' | 'failed' | 'legacy_missing'
+          transcript_text?: string | null
+          segments?: Json | null
+          source?: string
+          fetched_at?: string | null
+          error_details?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       canonical_sync_state: {
         Row: {
           id: string

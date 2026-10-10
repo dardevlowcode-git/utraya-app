@@ -6,7 +6,7 @@
 
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import type { AuthSession } from '@/lib/types/domain'
 import TopNav from '@/components/layout/TopNav'
 import SideNav from '@/components/layout/SideNav'
@@ -14,6 +14,48 @@ import { cn } from '@/lib/utils/cn'
 
 const PIN_STORAGE_KEY = 'private-nav-pinned'
 const DESKTOP_MEDIA_QUERY = '(min-width: 768px)'
+const PIN_PREFERENCE_CHANGE_EVENT = 'utraya:private-nav-pinned-change'
+
+/** Iscrive il componente alle modifiche di viewport desktop. */
+function subscribeToDesktopViewport(onChange: () => void) {
+  const media = window.matchMedia(DESKTOP_MEDIA_QUERY)
+  media.addEventListener('change', onChange)
+
+  return () => media.removeEventListener('change', onChange)
+}
+
+/** Legge la corrispondenza corrente con il breakpoint desktop. */
+function getDesktopViewportSnapshot() {
+  return window.matchMedia(DESKTOP_MEDIA_QUERY).matches
+}
+
+/** Fornisce il layout mobile stabile durante rendering server e hydration. */
+function getServerDesktopViewportSnapshot() {
+  return false
+}
+
+/** Iscrive il componente alle modifiche della preferenza sidebar. */
+function subscribeToPinnedPreference(onChange: () => void) {
+  window.addEventListener(PIN_PREFERENCE_CHANGE_EVENT, onChange)
+
+  return () => window.removeEventListener(PIN_PREFERENCE_CHANGE_EVENT, onChange)
+}
+
+/** Legge la preferenza persistita; il valore assente conserva il default fissato. */
+function getPinnedPreferenceSnapshot() {
+  return window.localStorage.getItem(PIN_STORAGE_KEY) !== '0'
+}
+
+/** Fornisce il default fissato per server rendering e hydration. */
+function getServerPinnedPreferenceSnapshot() {
+  return true
+}
+
+/** Persiste e pubblica la preferenza sidebar scelta dall'utente. */
+function savePinnedPreference(isPinned: boolean) {
+  window.localStorage.setItem(PIN_STORAGE_KEY, isPinned ? '1' : '0')
+  window.dispatchEvent(new Event(PIN_PREFERENCE_CHANGE_EVENT))
+}
 
 interface PrivateChromeProps {
   session: AuthSession
@@ -22,35 +64,32 @@ interface PrivateChromeProps {
 }
 
 export default function PrivateChrome({ session, children, footer }: PrivateChromeProps) {
-  const [isDesktop, setIsDesktop] = useState(false)
-  const [isPinned, setIsPinned] = useState(true)
+  const isDesktop = useSyncExternalStore(
+    subscribeToDesktopViewport,
+    getDesktopViewportSnapshot,
+    getServerDesktopViewportSnapshot
+  )
+  const isPinned = useSyncExternalStore(
+    subscribeToPinnedPreference,
+    getPinnedPreferenceSnapshot,
+    getServerPinnedPreferenceSnapshot
+  )
   const [isMenuOpen, setIsMenuOpen] = useState(false)
 
   useEffect(() => {
     const media = window.matchMedia(DESKTOP_MEDIA_QUERY)
-    const syncViewport = () => {
-      setIsDesktop(media.matches)
+    const closeMenuOnMobile = () => {
       if (!media.matches) {
         setIsMenuOpen(false)
       }
     }
 
-    const savedPinned = window.localStorage.getItem(PIN_STORAGE_KEY)
-    if (savedPinned === '0') {
-      setIsPinned(false)
-    }
-
-    syncViewport()
-    media.addEventListener('change', syncViewport)
+    media.addEventListener('change', closeMenuOnMobile)
 
     return () => {
-      media.removeEventListener('change', syncViewport)
+      media.removeEventListener('change', closeMenuOnMobile)
     }
   }, [])
-
-  useEffect(() => {
-    window.localStorage.setItem(PIN_STORAGE_KEY, isPinned ? '1' : '0')
-  }, [isPinned])
 
   const contentOffsetClass = useMemo(() => {
     return isDesktop && isPinned ? 'md:ml-64' : ''
@@ -65,13 +104,9 @@ export default function PrivateChrome({ session, children, footer }: PrivateChro
   }
 
   function togglePinned() {
-    setIsPinned((previous) => {
-      const next = !previous
-      if (!previous) {
-        setIsMenuOpen(false)
-      }
-      return next
-    })
+    const next = !isPinned
+    if (!isPinned) setIsMenuOpen(false)
+    savePinnedPreference(next)
   }
 
   return (
@@ -93,4 +128,3 @@ export default function PrivateChrome({ session, children, footer }: PrivateChro
     </div>
   )
 }
-

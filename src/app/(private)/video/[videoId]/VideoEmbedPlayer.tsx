@@ -17,6 +17,11 @@ interface VideoEmbedPlayerProps {
  * Mostra iframe YouTube con fallback automatico tra host embed per mitigare blocchi browser/privacy.
  */
 export default function VideoEmbedPlayer({ youtubeVideoId, title }: VideoEmbedPlayerProps) {
+  return <VideoEmbedPlayerInstance key={youtubeVideoId} youtubeVideoId={youtubeVideoId} title={title} />
+}
+
+/** Mantiene lo stato del fallback limitato all'identificativo YouTube corrente. */
+function VideoEmbedPlayerInstance({ youtubeVideoId, title }: VideoEmbedPlayerProps) {
   const sources = useMemo(
     () => [
       `https://www.youtube-nocookie.com/embed/${youtubeVideoId}`,
@@ -26,11 +31,6 @@ export default function VideoEmbedPlayer({ youtubeVideoId, title }: VideoEmbedPl
   )
   const [sourceIndex, setSourceIndex] = useState(0)
   const [hasLoaded, setHasLoaded] = useState(false)
-
-  useEffect(() => {
-    setSourceIndex(0)
-    setHasLoaded(false)
-  }, [youtubeVideoId])
 
   useEffect(() => {
     if (hasLoaded) return
