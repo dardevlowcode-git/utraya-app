@@ -765,6 +765,27 @@
       "scanStarted": "Scan started",
       "scanError": "Failed to start scan"
     },
+    "retryLimits": {
+      "title": "API retry limits",
+      "subtitle": "Configure additional retries for each credential. The limit does not include the initial request.",
+      "privateTitle": "Private credentials",
+      "privateEmpty": "No private credentials are registered.",
+      "sharedTitle": "Shared YouTube key",
+      "sharedKey": "Shared",
+      "youtubeDataApi": "YouTube Data API",
+      "gemini": "Gemini",
+      "configured": "Key configured",
+      "notConfigured": "No key configured",
+      "sharedInactive": "Administrative setting is separate from the environment variable.",
+      "sharedWarning": "Legacy transcript pipeline is inactive: changing this limit does not reactivate it.",
+      "retryLimit": "Additional retries",
+      "maxAttempts": "Maximum attempts: {count}",
+      "save": "Save limit",
+      "saving": "Saving…",
+      "saved": "Limit saved.",
+      "saveError": "Unable to save the limit.",
+      "invalid": "Enter an integer between 0 and 2147483647."
+    },
     "jobs": {
       "scheduledTitle": "Upcoming scheduled jobs",
       "scheduledSubtitle": "Preview of upcoming planned runs (based on channel next sync).",

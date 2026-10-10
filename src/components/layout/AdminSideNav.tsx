@@ -74,6 +74,16 @@ const adminNavItems = [
     ),
   },
   {
+    href: '/admin/retry-limits',
+    labelKey: 'admin.retryLimits.title',
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+          d="M12 6v12m6-6H6m15 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    ),
+  },
+  {
     href: '/admin/logs',
     labelKey: 'admin.logs.title',
     icon: (

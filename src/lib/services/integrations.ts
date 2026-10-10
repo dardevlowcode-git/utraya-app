@@ -22,8 +22,8 @@ const AES_GCM_IV_LENGTH = 12
 const AES_GCM_AUTH_TAG_LENGTH = 16
 const YOUTUBE_VALIDATION_TIMEOUT_MS = 10_000
 const GEMINI_VALIDATION_TIMEOUT_MS = 5_000
-const GEMINI_VALIDATION_MAX_ATTEMPTS = 3
-const GEMINI_VALIDATION_RETRY_BASE_MS = 250
+const VALIDATION_RETRY_BASE_MS = 250
+const VALIDATION_RETRY_MAX_DELAY_MS = 1_000
 
 /**
  * Legge la chiave applicativa usata per cifrare le API key utente.
@@ -255,7 +255,16 @@ export async function saveApiKey(params: {
   }
 
   const supabase = params.supabase ?? await createClient()
+  const previousCredential = await getCredentialRow(params.userId, params.provider, supabase)
+  const unchangedSecret = previousCredential?.encrypted_key
+    ? safelyDecryptSecret(previousCredential.encrypted_key) === normalized
+    : false
   const encrypted = encryptSecret(normalized)
+
+  // Un segreto sostituito è una nuova credenziale: azzera il suo override prima del salvataggio.
+  if (previousCredential && !unchangedSecret) {
+    await resetCredentialRetryLimit(previousCredential.id)
+  }
 
   // Upsert per provider: aggiorna in-place senza creare record duplicati.
   const { error } = await supabase
@@ -303,7 +312,7 @@ export async function saveApiKey(params: {
 /**
  * Verifica una chiave YouTube con una chiamata minima read-only.
  */
-async function validateYouTubeApiKey(apiKey: string, userId: string): Promise<void> {
+async function validateYouTubeApiKey(apiKey: string, userId: string, retryLimit: number): Promise<void> {
   // Chiamata minima a endpoint YouTube per confermare validita credenziale.
   const url = new URL('https://www.googleapis.com/youtube/v3/search')
   url.searchParams.set('part', 'snippet')
@@ -312,7 +321,7 @@ async function validateYouTubeApiKey(apiKey: string, userId: string): Promise<vo
   url.searchParams.set('type', 'video')
   url.searchParams.set('key', apiKey)
 
-  const response = await fetchAndRecordProviderRequest({
+  const response = await fetchProviderValidationWithRetry(retryLimit, () => fetchAndRecordProviderRequest({
     userId,
     provider: 'youtube',
     operation: 'search.list',
@@ -323,7 +332,7 @@ async function validateYouTubeApiKey(apiKey: string, userId: string): Promise<vo
       cache: 'no-store',
       signal: AbortSignal.timeout(YOUTUBE_VALIDATION_TIMEOUT_MS),
     },
-  })
+  }))
 
   if (!response.ok) {
     const text = await response.text().catch(() => '')
@@ -334,47 +343,92 @@ async function validateYouTubeApiKey(apiKey: string, userId: string): Promise<vo
 /**
  * Verifica una chiave Gemini con una chiamata minima read-only.
  */
-async function validateGeminiApiKey(apiKey: string, userId: string): Promise<void> {
+async function validateGeminiApiKey(apiKey: string, userId: string, retryLimit: number): Promise<void> {
   // Chiamata minima a endpoint Gemini: se risponde 2xx la chiave e valida.
   const url = new URL('https://generativelanguage.googleapis.com/v1beta/models')
   url.searchParams.set('key', apiKey)
 
-  let response: Response | undefined
-  for (let attempt = 1; attempt <= GEMINI_VALIDATION_MAX_ATTEMPTS; attempt += 1) {
-    try {
-      response = await fetchAndRecordProviderRequest({
-        userId,
-        provider: 'gemini',
-        operation: 'models.list',
-        url: url.toString(),
-        init: {
-          method: 'GET',
-          headers: { Accept: 'application/json' },
-          cache: 'no-store',
-          signal: AbortSignal.timeout(GEMINI_VALIDATION_TIMEOUT_MS),
-        },
-      })
-    } catch (error) {
-      const isTemporaryTransportError = error instanceof TypeError
-        || (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError'))
-      if (!isTemporaryTransportError || attempt === GEMINI_VALIDATION_MAX_ATTEMPTS) throw error
-    }
-
-    if (response) {
-      const isTemporaryServerError = response.status >= 500 && response.status <= 599
-      if (!isTemporaryServerError || attempt === GEMINI_VALIDATION_MAX_ATTEMPTS) break
-      await response.body?.cancel().catch(() => undefined)
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, GEMINI_VALIDATION_RETRY_BASE_MS * 2 ** (attempt - 1)))
-    response = undefined
-  }
-
-  if (!response) throw new Error('Gemini validation retry ended without a response')
+  const response = await fetchProviderValidationWithRetry(retryLimit, () => fetchAndRecordProviderRequest({
+    userId,
+    provider: 'gemini',
+    operation: 'models.list',
+    url: url.toString(),
+    init: {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(GEMINI_VALIDATION_TIMEOUT_MS),
+    },
+  }))
 
   if (!response.ok) {
     const text = await response.text().catch(() => '')
     throw new Error(`Gemini validation failed (${response.status}): ${text.slice(0, 200)}`)
+  }
+}
+
+/** Esegue una richiesta di verifica e ritenta solo errori di trasporto o HTTP 5xx sulla stessa chiave. */
+async function fetchProviderValidationWithRetry(
+  retryLimit: number,
+  request: () => Promise<Response>
+): Promise<Response> {
+  for (let retry = 0; retry <= retryLimit; retry += 1) {
+    let response: Response
+    try {
+      response = await request()
+    } catch (error) {
+      const temporaryTransportError = error instanceof TypeError
+        || (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError'))
+      if (!temporaryTransportError || retry === retryLimit) throw error
+      await delayForValidationRetry(retry)
+      continue
+    }
+
+    if (response.status < 500 || response.status > 599 || retry === retryLimit) return response
+    await response.body?.cancel().catch(() => undefined)
+    await delayForValidationRetry(retry)
+  }
+
+  throw new Error('Validation retry ended without a response')
+}
+
+/** Applica un backoff breve e limitato senza introdurre un tetto al numero amministrativo di retry. */
+async function delayForValidationRetry(retry: number): Promise<void> {
+  const delayMs = Math.min(VALIDATION_RETRY_BASE_MS * 2 ** retry, VALIDATION_RETRY_MAX_DELAY_MS)
+  await new Promise((resolve) => setTimeout(resolve, delayMs))
+}
+
+/** Legge il limite server-side e chiude in modo sicuro a zero se manca la riga seedata. */
+async function getCredentialRetryLimit(credentialId: string): Promise<number> {
+  const { data, error } = await createAdminClient()
+    .from('user_provider_credential_retry_limits')
+    .select('retry_limit')
+    .eq('credential_id', credentialId)
+    .maybeSingle()
+
+  if (error) {
+    throw new AppError('Impossibile leggere il limite retry credenziale', 'unknown', 500, { cause: error.message })
+  }
+  return data?.retry_limit ?? 0
+}
+
+/** Riporta a zero il limite privato quando viene sostituito il segreto associato. */
+async function resetCredentialRetryLimit(credentialId: string): Promise<void> {
+  const { error } = await createAdminClient()
+    .from('user_provider_credential_retry_limits')
+    .upsert({ credential_id: credentialId, retry_limit: 0 })
+
+  if (error) {
+    throw new AppError('Impossibile azzerare il limite della nuova credenziale', 'unknown', 500, { cause: error.message })
+  }
+}
+
+/** Confronta il segreto precedente solo in memoria; un ciphertext illeggibile equivale a credenziale diversa. */
+function safelyDecryptSecret(cipherText: string): string | null {
+  try {
+    return decryptSecret(cipherText)
+  } catch {
+    return null
   }
 }
 
@@ -389,10 +443,14 @@ export async function validateApiKey(params: {
 }): Promise<{ provider: Provider; isValid: boolean; message: string | null }> {
   assertProvider(params.provider)
 
-  const apiKey = await getProviderApiKeyForUser(params.userId, params.provider, params.supabase)
-  if (!apiKey) {
+  const credential = await getCredentialRow(params.userId, params.provider, params.supabase)
+  if (!credential?.encrypted_key || !credential.is_configured) {
     throw new AppError('Chiave API non configurata', 'validation', 400)
   }
+
+  const apiKey = safelyDecryptSecret(credential.encrypted_key)
+  if (!apiKey) throw new AppError('Impossibile decifrare la chiave API', 'structural', 500)
+  const retryLimit = await getCredentialRetryLimit(credential.id)
 
   const supabase = params.supabase ?? await createClient()
   let isValid = false
@@ -400,9 +458,9 @@ export async function validateApiKey(params: {
 
   try {
     if (params.provider === 'youtube') {
-      await validateYouTubeApiKey(apiKey, params.userId)
+      await validateYouTubeApiKey(apiKey, params.userId, retryLimit)
     } else {
-      await validateGeminiApiKey(apiKey, params.userId)
+      await validateGeminiApiKey(apiKey, params.userId, retryLimit)
     }
     isValid = true
   } catch (error) {
@@ -429,10 +487,10 @@ export async function validateApiKey(params: {
     })
   }
 
-  const credential = await getCredentialRow(params.userId, params.provider, params.supabase)
-  if (credential) {
+  const credentialForAudit = await getCredentialRow(params.userId, params.provider, params.supabase)
+  if (credentialForAudit) {
     await writeCredentialCheckAudit({
-      credential_id: credential.id,
+      credential_id: credentialForAudit.id,
       is_valid: isValid,
       error_message: errorMessage,
       error_type: isValid ? null : (classifyError(errorMessage) === 'temporary' ? 'temporary' : 'structural'),

@@ -56,12 +56,28 @@ function createCredentialSupabase(credentialId: string) {
   return { supabase, getCredentialRow: () => credentialRow }
 }
 
+/** Simula soltanto il confine DB privilegiato per il limite e il ledger richieste. */
+function configureRetryLimitClient(retryLimit: number) {
+  const retryLimitUpsert = vi.fn(async () => ({ error: null }))
+  const retryQuery = {
+    eq: vi.fn(() => retryQuery),
+    maybeSingle: vi.fn(async () => ({ data: { retry_limit: retryLimit }, error: null })),
+  }
+  createAdminClientMock.mockReturnValue({
+    from: vi.fn((table: string) => table === 'user_provider_credential_retry_limits'
+      ? { select: vi.fn(() => retryQuery), upsert: retryLimitUpsert }
+      : fromMock(table)),
+  })
+  return { retryLimitUpsert }
+}
+
 describe('writeCredentialCheckAudit', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     fromMock.mockReturnValue({ insert: insertMock })
     createAdminClientMock.mockReturnValue({ from: fromMock })
     insertMock.mockResolvedValue({ error: null })
+    configureRetryLimitClient(0)
   })
 
   it('riserva 30 secondi alla route integrazioni per il retry provider limitato', () => {
@@ -317,6 +333,7 @@ describe('writeCredentialCheckAudit', () => {
       .mockResolvedValueOnce(new Response('{}', { status: 503 }))
       .mockResolvedValueOnce(new Response('{}', { status: 200 }))
 
+    configureRetryLimitClient(2)
     process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
     vi.stubGlobal('fetch', fetchMock)
 
@@ -352,6 +369,7 @@ describe('writeCredentialCheckAudit', () => {
     const { supabase } = createCredentialSupabase('credential-gemini-quota')
     const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 429 }))
 
+    configureRetryLimitClient(2)
     process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
     vi.stubGlobal('fetch', fetchMock)
 
@@ -373,6 +391,193 @@ describe('writeCredentialCheckAudit', () => {
       ])
     } finally {
       vi.unstubAllGlobals()
+      if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY
+      else process.env.CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey
+    }
+  })
+
+  it('limita a una richiesta la validazione di una nuova chiave con retry predefiniti a zero', async () => {
+    const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
+    const { supabase } = createCredentialSupabase('credential-gemini-default-retry')
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new TypeError('temporary network failure'))
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+
+    configureRetryLimitClient(0)
+    process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
+    vi.stubGlobal('fetch', fetchMock)
+
+    try {
+      const result = await saveApiKey({
+        userId: 'gemini-default-retry-owner',
+        provider: 'gemini',
+        apiKey: 'test-gemini-key-default-retry',
+        supabase: supabase as unknown as AppSupabaseClient,
+      })
+
+      expect(result.isValid).toBe(false)
+      expect(fetchMock).toHaveBeenCalledOnce()
+    } finally {
+      vi.unstubAllGlobals()
+      if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY
+      else process.env.CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey
+    }
+  })
+
+  it('consente un solo retry Gemini quando il limite amministrativo è uno', async () => {
+    const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
+    const { supabase } = createCredentialSupabase('credential-gemini-one-retry')
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response('{}', { status: 503 }))
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+
+    configureRetryLimitClient(1)
+    process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
+    vi.stubGlobal('fetch', fetchMock)
+
+    try {
+      const result = await saveApiKey({
+        userId: 'gemini-one-retry-owner',
+        provider: 'gemini',
+        apiKey: 'test-gemini-key-one-retry',
+        supabase: supabase as unknown as AppSupabaseClient,
+      })
+
+      expect(result.isValid).toBe(true)
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(insertMock.mock.calls.map(([row]) => row as Record<string, unknown>)
+        .filter((row) => row.provider === 'gemini')).toMatchObject([
+        { provider: 'gemini', outcome: 'http_error', http_status: 503 },
+        { provider: 'gemini', outcome: 'success', http_status: 200 },
+      ])
+    } finally {
+      vi.unstubAllGlobals()
+      if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY
+      else process.env.CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey
+    }
+  })
+
+  it('rispetta il limite di dieci retry Gemini con undici richieste massime e accounting per richiesta', async () => {
+    const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
+    const { supabase } = createCredentialSupabase('credential-gemini-ten-retries')
+    const fetchMock = vi.fn().mockImplementation(async () => new Response('{}', { status: 503 }))
+
+    configureRetryLimitClient(10)
+    process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
+    vi.stubGlobal('fetch', fetchMock)
+    vi.useFakeTimers()
+
+    try {
+      const validation = saveApiKey({
+        userId: 'gemini-ten-retries-owner',
+        provider: 'gemini',
+        apiKey: 'test-gemini-key-ten-retries',
+        supabase: supabase as unknown as AppSupabaseClient,
+      })
+      await vi.runAllTimersAsync()
+      const result = await validation
+      const usageEvents = insertMock.mock.calls
+        .map(([row]) => row as Record<string, unknown>)
+        .filter((row) => row.provider === 'gemini')
+
+      expect(result.isValid).toBe(false)
+      expect(fetchMock).toHaveBeenCalledTimes(11)
+      expect(usageEvents).toHaveLength(11)
+      expect(usageEvents.every((event) => event.user_id === 'gemini-ten-retries-owner')).toBe(true)
+    } finally {
+      vi.useRealTimers()
+      vi.unstubAllGlobals()
+      if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY
+      else process.env.CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey
+    }
+  })
+
+  it('applica il limite retry anche alla verifica della chiave YouTube privata', async () => {
+    const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
+    const { supabase } = createCredentialSupabase('credential-youtube-one-retry')
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response('{}', { status: 503 }))
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+
+    configureRetryLimitClient(1)
+    process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
+    vi.stubGlobal('fetch', fetchMock)
+
+    try {
+      const result = await saveApiKey({
+        userId: 'youtube-one-retry-owner',
+        provider: 'youtube',
+        apiKey: 'test-youtube-key-one-retry',
+        supabase: supabase as unknown as AppSupabaseClient,
+      })
+
+      expect(result.isValid).toBe(true)
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(insertMock.mock.calls.map(([row]) => row as Record<string, unknown>)
+        .filter((row) => row.provider === 'youtube')).toMatchObject([
+        { user_id: 'youtube-one-retry-owner', outcome: 'http_error', http_status: 503 },
+        { user_id: 'youtube-one-retry-owner', outcome: 'success', http_status: 200 },
+      ])
+    } finally {
+      vi.unstubAllGlobals()
+      if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY
+      else process.env.CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey
+    }
+  })
+
+  it('mantiene il limite admin quando si risalva lo stesso segreto', async () => {
+    const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
+    const { supabase } = createCredentialSupabase('credential-same-secret')
+    const { retryLimitUpsert } = configureRetryLimitClient(0)
+    process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
+
+    try {
+      await saveApiKey({
+        userId: 'same-secret-owner',
+        provider: 'youtube',
+        apiKey: 'test-youtube-key-same-secret',
+        validateNow: false,
+        supabase: supabase as unknown as AppSupabaseClient,
+      })
+      await saveApiKey({
+        userId: 'same-secret-owner',
+        provider: 'youtube',
+        apiKey: 'test-youtube-key-same-secret',
+        validateNow: false,
+        supabase: supabase as unknown as AppSupabaseClient,
+      })
+
+      expect(retryLimitUpsert).not.toHaveBeenCalled()
+    } finally {
+      if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY
+      else process.env.CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey
+    }
+  })
+
+  it('azzera il limite admin quando si sostituisce una chiave privata', async () => {
+    const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
+    const { supabase } = createCredentialSupabase('credential-replaced-secret')
+    const { retryLimitUpsert } = configureRetryLimitClient(0)
+    process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
+
+    try {
+      await saveApiKey({
+        userId: 'replacement-owner',
+        provider: 'youtube',
+        apiKey: 'test-youtube-key-before-replacement',
+        validateNow: false,
+        supabase: supabase as unknown as AppSupabaseClient,
+      })
+      await saveApiKey({
+        userId: 'replacement-owner',
+        provider: 'youtube',
+        apiKey: 'test-youtube-key-after-replacement',
+        validateNow: false,
+        supabase: supabase as unknown as AppSupabaseClient,
+      })
+
+      expect(retryLimitUpsert).toHaveBeenCalledWith({ credential_id: 'credential-replaced-secret', retry_limit: 0 })
+    } finally {
       if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY
       else process.env.CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey
     }

@@ -190,6 +190,40 @@ export type Database = {
         }
         Relationships: []
       }
+      user_provider_credential_retry_limits: {
+        Row: {
+          credential_id: string
+          retry_limit: number
+          updated_at: string
+        }
+        Insert: {
+          credential_id: string
+          retry_limit?: number
+          updated_at?: string
+        }
+        Update: {
+          retry_limit?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      shared_provider_retry_settings: {
+        Row: {
+          provider_key: 'youtube_innertube'
+          retry_limit: number
+          updated_at: string
+        }
+        Insert: {
+          provider_key: 'youtube_innertube'
+          retry_limit?: number
+          updated_at?: string
+        }
+        Update: {
+          retry_limit?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       credential_checks: {
         Row: {
           id: string

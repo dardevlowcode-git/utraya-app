@@ -770,6 +770,27 @@
       "subtitle": "Gestisci il template di prompt globale per l'analisi dei video.",
       "promptNote": "Il prompt viene applicato a tutte le nuove analisi. I riepiloghi esistenti non vengono rigenerati."
     },
+    "retryLimits": {
+      "title": "Limiti retry API",
+      "subtitle": "Configura i retry aggiuntivi per ogni credenziale. Il limite non include la richiesta iniziale.",
+      "privateTitle": "Credenziali private",
+      "privateEmpty": "Nessuna credenziale privata registrata.",
+      "sharedTitle": "Chiave YouTube condivisa",
+      "sharedKey": "Condivisa",
+      "youtubeDataApi": "YouTube Data API",
+      "gemini": "Gemini",
+      "configured": "Chiave configurata",
+      "notConfigured": "Nessuna chiave configurata",
+      "sharedInactive": "Setting amministrativo separato dalla variabile d'ambiente.",
+      "sharedWarning": "Pipeline transcript legacy inattiva: cambiare questo limite non la riattiva.",
+      "retryLimit": "Retry aggiuntivi",
+      "maxAttempts": "Massimo tentativi: {count}",
+      "save": "Salva limite",
+      "saving": "Salvataggio…",
+      "saved": "Limite salvato.",
+      "saveError": "Impossibile salvare il limite.",
+      "invalid": "Inserisci un intero tra 0 e 2147483647."
+    },
     "jobs": {
       "title": "Job e operazioni",
       "scheduledTitle": "Prossimi job schedulati",
