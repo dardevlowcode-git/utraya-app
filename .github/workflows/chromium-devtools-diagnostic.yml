@@ -1,0 +1,84 @@
+# Scopo: diagnosticare l'avvio di Chromium nel test browser del branch CI isolato, evitando deploy.
+# Responsabilità: eseguire i gate CI solo sui push allowlistati e registrare il manifest Chromium con stderr opt-in sanitizzato.
+name: Chromium DevTools diagnostic (branch-only push)
+
+on:
+  push:
+    branches:
+      - admin/w00-mobile-ci-devtools
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  devtools-diagnostic:
+    if: ${{ github.ref == 'refs/heads/admin/w00-mobile-ci-devtools' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout allow-listed diagnostic ref
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Record runner and Chromium identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'event_commit_sha=%s\n' "$GITHUB_SHA"
+          printf 'image_os=%s\nimage_version=%s\n' "${ImageOS:-<unset>}" "${ImageVersion:-<unset>}"
+          uname -sr
+          selected="${ADMIN_MOBILE_CHROME_BIN:-}"
+          if [[ -z "$selected" ]]; then
+            for candidate in /usr/bin/chromium /usr/bin/chromium-browser /usr/bin/google-chrome; do
+              if [[ -e "$candidate" ]]; then
+                selected="$candidate"
+                break
+              fi
+            done
+          fi
+          if [[ -z "$selected" ]]; then
+            echo 'No configured Chromium candidate exists.'
+            exit 1
+          fi
+          resolved="$(readlink -f "$selected")"
+          printf 'selected_binary=%s\nresolved_binary=%s\n' "$selected" "$resolved"
+          if version_output="$("$selected" --version 2>/dev/null)"; then
+            if [[ "$version_output" =~ ^(Chromium|Google\ Chrome|Chrome)[[:space:]]([0-9]+([.][0-9]+)*)([[:space:]].*)?$ ]]; then
+              printf 'version_probe=%s %s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+            else
+              printf 'version_probe=unrecognized-format\n'
+            fi
+          else
+            version_status=$?
+            printf 'version_probe_exit=%s\n' "$version_status"
+          fi
+          sha256sum "$resolved"
+
+      - name: Install test dependencies
+        run: npm ci
+
+      - name: Check comments (didactic headers)
+        run: npm run check-comments
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type-check
+        run: npm run type-check
+
+      - name: Run the full CI suite with opt-in Chromium diagnostics
+        env:
+          ADMIN_MOBILE_CHROME_DIAGNOSTICS: '1'
+        run: npm test

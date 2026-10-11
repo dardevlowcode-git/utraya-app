@@ -4,7 +4,7 @@
  * Flusso: rende le route con dati isolati, carica il CSS prodotto dal progetto e verifica geometria desktop/mobile.
  */
 
-import { spawn, type ChildProcess } from 'node:child_process'
+import { spawn, type ChildProcess, type SpawnOptions } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
@@ -96,6 +96,11 @@ const ADMIN_MOBILE_BROWSER_TEST_TIMEOUT_MS = 25_000
 const DEV_TOOLS_PORT_POLL_ATTEMPTS = 100
 const DEV_TOOLS_PORT_POLL_INTERVAL_MS = 50
 const SPAWN_ERROR_TEST_TIMEOUT_MS = 8_000
+const CHROMIUM_DIAGNOSTICS_ENV = 'ADMIN_MOBILE_CHROME_DIAGNOSTICS'
+const CHROMIUM_DIAGNOSTIC_STDERR_ALLOWLIST = /(?:\b(?:ERROR|FATAL|WARN(?:ING)?)\b|sandbox|DevTools|shared library|zygote|crash|failed to start|not found)/i
+const CHROMIUM_DIAGNOSTIC_STDERR_MAX_BYTES = 8_192
+const CHROMIUM_DIAGNOSTIC_STDERR_MAX_LINES = 16
+const CHROMIUM_DIAGNOSTIC_LINE_MAX_CHARS = 400
 
 const longTranscript = `${'Utraya conserva il testo canonico senza modifiche. '.repeat(16)}${'x'.repeat(320)}`
 
@@ -125,6 +130,33 @@ interface BrowserRouteMetrics {
 interface DevToolsActivePort {
   port: string
   browserPath: string
+}
+
+/** Abilita la diagnostica solo con il valore opt-in esatto. */
+function chromiumDiagnosticsEnabled(value = process.env[CHROMIUM_DIAGNOSTICS_ENV]): boolean {
+  return value === '1'
+}
+
+/** Restituisce solo linee diagnostiche consentite, limitate e prive di canary/segreti. */
+function sanitizeChromiumDiagnosticStderr(stderr: Buffer): string {
+  const lines = stderr.toString('utf8')
+    .split(/\r?\n/)
+    .filter((line) => CHROMIUM_DIAGNOSTIC_STDERR_ALLOWLIST.test(line))
+    .map((line) => line
+      .replace(/\bBearer\s+[^\s,;]+/gi, 'Bearer <REDACTED>')
+      .replace(/\b(authorization|proxy-authorization|cookie|set-cookie|token|password|secret|api[_-]?key)\b\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, '$1=<REDACTED>')
+      .replace(/[?&](access_token|token|key|password|secret)=[^&#\s]+/gi, '$1=<REDACTED>')
+      .replace(/--user-data-dir(?:=|\s+)\S+/gi, '--user-data-dir=<PROFILE>')
+      .replace(/\/home\/\S+/g, '/home/<PATH>')
+      .replace(/\/tmp\/\S+/g, '/tmp/<PATH>')
+      .slice(0, CHROMIUM_DIAGNOSTIC_LINE_MAX_CHARS))
+    .filter(Boolean)
+    .slice(-CHROMIUM_DIAGNOSTIC_STDERR_MAX_LINES)
+
+  while (lines.length > 0 && Buffer.byteLength(lines.join('\n'), 'utf8') > CHROMIUM_DIAGNOSTIC_STDERR_MAX_BYTES) {
+    lines.shift()
+  }
+  return lines.join('\n')
 }
 
 beforeEach(() => {
@@ -237,7 +269,9 @@ async function measureRoute(
   browserSpawner: typeof spawn = spawn
 ): Promise<BrowserRouteMetrics> {
   if (!executablePath) throw new Error('Impostare ADMIN_MOBILE_CHROME_BIN per eseguire il test browser.')
+  const selectedExecutable: string = executablePath as string
 
+  const diagnosticsEnabled = chromiumDiagnosticsEnabled()
   return withOwnedBrowserTempDirectory(tempParent, async (tempDir) => {
     const htmlPath = path.join(tempDir, `route-${width}.html`)
     writeFileSync(htmlPath, [
@@ -252,9 +286,59 @@ async function measureRoute(
     let browserLaunchError: Error | undefined
     let socket: WebSocket | undefined
     let socketIsOpen = false
+    let stderrTail = Buffer.alloc(0)
+    let browserExitEvent: { code: number | null; signal: NodeJS.Signals | null } | undefined
+    let activePortPath: string | undefined
+    let readinessStartedAt: number | undefined
+    let readinessElapsedMs: number | null = null
+    let readinessFailure: unknown
+
+    /** Emita soltanto il manifest allowlist della readiness, prima/dopo il cleanup child. */
+    function logReadinessDiagnostic(stage: 'failure' | 'child-closed'): void {
+      if (!diagnosticsEnabled || selectedExecutable !== chromePath || !readinessFailure) return
+
+      let endpointFile: { exists: boolean; bytes: number | null } = { exists: false, bytes: null }
+      try {
+        if (activePortPath && existsSync(activePortPath)) {
+          endpointFile = { exists: true, bytes: readFileSync(activePortPath).byteLength }
+        }
+      } catch {
+        endpointFile = { exists: true, bytes: null }
+      }
+
+      const launchError = browserLaunchError as NodeJS.ErrnoException | undefined
+      const readinessError = readinessFailure as NodeJS.ErrnoException
+      console.error(`[CHROMIUM_DIAGNOSTIC] ${JSON.stringify({
+        event: 'devtools-readiness-failure',
+        stage,
+        executable: path.basename(selectedExecutable),
+        elapsedMs: readinessElapsedMs,
+        endpointFile,
+        spawnError: launchError ? {
+          name: launchError.name,
+          code: launchError.code ?? null,
+          syscall: launchError.syscall ?? null,
+        } : null,
+        readinessError: {
+          name: readinessError.name,
+          code: readinessError.code ?? null,
+          syscall: readinessError.syscall ?? null,
+        },
+        child: {
+          exitCode: browser?.exitCode ?? null,
+          signalCode: browser?.signalCode ?? null,
+          exitEvent: browserExitEvent ?? null,
+        },
+        stderr: sanitizeChromiumDiagnosticStderr(stderrTail),
+      })}`)
+    }
 
     try {
-      browser = browserSpawner(executablePath, [
+      const browserSpawnOptions: SpawnOptions = {
+        detached: true,
+        stdio: diagnosticsEnabled ? ['ignore', 'ignore', 'pipe'] : 'ignore',
+      }
+      browser = browserSpawner(selectedExecutable, [
         '--headless=new',
         '--no-sandbox',
         '--disable-gpu',
@@ -266,14 +350,32 @@ async function measureRoute(
         '--remote-debugging-port=0',
         `--user-data-dir=${profileDir}`,
         'about:blank',
-      ], { detached: true, stdio: 'ignore' })
+      ], browserSpawnOptions)
       browser.on('error', (error) => {
         browserLaunchError = error
       })
+      if (diagnosticsEnabled) {
+        browser.on('exit', (code, signal) => {
+          browserExitEvent = { code, signal }
+        })
+        browser.stderr?.on('data', (chunk: Buffer | string) => {
+          const next = Buffer.concat([stderrTail, Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)])
+          stderrTail = next.subarray(Math.max(0, next.length - CHROMIUM_DIAGNOSTIC_STDERR_MAX_BYTES))
+        })
+      }
       browserClosed = new Promise<void>((resolve) => browser?.once('close', () => resolve()))
 
-      const activePortPath = path.join(profileDir, 'DevToolsActivePort')
-      const { port } = await waitForDevToolsActivePort(activePortPath, () => browserLaunchError)
+      activePortPath = path.join(profileDir, 'DevToolsActivePort')
+      readinessStartedAt = Date.now()
+      let port: string
+      try {
+        ({ port } = await waitForDevToolsActivePort(activePortPath, () => browserLaunchError))
+      } catch (error) {
+        readinessFailure = error
+        readinessElapsedMs = Date.now() - readinessStartedAt
+        logReadinessDiagnostic('failure')
+        throw error
+      }
       const targetResponse = await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })
       if (!targetResponse.ok) throw new Error(`Chromium DevTools ha restituito HTTP ${targetResponse.status}.`)
       const target = await targetResponse.json() as { webSocketDebuggerUrl: string }
@@ -415,6 +517,7 @@ async function measureRoute(
         }
       }
       await browserClosed
+      logReadinessDiagnostic('child-closed')
     }
   })
 }
@@ -439,6 +542,36 @@ describe('Chromium DevTools startup readiness', () => {
       if (endpointWrite) clearTimeout(endpointWrite)
       rmSync(parent, { recursive: true, force: true })
     }
+  })
+})
+
+describe('Chromium diagnostic opt-in and sanitization', () => {
+  it('only opts in explicitly and redacts canaries from allowlisted stderr', () => {
+    const canary = 'CHROMIUM_DIAGNOSTIC_CANARY_6f21a8'
+    const stderr = [
+      'INFO: ordinary startup detail that must not be emitted',
+      `[ERROR:zygote] Authorization: Bearer ${canary} --user-data-dir=/tmp/profile-${canary} /home/runner/work/${canary}`,
+      `[FATAL:loader] token=${canary} shared library failed at /tmp/${canary}`,
+    ].join('\n')
+
+    const sanitized = sanitizeChromiumDiagnosticStderr(Buffer.from(stderr))
+    const oversized = sanitizeChromiumDiagnosticStderr(Buffer.from(
+      Array.from({ length: 32 }, () => `[ERROR:zygote] ${'x'.repeat(1_000)}`).join('\n')
+    ))
+
+    expect([
+      chromiumDiagnosticsEnabled(''),
+      chromiumDiagnosticsEnabled('0'),
+      chromiumDiagnosticsEnabled('true'),
+      chromiumDiagnosticsEnabled('1'),
+    ]).toEqual([false, false, false, true])
+    expect(sanitized).toContain('[ERROR:zygote]')
+    expect(sanitized).toContain('shared library failed')
+    expect(sanitized).not.toContain('ordinary startup detail')
+    expect(sanitized).not.toContain(canary)
+    expect(sanitized).not.toContain('/home/runner')
+    expect(sanitized).not.toContain('/tmp/profile-')
+    expect(Buffer.byteLength(oversized, 'utf8')).toBeLessThanOrEqual(8_192)
   })
 })
 
@@ -468,7 +601,9 @@ describe('Chromium spawn error cleanup', () => {
     fakeBrowser.once('close', () => {
       childClosed = true
     })
-    const spawnBrowser = vi.fn(() => {
+    let browserStdio: SpawnOptions['stdio'] | undefined
+    const spawnBrowser = vi.fn((_command: string, _args: string[], options: SpawnOptions) => {
+      browserStdio = options.stdio
       setImmediate(() => {
         fakeBrowser.emit('error', spawnError)
         fakeBrowserState.exitCode = -2
@@ -494,6 +629,7 @@ describe('Chromium spawn error cleanup', () => {
         completedBeforeSpawnPollBudget: Date.now() - startedAt < 2_000,
         childClosed,
         spawnCount: spawnBrowser.mock.calls.length,
+        browserStdio,
         remainingDirectories: readdirSync(parent),
         sentinel: readFileSync(sentinel, 'utf8'),
       }).toEqual({
@@ -503,6 +639,7 @@ describe('Chromium spawn error cleanup', () => {
         completedBeforeSpawnPollBudget: true,
         childClosed: true,
         spawnCount: 1,
+        browserStdio: chromiumDiagnosticsEnabled() ? ['ignore', 'ignore', 'pipe'] : 'ignore',
         remainingDirectories: [path.basename(existingDirectory)],
         sentinel: 'pre-existing content',
       })

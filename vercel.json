@@ -19,7 +19,8 @@
   ],
   "git": {
     "deploymentEnabled": {
-      "dev-security-contract": false
+      "dev-security-contract": false,
+      "admin/w00-mobile-ci-devtools": false
     }
   }
 }
