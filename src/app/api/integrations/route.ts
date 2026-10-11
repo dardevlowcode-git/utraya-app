@@ -17,13 +17,13 @@ import { ensureJsonRequest, ensureSameOrigin, getRequestId } from '@/lib/securit
 export const maxDuration = 30
 
 interface IntegrationPostBody {
-  provider?: 'youtube' | 'gemini'
+  provider?: 'youtube' | 'gemini' | 'firecrawl'
   apiKey?: string
   action?: 'save' | 'validate'
 }
 
 interface IntegrationDeleteBody {
-  provider?: 'youtube' | 'gemini'
+  provider?: 'youtube' | 'gemini' | 'firecrawl'
 }
 
 /**

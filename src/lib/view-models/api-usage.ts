@@ -6,7 +6,7 @@
 
 import type { ApiUsageEventRow } from '@/lib/types/domain'
 
-export type ApiUsageProvider = 'youtube' | 'gemini'
+export type ApiUsageProvider = 'youtube' | 'gemini' | 'firecrawl'
 
 export type ApiUsageEventRowInput = Pick<
   ApiUsageEventRow,

@@ -22,6 +22,10 @@ const apiUsageSummaryMigration = readFileSync(
   new URL('../../../supabase/migrations/20261006213338_api_usage_summary_quality.sql', import.meta.url),
   'utf8'
 )
+const firecrawlValidationMigration = readFileSync(
+  new URL('../../../supabase/migrations/20261012000000_firecrawl_personal_credentials.sql', import.meta.url),
+  'utf8'
+)
 
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: createAdminClientMock }))
 
@@ -68,6 +72,26 @@ describe('api usage accounting', () => {
       input_rate_usd_per_million: 0.3,
       output_rate_usd_per_million: 2.5,
     })
+  })
+
+  it('registra discovery Firecrawl per owner senza inventare crediti o costi e abilita il job persistente', () => {
+    expect(buildApiUsageEventInsert({
+      userId: 'firecrawl-key-owner',
+      provider: 'firecrawl',
+      operation: 'alexandria.find-tools',
+      outcome: 'success',
+      httpStatus: 200,
+    })).toMatchObject({
+      user_id: 'firecrawl-key-owner',
+      provider: 'firecrawl',
+      operation: 'alexandria.find-tools',
+      estimated_cost_usd: null,
+      quota_units: null,
+    })
+
+    expect(firecrawlValidationMigration).toMatch(/provider IN \('youtube', 'gemini', 'firecrawl'\)/)
+    expect(firecrawlValidationMigration).toMatch(/v_provider NOT IN \('youtube', 'gemini', 'firecrawl'\)/)
+    expect(firecrawlValidationMigration).toMatch(/usage\.provider = 'firecrawl'/)
   })
 
   it('adatta i token effettivi restituiti da Gemini al registro privato', async () => {

@@ -10,10 +10,10 @@ import { getCredentialStatusesForUser, removeApiKey, saveApiKey, validateApiKey 
 import { toIntegrationApiView } from '@/lib/view-models/integrationApi'
 import { z } from 'zod'
 
-type IntegrationBody = { action?: 'save' | 'validate'; provider?: 'youtube' | 'gemini'; apiKey?: string }
+type IntegrationBody = { action?: 'save' | 'validate'; provider?: 'youtube' | 'gemini' | 'firecrawl'; apiKey?: string }
 const integrationSchema = z.object({
   action: z.enum(['save', 'validate']).optional(),
-  provider: z.enum(['youtube', 'gemini']),
+  provider: z.enum(['youtube', 'gemini', 'firecrawl']),
   apiKey: z.string().trim().max(4096).optional(),
 }).strict()
 

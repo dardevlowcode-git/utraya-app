@@ -11,8 +11,10 @@ import type { CredentialStatus } from '@/lib/types/domain'
 import { useTranslations } from 'next-intl'
 import YouTubeApiKeyGuide from '@/components/integrations/YouTubeApiKeyGuide'
 import GeminiApiKeyGuide from '@/components/integrations/GeminiApiKeyGuide'
+import FirecrawlApiKeyGuide from '@/components/integrations/FirecrawlApiKeyGuide'
 
-type Provider = 'youtube' | 'gemini'
+type Provider = 'youtube' | 'gemini' | 'firecrawl'
+const PROVIDERS: Provider[] = ['youtube', 'gemini', 'firecrawl']
 
 interface IntegrationsClientProps {
   initialStatuses: CredentialStatus[]
@@ -29,13 +31,18 @@ const CONNECTOR_META: Record<Provider, { title: string; description: string; ico
     description: 'integrations.geminiKeyDesc',
     iconBg: 'gradient-ai',
   },
+  firecrawl: {
+    title: 'integrations.firecrawlKey',
+    description: 'integrations.firecrawlKeyDesc',
+    iconBg: 'bg-surface-container-high',
+  },
 }
 
 export default function IntegrationsClient({ initialStatuses }: IntegrationsClientProps) {
   const t = useTranslations()
   const [statuses, setStatuses] = useState<CredentialStatus[]>(initialStatuses)
   const [busyProvider, setBusyProvider] = useState<Provider | null>(null)
-  const [providerInput, setProviderInput] = useState<Record<Provider, string>>({ youtube: '', gemini: '' })
+  const [providerInput, setProviderInput] = useState<Record<Provider, string>>({ youtube: '', gemini: '', firecrawl: '' })
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -178,9 +185,9 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
           : status))
         setMessage(t('integrations.validationPending'))
       } else if (payload?.data?.isValid) {
-        setMessage(t('integrations.validationSuccess'))
+        setMessage(provider === 'firecrawl' ? t('integrations.discoverySuccess') : t('integrations.validationSuccess'))
       } else {
-        setError(payload?.data?.message ?? t('integrations.keyError'))
+        setError(provider === 'firecrawl' ? t('integrations.discoveryFailed') : payload?.data?.message ?? t('integrations.keyError'))
       }
 
       await refreshStatuses()
@@ -233,7 +240,7 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
           {t('integrations.subtitle')}
         </p>
         <div className="mt-3 inline-flex items-center gap-2 text-sm">
-          <span className={`w-2 h-2 rounded-full ${configuredCount === 2 ? 'status-active' : 'status-pending status-warning'}`} />
+          <span className={`w-2 h-2 rounded-full ${configuredCount === PROVIDERS.length ? 'status-active' : 'status-pending status-warning'}`} />
           <span className="text-on-surface-variant font-medium">
             {t('integrations.activeConnectors', { count: configuredCount })}
           </span>
@@ -258,7 +265,7 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
       {error && <p className="mb-4 text-sm text-error">{error}</p>}
 
       <div className="space-y-4">
-        {(['youtube', 'gemini'] as Provider[]).map((provider) => {
+        {PROVIDERS.map((provider) => {
           const connector = CONNECTOR_META[provider]
           const status = byProvider.get(provider)
           const isBusy = busyProvider === provider
@@ -270,10 +277,15 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
             <div key={provider} className="bg-surface-container-lowest rounded-2xl p-6 shadow-ambient">
               <div className="flex flex-col items-stretch gap-6 lg:flex-row lg:items-start lg:justify-between">
                 <div className="flex items-start gap-4">
-                  <div className={`w-12 h-12 ${connector.iconBg} rounded-xl flex items-center justify-center text-white shrink-0`}>
+                  <div className={`w-12 h-12 ${connector.iconBg} rounded-xl flex items-center justify-center ${provider === 'firecrawl' ? 'text-on-surface' : 'text-white'} shrink-0`}>
                     {provider === 'youtube' ? (
                       <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
+                      </svg>
+                    ) : provider === 'firecrawl' ? (
+                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <circle cx="12" cy="12" r="9" strokeWidth={1.5} />
+                        <path strokeLinecap="round" strokeWidth={1.5} d="M3 12h18M12 3a15 15 0 010 18m0-18a15 15 0 000 18" />
                       </svg>
                     ) : (
                       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -292,6 +304,7 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
                     <p className="text-sm text-on-surface-variant mb-3">{t(connector.description)}</p>
                     {provider === 'youtube' && <YouTubeApiKeyGuide />}
                     {provider === 'gemini' && <GeminiApiKeyGuide />}
+                    {provider === 'firecrawl' && <FirecrawlApiKeyGuide />}
 
                     <div className="flex flex-wrap items-center gap-3 text-xs mb-2">
                       <span
@@ -314,7 +327,9 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
                         <span aria-live="polite">
                         {isConfigured
                           ? isValidationPending ? t('integrations.status.pending')
-                            : isValid === false ? t('integrations.status.invalid') : t('integrations.status.configured')
+                            : isValid === false
+                              ? t(provider === 'firecrawl' ? 'integrations.status.discoveryNotConfirmed' : 'integrations.status.invalid')
+                              : t('integrations.status.configured')
                           : t('integrations.status.notConfigured')}
                         </span>
                       </span>
@@ -376,7 +391,7 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
                                  hover:text-on-surface px-4 py-2 rounded-xl ghost-border transition-all
                                  disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {t('integrations.check')}
+                      {t(provider === 'firecrawl' ? 'integrations.discoveryCheck' : 'integrations.check')}
                     </button>
                     <button
                       onClick={() => handleRemove(provider)}

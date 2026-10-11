@@ -10,11 +10,13 @@ import { getAdminRetryLimits, setCredentialRetryLimit, setSharedYoutubeRetryLimi
 
 const credentialId = '00000000-0000-4000-8000-000000000001'
 const missingRetryId = '00000000-0000-4000-8000-000000000002'
+const firecrawlCredentialId = '00000000-0000-4000-8000-000000000003'
 
 function createAdminDatabase() {
   const credentialRows = [
     { id: credentialId, user_id: 'user-1', provider: 'youtube', is_configured: true },
     { id: missingRetryId, user_id: 'user-2', provider: 'gemini', is_configured: false },
+    { id: firecrawlCredentialId, user_id: 'user-3', provider: 'firecrawl', is_configured: true },
   ]
   const retryLimitUpsert = vi.fn(async () => ({ error: null }))
   const sharedUpsert = vi.fn(async () => ({ error: null }))
@@ -35,6 +37,7 @@ function createAdminDatabase() {
             data: [
               { id: 'user-1', display_name: 'Dario', email: 'dario@example.test' },
               { id: 'user-2', display_name: null, email: 'utente@example.test' },
+              { id: 'user-3', display_name: 'Firecrawl owner', email: 'firecrawl@example.test' },
             ],
             error: null,
           })),
@@ -85,6 +88,14 @@ describe('retry-limits service', () => {
         provider: 'gemini',
         owner: 'utente@example.test',
         isConfigured: false,
+        retryLimit: 0,
+        maxAttempts: 1,
+      },
+      {
+        credentialId: firecrawlCredentialId,
+        provider: 'firecrawl',
+        owner: 'Firecrawl owner',
+        isConfigured: true,
         retryLimit: 0,
         maxAttempts: 1,
       },

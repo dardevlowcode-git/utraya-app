@@ -156,7 +156,7 @@ export type Database = {
         Row: {
           id: string
           user_id: string
-          provider: 'youtube' | 'gemini'
+          provider: 'youtube' | 'gemini' | 'firecrawl'
           encrypted_key: string | null
           is_configured: boolean
           is_valid: boolean | null
@@ -169,7 +169,7 @@ export type Database = {
         Insert: {
           id?: string
           user_id: string
-          provider: 'youtube' | 'gemini'
+          provider: 'youtube' | 'gemini' | 'firecrawl'
           encrypted_key?: string | null
           is_configured?: boolean
           is_valid?: boolean | null
@@ -251,7 +251,7 @@ export type Database = {
         Row: {
           id: string
           user_id: string
-          provider: 'youtube' | 'gemini'
+          provider: 'youtube' | 'gemini' | 'firecrawl'
           operation: string
           occurred_at: string
           outcome: 'success' | 'http_error' | 'network_error' | 'timeout'
@@ -270,7 +270,7 @@ export type Database = {
         Insert: {
           id?: string
           user_id: string
-          provider: 'youtube' | 'gemini'
+          provider: 'youtube' | 'gemini' | 'firecrawl'
           operation: string
           occurred_at?: string
           outcome: 'success' | 'http_error' | 'network_error' | 'timeout'

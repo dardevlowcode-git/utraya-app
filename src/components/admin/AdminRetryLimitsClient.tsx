@@ -133,7 +133,9 @@ export default function AdminRetryLimitsClient({ initialRetryLimits }: AdminRetr
               key={credential.credentialId}
               target={{ scope: 'credential', credentialId: credential.credentialId }}
               initialLimit={credential.retryLimit}
-              title={`${credential.provider === 'youtube' ? t('youtubeDataApi') : t('gemini')} — ${credential.owner}`}
+              title={`${credential.provider === 'youtube'
+                ? t('youtubeDataApi')
+                : credential.provider === 'gemini' ? t('gemini') : t('firecrawl')} — ${credential.owner}`}
               identifier={credential.credentialId}
               status={credential.isConfigured ? t('configured') : t('notConfigured')}
             />

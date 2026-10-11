@@ -19,15 +19,16 @@ import type { CredentialStatus } from '@/lib/types/domain'
 import type { Database } from '@/lib/types/database'
 import type { AppSupabaseClient } from '@/lib/supabase/types'
 
-type Provider = 'youtube' | 'gemini'
+type Provider = 'youtube' | 'gemini' | 'firecrawl'
 
 type CredentialRow = Database['public']['Tables']['user_provider_credentials']['Row']
 
-const PROVIDERS: Provider[] = ['youtube', 'gemini']
+const PROVIDERS: Provider[] = ['youtube', 'gemini', 'firecrawl']
 const AES_GCM_IV_LENGTH = 12
 const AES_GCM_AUTH_TAG_LENGTH = 16
 const YOUTUBE_VALIDATION_TIMEOUT_MS = 10_000
 const GEMINI_VALIDATION_TIMEOUT_MS = 5_000
+const FIRECRAWL_DISCOVERY_TIMEOUT_MS = 10_000
 
 /**
  * Legge la chiave applicativa usata per cifrare le API key utente.
@@ -207,9 +208,7 @@ export async function getCredentialStatusesForUser(userId: string, client?: AppS
 
   const byProvider = new Map<Provider, CredentialRow>()
   for (const row of data ?? []) {
-    if (row.provider === 'youtube' || row.provider === 'gemini') {
-      byProvider.set(row.provider, row)
-    }
+    if (PROVIDERS.includes(row.provider)) byProvider.set(row.provider, row)
   }
 
   const credentialIds = (data ?? []).map((row) => row.id)
@@ -431,19 +430,88 @@ export async function performCredentialValidationAttempt(
     return { isValid: false, retryable: false, message: 'Impossibile decifrare la chiave API', errorType: 'structural', credentialChanged: false }
   }
 
-  const url = payload.provider === 'youtube'
-    ? new URL('https://www.googleapis.com/youtube/v3/search')
-    : new URL('https://generativelanguage.googleapis.com/v1beta/models')
-  const operation = payload.provider === 'youtube' ? 'search.list' : 'models.list'
-  if (payload.provider === 'youtube') {
-    url.searchParams.set('part', 'snippet')
-    url.searchParams.set('q', 'youtube')
-    url.searchParams.set('maxResults', '1')
-    url.searchParams.set('type', 'video')
-  }
-  url.searchParams.set('key', apiKey)
-
   try {
+    if (payload.provider === 'firecrawl') {
+      const response = await fetchAndRecordProviderRequest({
+        userId: payload.userId,
+        provider: 'firecrawl',
+        operation: 'alexandria.find-tools',
+        url: 'https://api.firecrawl.dev/v2/scrape',
+        init: {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            alexandria: {
+              provider: 'firecrawl',
+              capability: 'find-tools',
+              options: {
+                providers: ['youtube'],
+                capabilities: ['read'],
+                level: 'tools',
+                expand: ['options', 'response'],
+                limit: 1,
+              },
+            },
+          }),
+          cache: 'no-store',
+          signal: AbortSignal.timeout(FIRECRAWL_DISCOVERY_TIMEOUT_MS),
+        },
+      })
+
+      if (!response.ok) {
+        await response.body?.cancel().catch(() => undefined)
+        const retryable = response.status >= 500 && response.status <= 599
+        return {
+          isValid: false,
+          retryable,
+          message: `Firecrawl discovery request failed (HTTP ${response.status})`,
+          errorType: retryable ? 'temporary' : 'structural',
+          credentialChanged: false,
+        }
+      }
+
+      const result = await response.json().catch(() => null) as {
+        success?: unknown
+        data?: { alexandria?: Array<{
+          provider?: unknown
+          capability?: unknown
+          data?: { items?: Array<{ provider?: unknown; capability?: unknown }> }
+        }> }
+      } | null
+      const findTools = result?.data?.alexandria?.find(
+        (item) => item.provider === 'firecrawl' && item.capability === 'find-tools'
+      )
+      const hasYoutubeRead = findTools?.data?.items?.some(
+        (item) => item.provider === 'youtube' && item.capability === 'read'
+      )
+      if (result?.success === true && hasYoutubeRead) {
+        return { isValid: true, retryable: false, message: null, errorType: null, credentialChanged: false }
+      }
+      return {
+        isValid: false,
+        retryable: false,
+        message: 'Firecrawl discovery access could not be confirmed',
+        errorType: 'structural',
+        credentialChanged: false,
+      }
+    }
+
+    const url = payload.provider === 'youtube'
+      ? new URL('https://www.googleapis.com/youtube/v3/search')
+      : new URL('https://generativelanguage.googleapis.com/v1beta/models')
+    const operation = payload.provider === 'youtube' ? 'search.list' : 'models.list'
+    if (payload.provider === 'youtube') {
+      url.searchParams.set('part', 'snippet')
+      url.searchParams.set('q', 'youtube')
+      url.searchParams.set('maxResults', '1')
+      url.searchParams.set('type', 'video')
+    }
+    url.searchParams.set('key', apiKey)
+
     const response = await fetchAndRecordProviderRequest({
       userId: payload.userId,
       provider: payload.provider,

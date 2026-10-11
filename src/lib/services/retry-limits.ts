@@ -8,7 +8,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { RETRY_LIMIT_MAX } from '@/lib/utils/retry-limit'
 
 type AdminClient = ReturnType<typeof createAdminClient>
-type Provider = 'youtube' | 'gemini'
+type Provider = 'youtube' | 'gemini' | 'firecrawl'
 
 interface CredentialRow {
   id: string

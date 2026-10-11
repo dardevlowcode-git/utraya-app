@@ -17,7 +17,7 @@ const RETRY_BACKOFF_BASE_MS = 1_000
 const RETRY_BACKOFF_MAX_MS = 60_000
 
 type AdminClient = ReturnType<typeof createAdminClient>
-export type ValidationProvider = 'youtube' | 'gemini'
+export type ValidationProvider = 'youtube' | 'gemini' | 'firecrawl'
 export type CredentialValidationStatus = 'pending' | 'running' | 'completed' | 'failed'
 
 export interface CredentialValidationJobPayload {
@@ -130,7 +130,7 @@ function parseCredentialValidationPayload(value: unknown): CredentialValidationJ
   if (
     typeof payload.credentialId !== 'string'
     || typeof payload.userId !== 'string'
-    || (payload.provider !== 'youtube' && payload.provider !== 'gemini')
+    || (payload.provider !== 'youtube' && payload.provider !== 'gemini' && payload.provider !== 'firecrawl')
     || typeof payload.keyVersion !== 'string'
     || typeof payload.retryLimit !== 'number'
     || !Number.isSafeInteger(payload.retryLimit)

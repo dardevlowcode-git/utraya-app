@@ -21,14 +21,24 @@ type TestIntlProviderProps = Omit<React.ComponentProps<typeof NextIntlClientProv
 const TestIntlProvider = NextIntlClientProvider as React.ComponentType<TestIntlProviderProps>
 
 const initialRetryLimits: AdminRetryLimitsViewModel = {
-  credentials: [{
-    credentialId: 'credential-id-safe',
-    provider: 'gemini',
-    owner: 'Owner name',
-    isConfigured: true,
-    retryLimit: 1,
-    maxAttempts: 2,
-  }],
+  credentials: [
+    {
+      credentialId: 'credential-id-safe',
+      provider: 'gemini',
+      owner: 'Owner name',
+      isConfigured: true,
+      retryLimit: 1,
+      maxAttempts: 2,
+    },
+    {
+      credentialId: 'firecrawl-credential-safe',
+      provider: 'firecrawl',
+      owner: 'Firecrawl owner',
+      isConfigured: true,
+      retryLimit: 0,
+      maxAttempts: 1,
+    },
+  ],
   sharedYoutube: {
     providerKey: 'youtube_innertube',
     service: 'YouTube Innertube',
@@ -58,6 +68,8 @@ describe('AdminRetryLimitsClient', () => {
 
     expect(html).toContain('Owner name')
     expect(html).toContain('credential-id-safe')
+    expect(html).toContain('Firecrawl — Firecrawl owner')
+    expect(html).toContain('firecrawl-credential-safe')
     expect(html).toContain('Retry aggiuntivi')
     expect(html).toContain('Massimo tentativi: 2')
     expect(html).toContain('YOUTUBEI_API_KEY')

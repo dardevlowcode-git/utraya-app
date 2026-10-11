@@ -90,7 +90,7 @@ describe('IntegrationsClient YouTube setup guide', () => {
   it('rende la guida YouTube in inglese senza confonderla con quella Gemini', () => {
     const html = renderIntegrations('en')
 
-    expect((html.match(/<details/g) ?? [])).toHaveLength(2)
+    expect((html.match(/<details/g) ?? [])).toHaveLength(3)
     expect(html).toContain('Create or select a Google Cloud project')
     expect(html).toContain('HTTP referrers')
     expect(html).toContain('API key')
@@ -149,6 +149,67 @@ describe('IntegrationsClient YouTube setup guide', () => {
     expect(Object.keys(italianMessages.integrations.geminiGuide).sort()).toEqual(
       Object.keys(englishMessages.integrations.geminiGuide).sort()
     )
+    expect(Object.keys(italianMessages.integrations.firecrawlGuide).sort()).toEqual(
+      Object.keys(englishMessages.integrations.firecrawlGuide).sort()
+    )
+  })
+})
+
+describe('IntegrationsClient Firecrawl setup guide', () => {
+  it('spiega discovery, crediti, accodamento e gestione chiave in italiano', () => {
+    const html = renderIntegrations('it')
+    const firecrawlGuide = [...html.matchAll(/<details\b[^>]*>[\s\S]*?<\/details>/g)]
+      .map(([markup]) => markup)
+      .find((markup) => markup.includes('Come ottenere e configurare una chiave Firecrawl')) ?? ''
+
+    expect(firecrawlGuide).not.toBe('')
+    expect(firecrawlGuide).not.toMatch(/<details[^>]*\sopen(?:[=>\s])/)
+    expect(firecrawlGuide).toContain('https://docs.firecrawl.dev/dashboard#api-keys')
+    expect(firecrawlGuide).toContain('accoda la verifica discovery')
+    expect(firecrawlGuide).toContain('Discovery verifica solo l’accesso a Find Tools')
+    expect(firecrawlGuide).toContain('non esegue youtube/read, non estrae contenuti e non accetta termini')
+    expect(firecrawlGuide).toContain('non garantisce che ogni video abbia un transcript né un costo totale')
+    expect(firecrawlGuide).toContain('crea prima la nuova chiave, sostituiscila in Utraya e poi revoca la precedente')
+    expect(firecrawlGuide).toContain('nessun gate globale di attivazione')
+    expect(html).toContain('Verifica discovery')
+    expect(firecrawlGuide).toContain('focus-visible:ring-2')
+    expect(firecrawlGuide).toContain('min-h-11')
+  })
+
+  it('rende in inglese discovery, no-extraction/terms and provider cost limits', () => {
+    const html = renderIntegrations('en')
+    const firecrawlGuide = [...html.matchAll(/<details\b[^>]*>[\s\S]*?<\/details>/g)]
+      .map(([markup]) => markup)
+      .find((markup) => markup.includes('How to get and configure a Firecrawl API key')) ?? ''
+
+    expect(firecrawlGuide).not.toBe('')
+    expect(firecrawlGuide).toContain('https://docs.firecrawl.dev/features/alexandria')
+    expect(firecrawlGuide).toContain('Discovery checks Find Tools access only')
+    expect(firecrawlGuide).toContain('does not execute youtube/read, extract content, or accept terms')
+    expect(firecrawlGuide).toContain('does not guarantee a transcript for every video or a total cost')
+    expect(firecrawlGuide).toContain('create the replacement key, update it in Utraya, then revoke the old key')
+    expect(firecrawlGuide).toContain('bypass a global activation gate')
+    expect(html).toContain('Check discovery')
+    expect([...firecrawlGuide.matchAll(/<a\b[^>]*>/g)].every(([tag]) => tag.includes('min-h-11'))).toBe(true)
+  })
+
+  it('mostra lo stato pending Firecrawl mentre la verifica resta sul job key-version', () => {
+    const status: CredentialStatus = {
+      provider: 'firecrawl',
+      isConfigured: true,
+      isValid: null,
+      validationStatus: 'pending',
+      lastValidatedAt: null,
+      lastUsedAt: null,
+      lastError: null,
+      maskedKey: '****abcd',
+    }
+
+    const html = renderIntegrations('it', [status])
+
+    expect(html).toContain('Firecrawl')
+    expect(html).toContain('Verifica in corso')
+    expect(html).toContain('****abcd')
   })
 })
 

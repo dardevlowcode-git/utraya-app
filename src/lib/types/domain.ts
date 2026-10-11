@@ -59,7 +59,7 @@ export interface ChannelWithUserContext {
 
 /** API credential status for a provider */
 export interface CredentialStatus {
-  provider: 'youtube' | 'gemini'
+  provider: 'youtube' | 'gemini' | 'firecrawl'
   isConfigured: boolean
   isValid: boolean | null
   validationStatus: 'idle' | 'pending' | 'running' | 'completed'

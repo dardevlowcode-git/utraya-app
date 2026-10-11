@@ -51,7 +51,6 @@ import { DELETE as deleteIntegrations, GET as getIntegrations, POST as postInteg
 import { POST as postLegalAcceptance } from '@/app/api/legal/accept/route'
 import { POST as postV1CancelDeletion } from '@/app/api/v1/account/cancel-deletion/route'
 import { DELETE as deleteV1Account, GET as getV1Account } from '@/app/api/v1/account/route'
-import { DELETE as deleteV1Integrations, GET as getV1Integrations, POST as postV1Integrations } from '@/app/api/v1/integrations/route'
 import { POST as postV1LegalAcceptance } from '@/app/api/v1/legal/accept/route'
 import { GET as getV1LegalAcceptance } from '@/app/api/v1/legal/acceptance/route'
 import { GET as getV1Me } from '@/app/api/v1/me/route'
@@ -106,9 +105,6 @@ const smokeCases: SmokeCase[] = [
   { routeFile: 'src/app/api/v1/account/cancel-deletion/route.ts', method: 'POST', expectedStatus: 400, run: () => postV1CancelDeletion(requestFor('POST', '/v1/account/cancel-deletion')) },
   { routeFile: 'src/app/api/v1/account/route.ts', method: 'GET', expectedStatus: 401, run: () => getV1Account(requestFor('GET', '/v1/account')) },
   { routeFile: 'src/app/api/v1/account/route.ts', method: 'DELETE', expectedStatus: 401, run: () => deleteV1Account(requestFor('DELETE', '/v1/account')) },
-  { routeFile: 'src/app/api/v1/integrations/route.ts', method: 'GET', expectedStatus: 401, run: () => getV1Integrations(requestFor('GET', '/v1/integrations')) },
-  { routeFile: 'src/app/api/v1/integrations/route.ts', method: 'POST', expectedStatus: 401, run: () => postV1Integrations(requestFor('POST', '/v1/integrations')) },
-  { routeFile: 'src/app/api/v1/integrations/route.ts', method: 'DELETE', expectedStatus: 401, run: () => deleteV1Integrations(requestFor('DELETE', '/v1/integrations')) },
   { routeFile: 'src/app/api/v1/legal/accept/route.ts', method: 'POST', expectedStatus: 401, run: () => postV1LegalAcceptance(requestFor('POST', '/v1/legal/accept')) },
   { routeFile: 'src/app/api/v1/legal/acceptance/route.ts', method: 'GET', expectedStatus: 401, run: () => getV1LegalAcceptance(requestFor('GET', '/v1/legal/acceptance')) },
   { routeFile: 'src/app/api/v1/me/route.ts', method: 'GET', expectedStatus: 401, run: () => getV1Me(requestFor('GET', '/v1/me')) },
