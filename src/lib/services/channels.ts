@@ -1,6 +1,6 @@
 /* Commento didattico:
  * Scopo del file: incapsula la logica di accesso ai dati e le operazioni di dominio, separandole dalla UI.
- * Moduli richiamati: `@/lib/supabase/server`, `@/lib/supabase/admin`, `@/lib/utils/errors`, `@/lib/utils/youtube-url`, `@/lib/types/database`
+ * Moduli richiamati: `@/lib/supabase/server`, `@/lib/supabase/admin`, `@/lib/utils/errors`, `@/lib/utils/youtube-url`, `@/lib/types/database`, YouTube/Firecrawl scan services
  * Flusso: Le funzioni del servizio vengono chiamate da API route o pagine server: qui avviene l'orchestrazione delle query e delle trasformazioni dati.
  */
 
@@ -13,6 +13,7 @@ import type { Database } from '@/lib/types/database'
 import { importChannelVideos } from '@/lib/services/videos'
 import type { AppSupabaseClient } from '@/lib/supabase/types'
 import { deferScanJobAttempt, getDeferredScanDisposition } from '@/lib/services/youtube-channel-scan'
+import { processNextFirecrawlTranscriptRecovery } from '@/lib/services/firecrawl-transcript-recovery'
 
 type UserChannelRow = Database['public']['Tables']['user_channels']['Row']
 type ChannelRow = Database['public']['Tables']['channels']['Row']
@@ -641,6 +642,9 @@ async function runScanJobLease(
       // Import canonico richiede tabelle admin-only; il service verifica che resti un follower attivo.
       bypassUserChannelGuard: true,
       maxResults: params.maxResults,
+    })
+    await processNextFirecrawlTranscriptRecovery({
+      lease: { jobId: params.jobId, leaseId, channelId: params.channelId },
     })
   } catch (error) {
     operationError = error

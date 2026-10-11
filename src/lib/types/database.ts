@@ -516,6 +516,48 @@ export type Database = {
         }
         Relationships: []
       }
+      channel_scan_firecrawl_transcript_targets: {
+        Row: {
+          job_id: string
+          channel_id: string
+          video_id: string
+          youtube_video_id: string
+          status: 'pending' | 'fetched' | 'missing' | 'skipped' | 'disabled'
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          job_id: string
+          channel_id: string
+          video_id: string
+          youtube_video_id: string
+          status?: 'pending' | 'fetched' | 'missing' | 'skipped' | 'disabled'
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          status?: 'pending' | 'fetched' | 'missing' | 'skipped' | 'disabled'
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      firecrawl_transcript_recovery_settings: {
+        Row: {
+          id: boolean
+          enabled: boolean
+          updated_at: string
+        }
+        Insert: {
+          id?: boolean
+          enabled?: boolean
+          updated_at?: string
+        }
+        Update: {
+          enabled?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
       canonical_sync_state: {
         Row: {
           id: string
@@ -1109,9 +1151,10 @@ export type Database = {
           p_lease_id: string
           p_channel_id: string
           p_request_key: string
+          p_provider?: 'youtube' | 'firecrawl'
         }
         Returns: {
-          status: 'assigned' | 'cached' | 'waiting' | 'exhausted' | 'backoff'
+          status: 'assigned' | 'cached' | 'waiting' | 'exhausted' | 'backoff' | 'disabled'
           credential_id: string | null
           user_id: string | null
           key_version: string | null
@@ -1120,6 +1163,18 @@ export type Database = {
           retry_at: string | null
           response: Json
         }[]
+      }
+      complete_firecrawl_transcript_recovery_target: {
+        Args: {
+          p_job_id: string
+          p_lease_id: string
+          p_video_id: string
+          p_youtube_video_id: string
+          p_status: 'fetched' | 'missing' | 'skipped'
+          p_language_code: string | null
+          p_transcript_text: string | null
+        }
+        Returns: Json
       }
       finish_channel_scan_provider_attempt: {
         Args: {
