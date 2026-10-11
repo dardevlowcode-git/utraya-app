@@ -1,0 +1,105 @@
+name: Candidate CI (no deploy)
+
+on:
+  push:
+    branches:
+      - integration/w00-candidate-ci
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  validate:
+    name: Candidate quality gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout immutable candidate
+        uses: actions/checkout@v7
+        with:
+          ref: 569791786895ded6fe2e3a1882d3d555466186d7
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify candidate identity
+        shell: bash
+        env:
+          EXPECTED_COMMIT: 569791786895ded6fe2e3a1882d3d555466186d7
+          EXPECTED_TREE: e25ce310284e4a15e013b490af924947daa5fc41
+        run: |
+          set -euo pipefail
+          actual_commit="$(git rev-parse HEAD)"
+          actual_tree="$(git rev-parse 'HEAD^{tree}')"
+          if [[ "$actual_commit" != "$EXPECTED_COMMIT" || "$actual_tree" != "$EXPECTED_TREE" ]]; then
+            echo "Checkout non corrisponde al candidato immutabile atteso." >&2
+            exit 1
+          fi
+          printf 'candidate_commit=%s\ncandidate_tree=%s\n' "$actual_commit" "$actual_tree" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Require and identify CI Chromium
+        shell: bash
+        run: |
+          set -euo pipefail
+          browser_path=""
+          for candidate in /usr/bin/chromium /usr/bin/chromium-browser /usr/bin/google-chrome; do
+            if [[ -x "$candidate" ]]; then
+              browser_path="$candidate"
+              break
+            fi
+          done
+          if [[ -z "$browser_path" ]]; then
+            echo "Chromium non presente nei percorsi rilevati dal test browser." >&2
+            exit 1
+          fi
+
+          resolved_path="$(readlink -f -- "$browser_path")"
+          if [[ ! -x "$resolved_path" ]]; then
+            echo "Il binario Chromium selezionato non è eseguibile." >&2
+            exit 1
+          fi
+          version="$("$browser_path" --version | sed 's/[[:space:]]*$//')"
+          if [[ ! "$version" =~ ^(Chromium|Google\ Chrome)[[:space:]][0-9]+(\.[0-9]+){1,3}$ ]]; then
+            echo "Versione Chromium non riconosciuta; identità non registrata." >&2
+            exit 1
+          fi
+          binary_sha256="$(sha256sum -- "$resolved_path" | cut -d ' ' -f 1)"
+
+          printf 'ADMIN_MOBILE_CHROME_BIN=%s\n' "$browser_path" >> "$GITHUB_ENV"
+          {
+            echo '### Chromium test runtime'
+            printf -- '- runner_image_os=%s\n' "${ImageOS:-${RUNNER_OS:-unknown}}"
+            printf -- '- runner_image_version=%s\n' "${ImageVersion:-unknown}"
+            printf -- '- kernel=%s\n' "$(uname -sr)"
+            printf -- '- selected_binary=%s\n' "$browser_path"
+            printf -- '- resolved_binary=%s\n' "$resolved_path"
+            printf -- '- version=%s\n' "$version"
+            printf -- '- binary_sha256=%s\n' "$binary_sha256"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check comments (didactic headers)
+        run: npm run check-comments
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type-check
+        run: npm run type-check
+
+      - name: Test (Vitest)
+        run: npm test
+
+      - name: Build
+        run: npm run build

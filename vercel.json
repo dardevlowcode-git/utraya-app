@@ -23,7 +23,8 @@
   ],
   "git": {
     "deploymentEnabled": {
-      "dev-security-contract": false
+      "dev-security-contract": false,
+      "integration/w00-candidate-ci": false
     }
   }
 }
