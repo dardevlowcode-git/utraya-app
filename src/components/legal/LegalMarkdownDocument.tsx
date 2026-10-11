@@ -1,11 +1,12 @@
 /* Commento didattico:
  * Scopo del file: componente presentazionale condiviso per pagine legali markdown con header metadata e stile coerente.
- * Moduli richiamati: `react-markdown`, `remark-gfm`.
- * Flusso: riceve markdown + metadata e rende documento legale senza hardcode contenutistico in JSX.
+ * Moduli richiamati: `react-markdown`, `remark-gfm`, `next-intl`.
+ * Flusso: riceve markdown + metadata e rende il documento con label e data efficacia localizzate.
  */
 
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { useFormatter, useTranslations } from 'next-intl'
 
 export default function LegalMarkdownDocument(props: {
   title: string
@@ -14,7 +15,16 @@ export default function LegalMarkdownDocument(props: {
   hash: string
   markdown: string
 }) {
+  const t = useTranslations('legalDocument')
+  const format = useFormatter()
   const shortHash = props.hash.replace('sha256:', '').slice(0, 16)
+  const parsedEffectiveDate = /^\d{4}-\d{2}-\d{2}$/.test(props.effectiveDate)
+    ? new Date(`${props.effectiveDate}T00:00:00.000Z`)
+    : null
+  const hasEffectiveDate = parsedEffectiveDate !== null && !Number.isNaN(parsedEffectiveDate.valueOf())
+  const effectiveDateLabel = hasEffectiveDate
+    ? t('effectiveDateFrom', { date: format.dateTime(parsedEffectiveDate, { dateStyle: 'long', timeZone: 'UTC' }) })
+    : t('effectiveDate', { date: t('effectiveDateUndetermined') })
 
   return (
     <div className="bg-surface px-6 pb-24 pt-14">
@@ -22,9 +32,9 @@ export default function LegalMarkdownDocument(props: {
         <header className="border-b border-outline-variant/50 pb-6">
           <h1 className="text-section-title text-on-surface md:text-5xl">{props.title}</h1>
           <p className="mt-3 text-legal-note">
-            Versione {props.version} · In vigore dal {props.effectiveDate}
+            {t('version', { version: props.version })} · {effectiveDateLabel}
           </p>
-          <p className="mt-1 text-legal-note">Hash documento: {shortHash}… (SHA-256)</p>
+          <p className="mt-1 text-legal-note">{t('documentHash', { hash: shortHash })}</p>
         </header>
 
         <div className="mt-8 space-y-6 text-[15px] leading-7 text-on-surface">

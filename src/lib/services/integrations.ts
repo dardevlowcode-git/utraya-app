@@ -4,7 +4,7 @@
  * Flusso: Le funzioni del servizio vengono chiamate da API route o pagine server: qui avviene l'orchestrazione delle query e delle trasformazioni dati.
  */
 
-import { createHash, createCipheriv, createDecipheriv, randomBytes, randomUUID } from 'node:crypto'
+import { createHash, createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchAndRecordProviderRequest } from '@/lib/services/api-usage'
@@ -15,20 +15,18 @@ import {
   type CredentialValidationAttemptResult,
   type CredentialValidationJobPayload,
 } from '@/lib/services/credential-validation-jobs'
-import type { CredentialStatus } from '@/lib/types/domain'
+import { INTEGRATION_PROVIDERS as PROVIDERS, type CredentialStatus, type IntegrationProvider as Provider } from '@/lib/types/domain'
 import type { Database } from '@/lib/types/database'
 import type { AppSupabaseClient } from '@/lib/supabase/types'
 
-type Provider = 'youtube' | 'gemini' | 'firecrawl'
-
 type CredentialRow = Database['public']['Tables']['user_provider_credentials']['Row']
 
-const PROVIDERS: Provider[] = ['youtube', 'gemini', 'firecrawl']
 const AES_GCM_IV_LENGTH = 12
 const AES_GCM_AUTH_TAG_LENGTH = 16
 const YOUTUBE_VALIDATION_TIMEOUT_MS = 10_000
 const GEMINI_VALIDATION_TIMEOUT_MS = 5_000
 const FIRECRAWL_DISCOVERY_TIMEOUT_MS = 10_000
+const MAX_CREDENTIAL_SAVE_CAS_ATTEMPTS = 3
 
 /**
  * Legge la chiave applicativa usata per cifrare le API key utente.
@@ -273,6 +271,7 @@ export async function saveApiKey(params: {
   isValid: boolean | null
   validationMessage: string | null
   validationStatus: 'idle' | 'pending' | 'running' | 'completed'
+  jobId: string | null
 }> {
   assertProvider(params.provider)
 
@@ -282,35 +281,41 @@ export async function saveApiKey(params: {
   }
 
   const supabase = params.supabase ?? await createClient()
-  const previousCredential = await getCredentialRow(params.userId, params.provider, supabase)
-  const unchangedSecret = previousCredential?.encrypted_key
-    ? safelyDecryptSecret(previousCredential.encrypted_key) === normalized
-    : false
   const encrypted = encryptSecret(normalized)
+  let saved = false
 
-  // Un segreto sostituito è una nuova credenziale: azzera il suo override prima del salvataggio.
-  if (previousCredential && !unchangedSecret) {
-    await resetCredentialRetryLimit(previousCredential.id)
+  for (let attempt = 0; attempt < MAX_CREDENTIAL_SAVE_CAS_ATTEMPTS; attempt += 1) {
+    const previousCredential = await getCredentialRow(params.userId, params.provider, supabase)
+    const unchangedSecret = previousCredential?.encrypted_key
+      ? safelyDecryptSecret(previousCredential.encrypted_key) === normalized
+      : false
+    const previousPolicy = previousCredential
+      ? await getCredentialRetryPolicy(previousCredential.id)
+      : null
+    const { data, error } = await createAdminClient().rpc('save_user_provider_credential_atomic', {
+      p_credential_id: previousCredential?.id ?? null,
+      p_user_id: params.userId,
+      p_provider: params.provider,
+      p_encrypted_key: encrypted,
+      p_expected_encrypted_key: previousCredential?.encrypted_key ?? null,
+      p_expected_key_version: previousPolicy?.keyVersion ?? null,
+      p_reset_retry_policy: Boolean(previousCredential && !unchangedSecret),
+    })
+    if (error) {
+      throw new AppError('Impossibile salvare la chiave API', 'unknown', 500, { cause: error.message })
+    }
+    const outcome = data?.[0]
+    if (outcome?.status === 'saved') {
+      saved = true
+      break
+    }
+    if (outcome?.status !== 'conflict') {
+      throw new AppError('Risposta non valida dal salvataggio credenziale', 'structural', 500)
+    }
   }
 
-  // Upsert per provider: aggiorna in-place senza creare record duplicati.
-  const { error } = await supabase
-    .from('user_provider_credentials')
-    .upsert(
-      {
-        user_id: params.userId,
-        provider: params.provider,
-        encrypted_key: encrypted,
-        is_configured: true,
-        is_valid: null,
-        last_error: null,
-        last_used_at: null,
-      },
-      { onConflict: 'user_id,provider' }
-    )
-
-  if (error) {
-    throw new AppError('Impossibile salvare la chiave API', 'unknown', 500, { cause: error.message })
+  if (!saved) {
+    throw new AppError('La credenziale è cambiata durante il salvataggio; riprova', 'temporary', 409)
   }
 
   if (params.validateNow === false) {
@@ -320,6 +325,7 @@ export async function saveApiKey(params: {
       isValid: null,
       validationMessage: null,
       validationStatus: 'idle',
+      jobId: null,
     }
   }
 
@@ -335,6 +341,7 @@ export async function saveApiKey(params: {
     isValid: validation.isValid,
     validationMessage: validation.message,
     validationStatus: validation.validationStatus,
+    jobId: validation.jobId,
   }
 }
 
@@ -349,15 +356,6 @@ async function getCredentialRetryPolicy(credentialId: string): Promise<{ retryLi
   if (error) throw new AppError('Impossibile leggere il limite retry credenziale', 'unknown', 500, { cause: error.message })
   if (!data?.key_version) throw new AppError('Versione retry credenziale mancante', 'structural', 500)
   return { retryLimit: data.retry_limit, keyVersion: data.key_version }
-}
-
-/** Riporta a zero il limite privato e invalida i job della chiave sostituita. */
-async function resetCredentialRetryLimit(credentialId: string): Promise<void> {
-  const { error } = await createAdminClient()
-    .from('user_provider_credential_retry_limits')
-    .upsert({ credential_id: credentialId, retry_limit: 0, key_version: randomUUID() })
-
-  if (error) throw new AppError('Impossibile azzerare il limite della nuova credenziale', 'unknown', 500, { cause: error.message })
 }
 
 /** Confronta il segreto precedente solo in memoria; un ciphertext illeggibile equivale a credenziale diversa. */
@@ -379,6 +377,7 @@ export async function validateApiKey(params: {
   isValid: boolean | null
   message: string | null
   validationStatus: 'pending' | 'running'
+  jobId: string
 }> {
   assertProvider(params.provider)
   const credential = await getCredentialRow(params.userId, params.provider, params.supabase)
@@ -403,6 +402,7 @@ export async function validateApiKey(params: {
     isValid: credential.is_valid,
     message: null,
     validationStatus: job.status,
+    jobId: job.jobId,
   }
 }
 

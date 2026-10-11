@@ -5,6 +5,7 @@
  */
 
 import { spawn, type ChildProcess } from 'node:child_process'
+import { EventEmitter } from 'node:events'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { createElement } from 'react'
@@ -22,6 +23,7 @@ const { getAdminSessionMock, loadVideosMock, loadDetailMock, translateMock } = v
     'admin.content.title': 'Contenuto canonico',
     'admin.aiProfile.title': 'Profilo analisi AI',
     'admin.jobs.title': 'Job e operazioni',
+    'admin.retryLimits.title': 'Limiti retry',
     'admin.logs.title': 'Log e audit',
     'admin.backToApp': "Torna all'app",
     'admin.content.subtitle': 'Rivedi i contenuti canonici già salvati.',
@@ -90,6 +92,12 @@ const chromePath = process.env.ADMIN_MOBILE_CHROME_BIN ?? [
   '/usr/bin/google-chrome',
 ].find((candidate) => existsSync(candidate))
 
+// The browser geometry pass took 14.2s in a one-CPU container, including shutdown and temp cleanup.
+const ADMIN_MOBILE_BROWSER_TEST_TIMEOUT_MS = 25_000
+const DEV_TOOLS_PORT_POLL_ATTEMPTS = 100
+const DEV_TOOLS_PORT_POLL_INTERVAL_MS = 50
+const SPAWN_ERROR_TEST_TIMEOUT_MS = 8_000
+
 const longTranscript = `${'Utraya conserva il testo canonico senza modifiche. '.repeat(16)}${'x'.repeat(320)}`
 
 interface BrowserRouteMetrics {
@@ -113,6 +121,11 @@ interface BrowserRouteMetrics {
   detailLinks: Array<{ href: string | null; tabStop: boolean }>
   table: { clientWidth: number; scrollWidth: number; overflowX: string } | null
   detail: { clientWidth: number; scrollWidth: number; textLength: number } | null
+}
+
+interface DevToolsActivePort {
+  port: string
+  browserPath: string
 }
 
 beforeEach(() => {
@@ -186,15 +199,45 @@ async function settleConcurrentMeasures<T>(
   return [first.value, second.value]
 }
 
+/** Attende il record DevTools completo: Chromium crea il file prima di scriverne il contenuto. */
+async function waitForDevToolsActivePort(
+  activePortPath: string,
+  getBrowserLaunchError: () => Error | undefined
+): Promise<DevToolsActivePort> {
+  for (let attempt = 0; attempt < DEV_TOOLS_PORT_POLL_ATTEMPTS; attempt += 1) {
+    const browserLaunchError = getBrowserLaunchError()
+    if (browserLaunchError) throw browserLaunchError
+
+    if (existsSync(activePortPath)) {
+      const [port, browserPath] = readFileSync(activePortPath, 'utf8').split(/\r?\n/, 2)
+      const numericPort = Number(port)
+      if (
+        /^\d{1,5}$/.test(port ?? '') &&
+        numericPort > 0 &&
+        numericPort <= 65_535 &&
+        /^\/devtools\/browser\/[^/\s]+$/.test(browserPath ?? '')
+      ) {
+        return { port, browserPath }
+      }
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, DEV_TOOLS_PORT_POLL_INTERVAL_MS))
+  }
+
+  throw getBrowserLaunchError() ?? new Error('Chromium non ha scritto un endpoint DevTools valido.')
+}
+
 /** Misura DOM e layout del browser sulla route server-renderizzata con il CSS Tailwind reale. */
 async function measureRoute(
   markup: string,
   css: string,
   width: number,
   height: number,
-  tempParent = process.cwd()
+  tempParent = process.cwd(),
+  executablePath = chromePath,
+  browserSpawner: typeof spawn = spawn
 ): Promise<BrowserRouteMetrics> {
-  if (!chromePath) throw new Error('Impostare ADMIN_MOBILE_CHROME_BIN per eseguire il test browser.')
+  if (!executablePath) throw new Error('Impostare ADMIN_MOBILE_CHROME_BIN per eseguire il test browser.')
 
   return withOwnedBrowserTempDirectory(tempParent, async (tempDir) => {
     const htmlPath = path.join(tempDir, `route-${width}.html`)
@@ -212,7 +255,7 @@ async function measureRoute(
     let socketIsOpen = false
 
     try {
-      browser = spawn(chromePath, [
+      browser = browserSpawner(executablePath, [
         '--headless=new',
         '--no-sandbox',
         '--disable-gpu',
@@ -231,14 +274,7 @@ async function measureRoute(
       browserClosed = new Promise<void>((resolve) => browser?.once('close', () => resolve()))
 
       const activePortPath = path.join(profileDir, 'DevToolsActivePort')
-      for (let attempt = 0; attempt < 100 && !existsSync(activePortPath); attempt += 1) {
-        await new Promise((resolve) => setTimeout(resolve, 50))
-      }
-      if (!existsSync(activePortPath)) {
-        throw browserLaunchError ?? new Error('Chromium non ha aperto il protocollo DevTools.')
-      }
-
-      const [port] = readFileSync(activePortPath, 'utf8').split('\n')
+      const { port } = await waitForDevToolsActivePort(activePortPath, () => browserLaunchError)
       const targetResponse = await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })
       if (!targetResponse.ok) throw new Error(`Chromium DevTools ha restituito HTTP ${targetResponse.status}.`)
       const target = await targetResponse.json() as { webSocketDebuggerUrl: string }
@@ -384,6 +420,99 @@ async function measureRoute(
   })
 }
 
+describe('Chromium DevTools startup readiness', () => {
+  it('waits for a complete endpoint record when the port file exists but is empty', async () => {
+    const parent = mkdtempSync(path.join(process.cwd(), '.admin-mobile-port-readiness-'))
+    const activePortPath = path.join(parent, 'DevToolsActivePort')
+    writeFileSync(activePortPath, '')
+    let endpointWrite: ReturnType<typeof setTimeout> | undefined
+
+    try {
+      endpointWrite = setTimeout(() => {
+        writeFileSync(activePortPath, '43123\n/devtools/browser/readiness-fixture')
+      }, 10)
+
+      await expect(waitForDevToolsActivePort(activePortPath, () => undefined)).resolves.toEqual({
+        port: '43123',
+        browserPath: '/devtools/browser/readiness-fixture',
+      })
+    } finally {
+      if (endpointWrite) clearTimeout(endpointWrite)
+      rmSync(parent, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('Chromium spawn error cleanup', () => {
+  it('propagates the asynchronous spawn error and cleans only its owned directory', async () => {
+    const parent = mkdtempSync(path.join(process.cwd(), '.admin-mobile-spawn-error-contract-'))
+    const existingDirectory = path.join(parent, '.admin-mobile-browser-test')
+    mkdirSync(existingDirectory)
+    const sentinel = path.join(existingDirectory, 'preserve.txt')
+    writeFileSync(sentinel, 'pre-existing content')
+
+    const spawnError = Object.assign(new Error('fixture browser spawn failed'), {
+      code: 'ENOENT',
+      path: 'fixture-chromium',
+    })
+    let childClosed = false
+    const fakeBrowserState = {
+      exitCode: null as number | null,
+      signalCode: null as NodeJS.Signals | null,
+    }
+    const fakeBrowser = Object.assign(new EventEmitter(), {
+      pid: undefined,
+      get exitCode() { return fakeBrowserState.exitCode },
+      get signalCode() { return fakeBrowserState.signalCode },
+      kill: vi.fn(() => false),
+    }) as unknown as ChildProcess
+    fakeBrowser.once('close', () => {
+      childClosed = true
+    })
+    const spawnBrowser = vi.fn(() => {
+      setImmediate(() => {
+        fakeBrowser.emit('error', spawnError)
+        fakeBrowserState.exitCode = -2
+        fakeBrowser.emit('close', -2, null)
+      })
+      return fakeBrowser
+    })
+
+    try {
+      const startedAt = Date.now()
+      let caughtError: unknown
+      try {
+        await measureRoute('<main></main>', '', 390, 844, parent, 'fixture-chromium', spawnBrowser as unknown as typeof spawn)
+      } catch (error) {
+        caughtError = error
+      }
+
+      const errnoError = caughtError as NodeJS.ErrnoException | undefined
+      expect({
+        sameError: caughtError === spawnError,
+        code: errnoError?.code ?? null,
+        path: errnoError?.path ?? null,
+        completedBeforeSpawnPollBudget: Date.now() - startedAt < 2_000,
+        childClosed,
+        spawnCount: spawnBrowser.mock.calls.length,
+        remainingDirectories: readdirSync(parent),
+        sentinel: readFileSync(sentinel, 'utf8'),
+      }).toEqual({
+        sameError: true,
+        code: 'ENOENT',
+        path: 'fixture-chromium',
+        completedBeforeSpawnPollBudget: true,
+        childClosed: true,
+        spawnCount: 1,
+        remainingDirectories: [path.basename(existingDirectory)],
+        sentinel: 'pre-existing content',
+      })
+    } finally {
+      rmSync(parent, { recursive: true, force: true })
+    }
+  }, SPAWN_ERROR_TEST_TIMEOUT_MS)
+})
+
 describe('Admin mobile route layout', () => {
   it.skipIf(!chromePath)('contains the real table and detail routes on mobile and preserves desktop geometry', async () => {
     const cssPath = path.resolve('src/app/globals.css')
@@ -438,7 +567,7 @@ describe('Admin mobile route layout', () => {
     } finally {
       rmSync(tempParent, { recursive: true, force: true })
     }
-  })
+  }, ADMIN_MOBILE_BROWSER_TEST_TIMEOUT_MS)
 })
 
 describe('browser test temporary directory ownership', () => {

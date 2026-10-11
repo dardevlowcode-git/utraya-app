@@ -1145,6 +1145,23 @@ export type Database = {
         }
         Returns: boolean
       }
+      save_user_provider_credential_atomic: {
+        Args: {
+          p_credential_id: string | null
+          p_user_id: string
+          p_provider: 'youtube' | 'gemini' | 'firecrawl'
+          p_encrypted_key: string
+          p_expected_encrypted_key: string | null
+          p_expected_key_version: string | null
+          p_reset_retry_policy: boolean
+        }
+        Returns: {
+          status: 'saved' | 'conflict'
+          credential_id: string | null
+          retry_limit: number | null
+          key_version: string | null
+        }[]
+      }
       claim_channel_scan_provider_request: {
         Args: {
           p_job_id: string

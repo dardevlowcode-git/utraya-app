@@ -25,6 +25,9 @@ export type ApiUsageEventRow = Database['public']['Tables']['api_usage_events'][
 
 // --- Domain types (enriched / composed) ---
 
+export const INTEGRATION_PROVIDERS = ['youtube', 'gemini', 'firecrawl'] as const
+export type IntegrationProvider = (typeof INTEGRATION_PROVIDERS)[number]
+
 /**
  * Video with its AI analysis content (localized), user state, and channel info.
  * This is the primary type used in the UI.
@@ -59,7 +62,7 @@ export interface ChannelWithUserContext {
 
 /** API credential status for a provider */
 export interface CredentialStatus {
-  provider: 'youtube' | 'gemini' | 'firecrawl'
+  provider: IntegrationProvider
   isConfigured: boolean
   isValid: boolean | null
   validationStatus: 'idle' | 'pending' | 'running' | 'completed'

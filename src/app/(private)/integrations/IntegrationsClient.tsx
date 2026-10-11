@@ -7,14 +7,20 @@
 'use client'
 
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import type { CredentialStatus } from '@/lib/types/domain'
+import { INTEGRATION_PROVIDERS as PROVIDERS, type CredentialStatus, type IntegrationProvider as Provider } from '@/lib/types/domain'
 import { useTranslations } from 'next-intl'
 import YouTubeApiKeyGuide from '@/components/integrations/YouTubeApiKeyGuide'
 import GeminiApiKeyGuide from '@/components/integrations/GeminiApiKeyGuide'
 import FirecrawlApiKeyGuide from '@/components/integrations/FirecrawlApiKeyGuide'
 
-type Provider = 'youtube' | 'gemini' | 'firecrawl'
-const PROVIDERS: Provider[] = ['youtube', 'gemini', 'firecrawl']
+type ApiErrorPayload = string | { message?: string } | null
+
+/** Legge il messaggio errore sia dai vecchi consumer sia dall'envelope API standard. */
+function getApiErrorMessage(error: ApiErrorPayload): string | undefined {
+  if (typeof error === 'string') return error
+  if (error && typeof error.message === 'string') return error.message
+  return undefined
+}
 
 interface IntegrationsClientProps {
   initialStatuses: CredentialStatus[]
@@ -74,9 +80,9 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
       try {
         const response = await fetch('/api/integrations', { method: 'GET', cache: 'no-store' })
         const payload = await response.json().catch(() => null) as
-          | { data: CredentialStatus[] | null; error: string | null }
+          | { data: CredentialStatus[] | null; error: ApiErrorPayload }
           | null
-        if (!response.ok || !payload?.data) throw new Error(payload?.error ?? t('integrations.refreshError'))
+        if (!response.ok || !payload?.data) throw new Error(getApiErrorMessage(payload?.error ?? null) ?? t('integrations.refreshError'))
         if (!active) return
         setStatuses(payload.data)
         if (payload.data.some((status) => status.validationStatus === 'pending' || status.validationStatus === 'running')) {
@@ -102,11 +108,11 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
   async function refreshStatuses() {
     const response = await fetch('/api/integrations', { method: 'GET', cache: 'no-store' })
     const payload = (await response.json().catch(() => null)) as
-      | { data: CredentialStatus[] | null; error: string | null }
+      | { data: CredentialStatus[] | null; error: ApiErrorPayload }
       | null
 
     if (!response.ok || !payload?.data) {
-      throw new Error(payload?.error ?? t('integrations.refreshError'))
+      throw new Error(getApiErrorMessage(payload?.error ?? null) ?? t('integrations.refreshError'))
     }
 
     setStatuses(payload.data)
@@ -132,16 +138,17 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
       })
 
       const payload = (await response.json().catch(() => null)) as
-        | { data: { isValid: boolean | null; validationMessage: string | null; validationStatus?: string } | null; error: string | null }
+        | { data: { jobId: string | null; isValid: boolean | null; validationMessage: string | null; validationStatus?: string } | null; error: ApiErrorPayload }
         | null
 
       if (!response.ok) {
-        throw new Error(payload?.error ?? t('integrations.saveError'))
+        throw new Error(getApiErrorMessage(payload?.error ?? null) ?? t('integrations.saveError'))
       }
 
       setProviderInput((current) => ({ ...current, [provider]: '' }))
 
       if (payload?.data?.validationStatus === 'pending' || payload?.data?.validationStatus === 'running') {
+        if (!payload.data.jobId) throw new Error(t('integrations.saveError'))
         setStatuses((current) => current.map((status) => status.provider === provider
           ? { ...status, isConfigured: true, isValid: null, validationStatus: payload.data?.validationStatus as 'pending' | 'running' }
           : status))
@@ -172,14 +179,15 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
       })
 
       const payload = (await response.json().catch(() => null)) as
-        | { data: { isValid: boolean | null; message: string | null; validationStatus?: string } | null; error: string | null }
+        | { data: { jobId: string | null; isValid: boolean | null; message: string | null; validationStatus?: string } | null; error: ApiErrorPayload }
         | null
 
       if (!response.ok) {
-        throw new Error(payload?.error ?? t('integrations.validateError'))
+        throw new Error(getApiErrorMessage(payload?.error ?? null) ?? t('integrations.validateError'))
       }
 
       if (payload?.data?.validationStatus === 'pending' || payload?.data?.validationStatus === 'running') {
+        if (!payload.data.jobId) throw new Error(t('integrations.validateError'))
         setStatuses((current) => current.map((status) => status.provider === provider
           ? { ...status, validationStatus: payload.data?.validationStatus as 'pending' | 'running' }
           : status))
@@ -214,11 +222,11 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
       })
 
       const payload = (await response.json().catch(() => null)) as
-        | { data: { message?: string } | null; error: string | null }
+        | { data: { message?: string } | null; error: ApiErrorPayload }
         | null
 
       if (!response.ok) {
-        throw new Error(payload?.error ?? t('integrations.removeError'))
+        throw new Error(getApiErrorMessage(payload?.error ?? null) ?? t('integrations.removeError'))
       }
 
       setMessage(payload?.data?.message ?? t('integrations.removed'))

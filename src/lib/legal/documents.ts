@@ -7,7 +7,7 @@
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
-import { hashLegalDocumentContent } from './hashLegalDocument'
+import { hashLegalDocumentContent, toPublicTosMarkdown } from './hashLegalDocument'
 
 type LegalKind = 'tos' | 'privacy' | 'cookie' | 'dpa'
 
@@ -43,8 +43,9 @@ function resolveLegalPath(fileName: string): string {
 
 function extractMetadata(markdown: string) {
   const title = markdown.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? 'Documento legale'
-  const version = markdown.match(/\*\*Versione documento\*\*:\s*`?([^`\n]+)`?/)?.[1]?.trim() ?? 'n/d'
-  const effectiveDate = markdown.match(/\*\*Data di entrata in vigore\*\*:\s*([^\n]+)/)?.[1]?.trim() ?? 'n/d'
+  const version = markdown.match(/\*\*Versione documento(?: \(candidata locale\))?\*\*:\s*`?([^`\n]+)`?/)?.[1]?.trim() ?? 'n/d'
+  const effectiveDateText = markdown.match(/\*\*Data di entrata in vigore(?: della candidata)?\*\*:\s*([^\n]+)/)?.[1]?.trim()
+  const effectiveDate = effectiveDateText?.split(';', 1)[0].trim() ?? 'n/d'
   return { title, version, effectiveDate }
 }
 
@@ -56,11 +57,12 @@ export async function loadLegalDocument(kind: LegalKind): Promise<LegalDocument>
   const filePath = resolveLegalPath(LEGAL_FILE_BY_KIND[kind])
   const markdown = await readFile(filePath, 'utf8')
   const metadata = extractMetadata(markdown)
+  const publicMarkdown = kind === 'tos' ? toPublicTosMarkdown(markdown) : markdown
 
   return {
     ...metadata,
-    hash: hashLegalDocumentContent(markdown),
-    markdown: stripFirstHeading(markdown),
+    hash: hashLegalDocumentContent(publicMarkdown),
+    markdown: stripFirstHeading(publicMarkdown),
   }
 }
 

@@ -5,7 +5,7 @@
  */
 
 import { timingSafeEqual } from 'node:crypto'
-import { NextResponse } from 'next/server'
+import { apiErr, apiOk } from '@/lib/http/apiResponse'
 import { getRequestId } from '@/lib/security/http'
 import { processPendingCredentialValidationJobs } from '@/lib/services/credential-validation-jobs'
 import { performCredentialValidationAttempt } from '@/lib/services/integrations'
@@ -21,20 +21,21 @@ export async function GET(request: Request) {
   const expected = secret ? `Bearer ${secret}` : ''
   const receivedBuffer = Buffer.from(authorization, 'utf8')
   const expectedBuffer = Buffer.from(expected, 'utf8')
-  const authorized = Boolean(secret)
-    && receivedBuffer.length === expectedBuffer.length
+  if (!secret) return apiErr('CRON_MISCONFIGURED', 'CRON_SECRET mancante', 500, requestId)
+
+  const authorized = receivedBuffer.length === expectedBuffer.length
     && timingSafeEqual(receivedBuffer, expectedBuffer)
 
   if (!authorized) {
-    return NextResponse.json({ success: false, error: 'Unauthorized', requestId }, { status: secret ? 401 : 500 })
+    return apiErr('CRON_UNAUTHORIZED', 'Unauthorized', 401, requestId)
   }
 
   try {
     const result = await processPendingCredentialValidationJobs({
       attemptProvider: performCredentialValidationAttempt,
     })
-    return NextResponse.json({ success: true, data: result, error: null, requestId })
+    return apiOk(result, requestId)
   } catch {
-    return NextResponse.json({ success: false, error: 'Errore interno', requestId }, { status: 500 })
+    return apiErr('INTERNAL_ERROR', 'Errore interno', 500, requestId)
   }
 }

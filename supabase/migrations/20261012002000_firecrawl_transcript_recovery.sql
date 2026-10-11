@@ -353,7 +353,7 @@ BEGIN
       job_id, request_key, credential_id, key_version, retry_limit, attempts_used, last_outcome
     )
     VALUES (p_job_id, p_request_key, v_credential_id, v_key_version, v_retry_limit, 0, 'started')
-    ON CONFLICT (job_id, request_key, credential_id, key_version) DO NOTHING;
+    ON CONFLICT ON CONSTRAINT channel_scan_provider_attempts_pkey DO NOTHING;
 
     SELECT a.retry_limit, a.attempts_used, a.retry_at
     INTO v_attempt_retry_limit, v_attempt_number, v_retry_at
@@ -714,31 +714,7 @@ BEGIN
   )
   SELECT pg_catalog.count(*)::INTEGER INTO v_imported_count FROM upserted;
 
-  -- La queue legacy non deve fare fallback per target Firecrawl; gate chiuso mantiene il flusso esistente.
-  BEGIN
-    INSERT INTO public.video_transcripts (
-      video_id, youtube_video_id, language_code, kind, transcript_status, source
-    )
-    SELECT v.id, v.youtube_video_id, 'unknown', 'unknown', 'pending', 'youtubei-timedtext'
-    FROM public.videos AS v
-    WHERE v.youtube_video_id IN (
-      SELECT row_data.youtube_video_id
-      FROM pg_catalog.jsonb_to_recordset(COALESCE(p_video_rows, '[]'::JSONB)) AS row_data(youtube_video_id TEXT)
-    )
-      AND NOT EXISTS (
-        SELECT 1 FROM public.video_transcripts AS t
-        WHERE t.youtube_video_id = v.youtube_video_id
-          AND t.transcript_status IN ('fetched', 'legacy_missing')
-      )
-      AND NOT EXISTS (
-        SELECT 1 FROM public.channel_scan_firecrawl_transcript_targets AS target
-        WHERE target.video_id = v.id
-          AND target.status IN ('pending', 'fetched', 'missing', 'skipped', 'disabled')
-      )
-    ON CONFLICT (youtube_video_id, language_code) DO NOTHING;
-  EXCEPTION WHEN OTHERS THEN
-    NULL;
-  END;
+  -- Non creare placeholder pending per la pipeline legacy, anche con il gate Firecrawl chiuso.
 
   INSERT INTO public.canonical_sync_state (channel_id, last_sync_at, last_sync_status, videos_found_count)
   VALUES (v_effective_channel_id, pg_catalog.clock_timestamp(), p_sync_status, p_videos_found_count)

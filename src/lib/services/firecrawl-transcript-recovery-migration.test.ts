@@ -18,12 +18,15 @@ describe('Firecrawl transcript recovery migration', () => {
     expect(migration).toMatch(/REVOKE ALL ON TABLE public\.firecrawl_transcript_recovery_settings FROM PUBLIC, anon, authenticated/i)
   })
 
-  it('accoda solo ID video nuovi quando il gate e` esplicitamente acceso', () => {
+  it('accoda solo video nuovi dietro gate e non crea placeholder legacy', () => {
     expect(migration).toMatch(/new_video_candidates AS MATERIALIZED[\s\S]*?NOT EXISTS \([\s\S]*?FROM public\.videos AS existing/i)
     expect(migration).toMatch(/INSERT INTO public\.channel_scan_firecrawl_transcript_targets[\s\S]*?JOIN new_video_candidates USING \(youtube_video_id\)/i)
     expect(migration).toMatch(/firecrawl_transcript_recovery_settings AS s[\s\S]*?s\.enabled = TRUE/i)
     expect(migration).toMatch(/UNIQUE \(video_id\)/i)
-    expect(migration).toMatch(/target\.status IN \('pending', 'fetched', 'missing', 'skipped', 'disabled'\)/i)
+
+    const importFunction = migration.slice(migration.indexOf('CREATE OR REPLACE FUNCTION public.commit_fenced_channel_import'))
+    expect(importFunction).not.toMatch(/INSERT INTO public\.video_transcripts/i)
+    expect(importFunction).not.toContain('youtubei-timedtext')
   })
 
   it('riusa lease, cursore e stato budget condivisi con selezione separata per provider', () => {

@@ -1,14 +1,14 @@
 /* Commento didattico:
  * Scopo del file: legge e aggiorna i limiti retry amministrativi senza esporre chiavi o ciphertext.
- * Moduli richiamati: client Supabase service-role e costante del limite intero DB.
+ * Moduli richiamati: client Supabase service-role, provider di dominio e limite intero DB.
  * Flusso: proietta credenziali in view model minimali e persiste separatamente la chiave condivisa.
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { RETRY_LIMIT_MAX } from '@/lib/utils/retry-limit'
+import type { IntegrationProvider as Provider } from '@/lib/types/domain'
 
 type AdminClient = ReturnType<typeof createAdminClient>
-type Provider = 'youtube' | 'gemini' | 'firecrawl'
 
 interface CredentialRow {
   id: string

@@ -4,6 +4,13 @@
     "tagline": "Consume YouTube faster with AI",
     "description": "Utraya automatically analyzes your favorite YouTube channels so you stay informed in minutes, not hours."
   },
+  "legalDocument": {
+    "version": "Version {version}",
+    "effectiveDate": "Effective date: {date}",
+    "effectiveDateFrom": "Effective as of {date}",
+    "effectiveDateUndetermined": "not determined",
+    "documentHash": "Document hash: {hash}… (SHA-256)"
+  },
   "nav": {
     "dashboard": "Dashboard",
     "channels": "Channels",

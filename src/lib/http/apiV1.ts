@@ -6,7 +6,7 @@
 
 import { getApiUser, type ApiUserContext } from '@/lib/auth/apiUser'
 import { apiErr } from '@/lib/http/apiResponse'
-import type { ErrorCode } from '@/lib/http/errorCodes'
+import { mapAppErrorTypeToCode } from '@/lib/http/errorCodes'
 import { checkRateLimit } from '@/lib/security/rate-limit'
 import { ensureJsonRequest, getRequestId } from '@/lib/security/http'
 import { AppError } from '@/lib/utils/errors'
@@ -38,15 +38,6 @@ export async function readApiJson<T>(request: Request, schema?: z.ZodType<T>): P
   return parsed.data
 }
 
-function mapErrorCode(error: AppError): ErrorCode {
-  if (error.type === 'unauthorized') return 'UNAUTHORIZED'
-  if (error.type === 'forbidden') return 'FORBIDDEN'
-  if (error.type === 'not_found') return 'NOT_FOUND'
-  if (error.type === 'validation') return 'VALIDATION_FAILED'
-  if (error.type === 'temporary') return 'UPSTREAM_ERROR'
-  return 'INTERNAL_ERROR'
-}
-
 export function apiV1Error(error: unknown, requestId: string): Response {
   if (error instanceof AppError) {
     const status = error.statusCode ?? 500
@@ -55,7 +46,7 @@ export function apiV1Error(error: unknown, requestId: string): Response {
       : status >= 500
         ? 'Errore interno'
         : error.message
-    return apiErr(mapErrorCode(error), message, status, requestId)
+    return apiErr(mapAppErrorTypeToCode(error.type, 'UPSTREAM_ERROR'), message, status, requestId)
   }
 
   return apiErr('INTERNAL_ERROR', 'Errore interno', 500, requestId)

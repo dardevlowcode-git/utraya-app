@@ -8,6 +8,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchAndRecordProviderRequest } from '@/lib/services/api-usage'
 import { getProviderApiKeyForUserAsAdmin } from '@/lib/services/integrations'
 import { AppError } from '@/lib/utils/errors'
+import { computeRetryAt } from '@/lib/utils/retry-backoff'
 import type { Json } from '@/lib/types/database'
 import type { ChannelScanLease } from '@/lib/services/youtube-channel-scan'
 
@@ -25,7 +26,6 @@ type ProviderClaim = {
 }
 
 const RECOVERY_OPERATION = 'youtube.read'
-const MAX_RETRY_DELAY_MS = 60_000
 const RECOVERY_LEASE_STEP_REASON = 'provider_request_checkpoint'
 
 export type FirecrawlTranscriptRecoveryResult = {
@@ -79,18 +79,6 @@ function parseCachedTranscript(value: unknown): CachedTranscript | null {
       || !value.transcriptText.trim()
       || value.languageCode !== 'unknown') return null
   return { transcriptText: value.transcriptText, languageCode: value.languageCode }
-}
-
-function computeRetryAt(attemptNumber: number, retryAfter: string | null, now = Date.now()): string {
-  const retryAfterSeconds = retryAfter ? Number(retryAfter) : Number.NaN
-  const retryAfterDate = retryAfter ? Date.parse(retryAfter) : Number.NaN
-  const providerDelayMs = Number.isFinite(retryAfterSeconds)
-    ? Math.max(0, retryAfterSeconds * 1000)
-    : Number.isFinite(retryAfterDate)
-      ? Math.max(0, retryAfterDate - now)
-      : 0
-  const backoffMs = Math.min(1_000 * (2 ** Math.max(attemptNumber - 1, 0)), MAX_RETRY_DELAY_MS)
-  return new Date(now + Math.max(providerDelayMs, backoffMs)).toISOString()
 }
 
 async function finishProviderAttempt(params: {

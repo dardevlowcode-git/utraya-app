@@ -8,6 +8,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getProviderApiKeyForUserAsAdmin } from '@/lib/services/integrations'
 import { fetchAndRecordProviderRequest } from '@/lib/services/api-usage'
 import { AppError } from '@/lib/utils/errors'
+import { computeRetryAt } from '@/lib/utils/retry-backoff'
 import type { Json } from '@/lib/types/database'
 
 export interface ChannelScanLease {
@@ -37,19 +38,6 @@ function buildRequestKey(url: URL, operation: string): string {
   const safeUrl = new URL(url)
   safeUrl.searchParams.delete('key')
   return createHash('sha256').update(`${operation}\n${safeUrl.toString()}`).digest('hex')
-}
-
-/** Calcola un backoff esponenziale deterministico, rispettando Retry-After se il provider lo invia. */
-function computeRetryAt(attemptNumber: number, retryAfter: string | null, now = Date.now()): string {
-  const retryAfterSeconds = retryAfter ? Number(retryAfter) : Number.NaN
-  const retryAfterDate = retryAfter ? Date.parse(retryAfter) : Number.NaN
-  const providerDelayMs = Number.isFinite(retryAfterSeconds)
-    ? Math.max(0, retryAfterSeconds * 1000)
-    : Number.isFinite(retryAfterDate)
-      ? Math.max(0, retryAfterDate - now)
-      : 0
-  const exponentialDelayMs = Math.min(1_000 * (2 ** Math.max(attemptNumber - 1, 0)), 60_000)
-  return new Date(now + Math.max(providerDelayMs, exponentialDelayMs)).toISOString()
 }
 
 /** Persiste esito, risposta canonica del job e backoff prima del rilascio della lease. */

@@ -4,6 +4,13 @@
     "tagline": "Consuma YouTube più velocemente con l'AI",
     "description": "Utraya analizza automaticamente i tuoi canali YouTube preferiti così rimani informato in pochi minuti, non ore."
   },
+  "legalDocument": {
+    "version": "Versione {version}",
+    "effectiveDate": "Data di entrata in vigore: {date}",
+    "effectiveDateFrom": "In vigore dal {date}",
+    "effectiveDateUndetermined": "non determinata",
+    "documentHash": "Hash documento: {hash}… (SHA-256)"
+  },
   "nav": {
     "dashboard": "Dashboard",
     "channels": "Canali",

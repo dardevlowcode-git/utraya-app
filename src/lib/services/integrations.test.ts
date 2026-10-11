@@ -11,6 +11,7 @@ const {
   createAdminClientMock,
   createClientMock,
   fromMock,
+  rpcMock,
   insertMock,
   getCurrentSessionMock,
   enqueueCredentialValidationMock,
@@ -19,6 +20,7 @@ const {
   createAdminClientMock: vi.fn(),
   createClientMock: vi.fn(),
   fromMock: vi.fn(),
+  rpcMock: vi.fn(),
   insertMock: vi.fn(),
   getCurrentSessionMock: vi.fn(),
   enqueueCredentialValidationMock: vi.fn(),
@@ -36,9 +38,40 @@ vi.mock('@/lib/services/credential-validation-jobs', () => ({
 import { DELETE as deleteIntegrations, maxDuration as integrationsMaxDuration, POST as postIntegrations } from '@/app/api/integrations/route'
 import { getCredentialStatusesForUser, removeApiKey, saveApiKey, writeCredentialCheckAudit } from '@/lib/services/integrations'
 
+let activeCredentialState: {
+  credentialId: string
+  credentialRow: Record<string, unknown> | null
+  retryLimit: number
+  keyVersion: string
+  setRetryPolicy: (retryLimit: number, keyVersion: string) => void
+  setCredentialRow: (values: Record<string, unknown>) => void
+  replaceCredentialRow: (row: Record<string, unknown> | null) => void
+} | null = null
+let initialKeyVersion = 'version-default'
+let atomicVersionSequence = 0
+
 /** Crea un client utente minimo che conserva la riga credenziale durante il test. */
 function createCredentialSupabase(credentialId: string) {
   let credentialRow: Record<string, unknown> | null = null
+  const state: NonNullable<typeof activeCredentialState> = {
+    credentialId,
+    credentialRow,
+    retryLimit: 0,
+    keyVersion: initialKeyVersion,
+    setRetryPolicy(retryLimit: number, keyVersion: string) {
+      state.retryLimit = retryLimit
+      state.keyVersion = keyVersion
+    },
+    setCredentialRow(values: Record<string, unknown>) {
+      credentialRow = { ...(credentialRow ?? {}), ...values }
+      state.credentialRow = credentialRow
+    },
+    replaceCredentialRow(row: Record<string, unknown> | null) {
+      credentialRow = row
+      state.credentialRow = row
+    },
+  }
+  activeCredentialState = state
   const selectQuery = {
     eq: vi.fn(() => selectQuery),
     maybeSingle: vi.fn(async () => ({ data: credentialRow, error: null })),
@@ -56,6 +89,7 @@ function createCredentialSupabase(credentialId: string) {
   }
   const updateMock = vi.fn((values: Record<string, unknown>) => {
     credentialRow = { ...(credentialRow ?? {}), ...values }
+    state.credentialRow = credentialRow
     return updateQuery
   })
   const supabase = {
@@ -63,36 +97,122 @@ function createCredentialSupabase(credentialId: string) {
       select: vi.fn(() => selectQuery),
       upsert: vi.fn(async (values: Record<string, unknown>) => {
         credentialRow = { id: credentialId, ...values }
+        state.credentialRow = credentialRow
         return { error: null }
       }),
       update: updateMock,
     })),
   }
-  return { supabase, getCredentialRow: () => credentialRow, updateFilters, updateMock }
+  configureCredentialSaveRpc(state)
+  return {
+    supabase,
+    getCredentialRow: () => credentialRow,
+    setCredentialRow: state.setCredentialRow,
+    state,
+    updateFilters,
+    updateMock,
+  }
 }
 
 /** Configura il confine privilegiato con retry metadata e insert audit/usage. */
 function configureRetryLimitClient(retryLimit: number, keyVersion = 'version-default') {
-  const retryLimitUpsert = vi.fn(async () => ({ error: null }))
+  initialKeyVersion = keyVersion
+  if (activeCredentialState?.credentialRow === null) activeCredentialState.keyVersion = keyVersion
+  const retryLimitUpsert = vi.fn(async (values: Record<string, unknown>) => {
+    if (activeCredentialState) {
+      activeCredentialState.setRetryPolicy(Number(values.retry_limit), String(values.key_version ?? activeCredentialState.keyVersion))
+    }
+    return { error: null }
+  })
   const retryQuery = {
     eq: vi.fn(() => retryQuery),
     in: vi.fn(async () => ({
-      data: [{ credential_id: 'credential-pending', retry_limit: retryLimit, key_version: keyVersion }],
+      data: [activeCredentialState
+        ? {
+            credential_id: activeCredentialState.credentialId,
+            retry_limit: activeCredentialState.retryLimit,
+            key_version: activeCredentialState.keyVersion,
+          }
+        : { credential_id: 'credential-pending', retry_limit: retryLimit, key_version: keyVersion }],
       error: null,
     })),
-    maybeSingle: vi.fn(async () => ({ data: { retry_limit: retryLimit, key_version: keyVersion }, error: null })),
+    maybeSingle: vi.fn(async () => ({
+      data: activeCredentialState
+        ? { retry_limit: activeCredentialState.retryLimit, key_version: activeCredentialState.keyVersion }
+        : { retry_limit: retryLimit, key_version: keyVersion },
+      error: null,
+    })),
   }
   createAdminClientMock.mockReturnValue({
+    rpc: rpcMock,
     from: vi.fn((table: string) => table === 'user_provider_credential_retry_limits'
       ? { select: vi.fn(() => retryQuery), upsert: retryLimitUpsert }
       : fromMock(table)),
   })
-  return { retryLimitUpsert }
+  return { retryLimitUpsert, rpcMock }
+}
+
+/** Simula il contratto transazionale/CAS del solo confine PostgreSQL con ciphertext sintetici. */
+function configureCredentialSaveRpc(state: NonNullable<typeof activeCredentialState>): void {
+  rpcMock.mockImplementation(async (name: string, args: Record<string, unknown>) => {
+    if (name !== 'save_user_provider_credential_atomic') {
+      return { data: null, error: null }
+    }
+
+    const conflict = { status: 'conflict', credential_id: null, retry_limit: null, key_version: null }
+    const saved = () => ({
+      status: 'saved',
+      credential_id: state.credentialId,
+      retry_limit: state.retryLimit,
+      key_version: state.keyVersion,
+    })
+    const credentialId = args.p_credential_id
+    if (credentialId === null) {
+      if (state.credentialRow) return { data: [conflict], error: null }
+      state.replaceCredentialRow({
+        id: state.credentialId,
+        user_id: args.p_user_id,
+        provider: args.p_provider,
+        encrypted_key: args.p_encrypted_key,
+        is_configured: true,
+        is_valid: null,
+        last_error: null,
+        last_used_at: null,
+      })
+      state.retryLimit = 0
+      state.keyVersion = initialKeyVersion
+      return { data: [saved()], error: null }
+    }
+
+    if (credentialId !== state.credentialId
+        || state.credentialRow?.encrypted_key !== args.p_expected_encrypted_key
+        || state.keyVersion !== args.p_expected_key_version) {
+      return { data: [conflict], error: null }
+    }
+    if (args.p_reset_retry_policy === true) {
+      state.retryLimit = 0
+      atomicVersionSequence += 1
+      state.keyVersion = `atomic-version-${atomicVersionSequence}`
+    }
+    state.setCredentialRow({
+      ...state.credentialRow,
+      encrypted_key: args.p_encrypted_key,
+      is_configured: true,
+      is_valid: null,
+      last_error: null,
+      last_used_at: null,
+    })
+    return { data: [saved()], error: null }
+  })
 }
 
 describe('credential save and validation enqueue', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    rpcMock.mockReset()
+    activeCredentialState = null
+    initialKeyVersion = 'version-default'
+    atomicVersionSequence = 0
     fromMock.mockReturnValue({ insert: insertMock })
     createAdminClientMock.mockReturnValue({ from: fromMock })
     insertMock.mockResolvedValue({ error: null })
@@ -153,8 +273,8 @@ describe('credential save and validation enqueue', () => {
       }))
       const payload = await response.json()
 
-      expect(response.status).toBe(200)
-      expect(payload.data).toMatchObject({ isValid: null, validationStatus: 'pending' })
+      expect(response.status).toBe(202)
+      expect(payload.data).toMatchObject({ isValid: null, validationStatus: 'pending', jobId: 'validation-job-1' })
       expect(enqueueCredentialValidationMock).toHaveBeenCalledWith(expect.objectContaining({
         userId,
         credentialId: 'credential-pending',
@@ -192,8 +312,8 @@ describe('credential save and validation enqueue', () => {
       }))
       const result = await response.json()
 
-      expect(response.status).toBe(200)
-      expect(result.data).toMatchObject({ provider: 'firecrawl', isValid: null, validationStatus: 'pending' })
+      expect(response.status).toBe(202)
+      expect(result.data).toMatchObject({ provider: 'firecrawl', jobId: 'validation-job-1', isValid: null, validationStatus: 'pending' })
       expect(enqueueCredentialValidationMock).toHaveBeenCalledWith({
         credentialId: 'credential-firecrawl-pending',
         userId,
@@ -241,22 +361,138 @@ describe('credential save and validation enqueue', () => {
 
   it('tratta una chiave Firecrawl sostituita come nuova versione e mantiene l’override sul risalvataggio identico', async () => {
     const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
-    const { supabase } = createCredentialSupabase('credential-firecrawl-replaced')
-    const { retryLimitUpsert } = configureRetryLimitClient(5, 'previous-firecrawl-key-version')
+    const { supabase, state } = createCredentialSupabase('credential-firecrawl-replaced')
+    const { retryLimitUpsert, rpcMock: replacementRpc } = configureRetryLimitClient(5, 'previous-firecrawl-key-version')
     process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
 
     try {
       await saveApiKey({ userId: 'firecrawl-replacement-owner', provider: 'firecrawl', apiKey: 'test-firecrawl-key-before', validateNow: false, supabase: supabase as unknown as AppSupabaseClient })
-      await saveApiKey({ userId: 'firecrawl-replacement-owner', provider: 'firecrawl', apiKey: 'test-firecrawl-key-after', validateNow: false, supabase: supabase as unknown as AppSupabaseClient })
-      expect(retryLimitUpsert).toHaveBeenCalledWith(expect.objectContaining({
-        credential_id: 'credential-firecrawl-replaced',
-        retry_limit: 0,
-        key_version: expect.any(String),
-      }))
-
-      retryLimitUpsert.mockClear()
+      state.setRetryPolicy(5, state.keyVersion)
+      const originalVersion = state.keyVersion
       await saveApiKey({ userId: 'firecrawl-replacement-owner', provider: 'firecrawl', apiKey: 'test-firecrawl-key-after', validateNow: false, supabase: supabase as unknown as AppSupabaseClient })
       expect(retryLimitUpsert).not.toHaveBeenCalled()
+      expect(replacementRpc).toHaveBeenCalledWith('save_user_provider_credential_atomic', expect.objectContaining({
+        p_credential_id: 'credential-firecrawl-replaced',
+        p_user_id: 'firecrawl-replacement-owner',
+        p_provider: 'firecrawl',
+        p_encrypted_key: expect.any(String),
+        p_expected_encrypted_key: expect.any(String),
+        p_expected_key_version: originalVersion,
+        p_reset_retry_policy: true,
+      }))
+      expect(state.retryLimit).toBe(0)
+      expect(state.keyVersion).not.toBe(originalVersion)
+
+      state.setRetryPolicy(4, state.keyVersion)
+      const replacementVersion = state.keyVersion
+      replacementRpc.mockClear()
+      await saveApiKey({ userId: 'firecrawl-replacement-owner', provider: 'firecrawl', apiKey: 'test-firecrawl-key-after', validateNow: false, supabase: supabase as unknown as AppSupabaseClient })
+      expect(replacementRpc).toHaveBeenCalledWith('save_user_provider_credential_atomic', expect.objectContaining({
+        p_reset_retry_policy: false,
+        p_expected_key_version: replacementVersion,
+      }))
+      expect(state.retryLimit).toBe(4)
+      expect(state.keyVersion).toBe(replacementVersion)
+    } finally {
+      if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY
+      else process.env.CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey
+    }
+  })
+
+  it('preserva chiave, override e job se la sostituzione atomica del segreto fallisce', async () => {
+    const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
+    const { supabase, getCredentialRow, state } = createCredentialSupabase('credential-atomic-failure')
+    const { rpcMock: replacementRpc } = configureRetryLimitClient(6, 'existing-key-version')
+    process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
+
+    try {
+      await saveApiKey({
+        userId: 'atomic-owner',
+        provider: 'youtube',
+        apiKey: 'test-youtube-key-original',
+        validateNow: false,
+        supabase: supabase as unknown as AppSupabaseClient,
+      })
+      state.setRetryPolicy(6, state.keyVersion)
+      const originalRow = { ...getCredentialRow() }
+      const originalVersion = state.keyVersion
+      replacementRpc.mockResolvedValueOnce({ data: null, error: { message: 'transaction rejected' } })
+
+      await expect(saveApiKey({
+        userId: 'atomic-owner',
+        provider: 'youtube',
+        apiKey: 'test-youtube-key-replacement',
+        validateNow: false,
+        supabase: supabase as unknown as AppSupabaseClient,
+      })).rejects.toMatchObject({ message: 'Impossibile salvare la chiave API' })
+
+      expect(getCredentialRow()).toEqual(originalRow)
+      expect(state.retryLimit).toBe(6)
+      expect(state.keyVersion).toBe(originalVersion)
+      expect(replacementRpc).toHaveBeenCalledWith('save_user_provider_credential_atomic', expect.objectContaining({
+        p_credential_id: 'credential-atomic-failure',
+        p_user_id: 'atomic-owner',
+        p_provider: 'youtube',
+        p_encrypted_key: expect.any(String),
+        p_expected_encrypted_key: originalRow.encrypted_key,
+        p_expected_key_version: originalVersion,
+        p_reset_retry_policy: true,
+      }))
+      expect(enqueueCredentialValidationMock).not.toHaveBeenCalled()
+    } finally {
+      if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY
+      else process.env.CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey
+    }
+  })
+
+  it('rilegge e ricalcola replacement dopo un conflitto CAS concorrente', async () => {
+    const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
+    const { supabase, getCredentialRow, setCredentialRow, state } = createCredentialSupabase('credential-cas-race')
+    const { rpcMock: saveRpc } = configureRetryLimitClient(0, 'cas-version-initial')
+    process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
+
+    try {
+      await saveApiKey({ userId: 'cas-owner', provider: 'youtube', apiKey: 'test-youtube-key-initial', validateNow: false, supabase: supabase as unknown as AppSupabaseClient })
+      const staleRow = { ...getCredentialRow()! }
+      const staleVersion = state.keyVersion
+
+      await saveApiKey({ userId: 'cas-owner', provider: 'youtube', apiKey: 'test-youtube-key-concurrent', validateNow: false, supabase: supabase as unknown as AppSupabaseClient })
+      const concurrentRow = { ...getCredentialRow()! }
+      const concurrentVersion = state.keyVersion
+
+      state.setRetryPolicy(5, staleVersion)
+      setCredentialRow(staleRow)
+      const firstCallIndex = saveRpc.mock.calls.length
+      saveRpc.mockImplementationOnce(async () => {
+        setCredentialRow(concurrentRow)
+        state.setRetryPolicy(0, concurrentVersion)
+        return {
+          data: [{ status: 'conflict', credential_id: null, retry_limit: null, key_version: null }],
+          error: null,
+        }
+      })
+
+      const saved = await saveApiKey({ userId: 'cas-owner', provider: 'youtube', apiKey: 'test-youtube-key-requested', validateNow: false, supabase: supabase as unknown as AppSupabaseClient })
+      const casCalls = saveRpc.mock.calls.slice(firstCallIndex)
+
+      expect(casCalls).toHaveLength(2)
+      expect(casCalls[0][1]).toMatchObject({
+        p_expected_encrypted_key: staleRow.encrypted_key,
+        p_expected_key_version: staleVersion,
+        p_reset_retry_policy: true,
+      })
+      expect(casCalls[1][1]).toMatchObject({
+        p_expected_encrypted_key: concurrentRow.encrypted_key,
+        p_expected_key_version: concurrentVersion,
+        p_reset_retry_policy: true,
+      })
+      expect(getCredentialRow()?.encrypted_key).toBe(casCalls[1][1].p_encrypted_key)
+      expect(state.retryLimit).toBe(0)
+      expect(state.keyVersion).not.toBe(concurrentVersion)
+      expect(saved.maskedKey.endsWith('sted')).toBe(true)
+      expect(JSON.stringify(casCalls)).not.toContain('test-youtube-key-initial')
+      expect(JSON.stringify(casCalls)).not.toContain('test-youtube-key-concurrent')
+      expect(JSON.stringify(casCalls)).not.toContain('test-youtube-key-requested')
     } finally {
       if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY
       else process.env.CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey
@@ -330,14 +566,22 @@ describe('credential save and validation enqueue', () => {
 
   it('mantiene l’override admin quando si risalva lo stesso segreto', async () => {
     const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
-    const { supabase } = createCredentialSupabase('credential-same-secret')
-    const { retryLimitUpsert } = configureRetryLimitClient(7)
+    const { supabase, state } = createCredentialSupabase('credential-same-secret')
+    const { retryLimitUpsert, rpcMock: saveRpc } = configureRetryLimitClient(7)
     process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
 
     try {
       await saveApiKey({ userId: 'same-secret-owner', provider: 'youtube', apiKey: 'test-youtube-key-same-secret', validateNow: false, supabase: supabase as unknown as AppSupabaseClient })
+      state.setRetryPolicy(7, state.keyVersion)
+      const versionBefore = state.keyVersion
       await saveApiKey({ userId: 'same-secret-owner', provider: 'youtube', apiKey: 'test-youtube-key-same-secret', validateNow: false, supabase: supabase as unknown as AppSupabaseClient })
       expect(retryLimitUpsert).not.toHaveBeenCalled()
+      expect(state.retryLimit).toBe(7)
+      expect(state.keyVersion).toBe(versionBefore)
+      expect(saveRpc).toHaveBeenLastCalledWith('save_user_provider_credential_atomic', expect.objectContaining({
+        p_reset_retry_policy: false,
+        p_expected_key_version: versionBefore,
+      }))
     } finally {
       if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY
       else process.env.CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey
@@ -346,17 +590,24 @@ describe('credential save and validation enqueue', () => {
 
   it('azzera il limite e cambia versione solo quando si sostituisce la chiave', async () => {
     const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
-    const { supabase } = createCredentialSupabase('credential-replaced-secret')
-    const { retryLimitUpsert } = configureRetryLimitClient(7)
+    const { supabase, state } = createCredentialSupabase('credential-replaced-secret')
+    const { retryLimitUpsert, rpcMock: replacementRpc } = configureRetryLimitClient(7)
     process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
 
     try {
       await saveApiKey({ userId: 'replacement-owner', provider: 'youtube', apiKey: 'test-youtube-key-before-replacement', validateNow: false, supabase: supabase as unknown as AppSupabaseClient })
+      state.setRetryPolicy(7, state.keyVersion)
+      const oldVersion = state.keyVersion
       await saveApiKey({ userId: 'replacement-owner', provider: 'youtube', apiKey: 'test-youtube-key-after-replacement', validateNow: false, supabase: supabase as unknown as AppSupabaseClient })
-      expect(retryLimitUpsert).toHaveBeenCalledWith(expect.objectContaining({
-        credential_id: 'credential-replaced-secret',
-        retry_limit: 0,
-        key_version: expect.any(String),
+      expect(retryLimitUpsert).not.toHaveBeenCalled()
+      expect(state.retryLimit).toBe(0)
+      expect(state.keyVersion).not.toBe(oldVersion)
+      expect(replacementRpc).toHaveBeenLastCalledWith('save_user_provider_credential_atomic', expect.objectContaining({
+        p_credential_id: 'credential-replaced-secret',
+        p_user_id: 'replacement-owner',
+        p_provider: 'youtube',
+        p_reset_retry_policy: true,
+        p_expected_key_version: oldVersion,
       }))
     } finally {
       if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY

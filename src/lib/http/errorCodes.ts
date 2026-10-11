@@ -1,8 +1,10 @@
 /* Commento didattico:
- * Scopo del file: definisce codici errore applicativi condivisi per le API nuove in envelope standard.
- * Moduli richiamati: nessuno.
- * Flusso: i route handler usano questi codici con `apiErr` per risposte consistenti e tracciabili.
+ * Scopo del file: definisce codici errore applicativi condivisi per le API in envelope standard.
+ * Moduli richiamati: `@/lib/types/domain` per il mapping di dominio.
+ * Flusso: route web e v1 condividono il mapping; il chiamante sceglie esplicitamente il codice temporary.
  */
+
+import type { AppErrorType } from '@/lib/types/domain'
 
 export type ErrorCode =
   | 'UNAUTHORIZED'
@@ -17,3 +19,16 @@ export type ErrorCode =
   | 'CRON_UNAUTHORIZED'
   | 'CRON_MISCONFIGURED'
   | 'RATE_LIMITED'
+
+/** Converte gli errori di dominio nel vocabolario API stabile. */
+export function mapAppErrorTypeToCode(
+  type: AppErrorType,
+  temporaryCode: 'INTERNAL_ERROR' | 'UPSTREAM_ERROR' = 'INTERNAL_ERROR'
+): ErrorCode {
+  if (type === 'unauthorized') return 'UNAUTHORIZED'
+  if (type === 'forbidden') return 'FORBIDDEN'
+  if (type === 'not_found') return 'NOT_FOUND'
+  if (type === 'validation') return 'VALIDATION_FAILED'
+  if (type === 'temporary') return temporaryCode
+  return 'INTERNAL_ERROR'
+}

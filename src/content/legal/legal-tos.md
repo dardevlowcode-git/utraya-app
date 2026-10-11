@@ -1,16 +1,17 @@
 # Termini di Servizio Utraya
 
-> **Stato**: ✅ versione pubblicata
-> **Versione documento**: `2026-10-11-1`
-> **Data di entrata in vigore**: 2026-10-11
-> **Hash canonico**: calcolato da `npm run legal:hash` su questo file (vedi §0).
+> **Stato**: candidata locale `2026-10-11-1`; questa copia non attesta pubblicazione né efficacia online.
+> **Versione documento (candidata locale)**: `2026-10-11-1`
+> **Versione pubblicata/efficace**: non verificata da questa fonte.
+> **Data di entrata in vigore della candidata**: non determinata; da indicare solo con prova della pubblicazione autorizzata.
+> **Hash canonico**: calcolato da `npm run legal:hash` sulla rappresentazione Markdown pubblica (vedi §0).
 > **Lingua sorgente**: italiano. Il testo italiano prevale in caso di discrepanza con la traduzione inglese.
 
 ---
 
 ## 0. Note operative (questa sezione non fa parte del TOS pubblico)
 
-- Quando questo documento cambia, si genera un **nuovo hash SHA-256** sull'intero file e si bumpa il campo versione (formato `YYYY-MM-DD-N`).
+- Quando il testo pubblico cambia, si genera un **nuovo hash SHA-256** sulla rappresentazione Markdown canonica mostrata: titolo e corpo pubblico, senza intestazione metadata, questa sezione operativa o la sintesi giuridica non pubblica. Il comando `npm run legal:hash` applica la stessa trasformazione del loader; si bumpa anche la versione (formato `YYYY-MM-DD-N`). Modifiche alle sole note interne non cambiano hash né richiedono nuova accettazione.
 - Le sezioni marcate **[VESSATORIA]** richiedono accettazione specifica separata ex art. 1341 c.c. comma 2 (vedi §22 "Approvazione specifica delle clausole vessatorie").
 - Documento privo di riferimenti societari e dati identificativi aggiuntivi: il responsabile indicato è Dario Bonini con contatto privacy@utraya.com.
 
@@ -318,7 +319,12 @@ You can **revoke Utraya's access** to your Google account at any time at <https:
 
 | Provider | Function | Data received |
 |---|---|---|
+| Google Identity (OAuth) | User authentication | See §12-bis |
+| YouTube Data API v3 | Reading public video metadata | No user data transmitted |
+| Google Gemini (or user's equivalent AI provider) | Summary generation | Video URL/transcript, not user data |
 | Firecrawl | Retrieval of YouTube video transcripts | YouTube video URLs |
+| Supabase (EU-hosted DB) | DB storage and backend auth | All user account data encrypted at rest |
+| Vercel (hosting) | Application delivery | Technical access logs (IP, user agent) |
 
 By entering and saving a personal API key, the user enables Utraya to use it automatically for the features associated with the service. To process a channel's content, Utraya may use one of the eligible keys belonging to users who follow that channel, alternating them separately by channel and provider. The provider attributes usage to the account or team associated with the key used, according to the applicable plan and terms. Alternation applies to assigned jobs and does not guarantee equal usage or costs. Results already available are reused without repeating processing. Removing the key excludes it from new assignments.
 
@@ -332,5 +338,5 @@ Any usage, limits, and costs of external services are separate from those of Utr
 
 | Versione | Data | Modifiche principali |
 |---|---|---|
-| `2026-10-11-1` | 2026-10-11 | Aggiunti Firecrawl e l'informativa approvata sulle chiavi API personali (§8); chiariti consumi, limiti e costi dei servizi esterni (§9). |
+| `2026-10-11-1` | 2026-10-11 (preparazione candidata locale) | Candidata locale: aggiunti Firecrawl e l'informativa approvata sulle chiavi API personali (§8); chiariti consumi, limiti e costi dei servizi esterni (§9). Nessuna pubblicazione o efficacia è attestata. |
 | `2026-05-16-1` | 2026-05-16 | Prima versione pubblicata. Titolare: Dario Bonini Vessatorie marcate (§11, §13, §15, §16, §17, §18). §12-bis su dati Google. Tetto risarcimento simbolico 1€ per natura gratuita del servizio. |

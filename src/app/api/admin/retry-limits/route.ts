@@ -1,7 +1,7 @@
 /* Commento didattico:
  * Scopo del file: espone le operazioni admin per consultare e salvare limiti retry delle chiavi.
  * Moduli richiamati: Zod, sessione admin, envelope HTTP, protezioni same-origin e service retry-limits.
- * Flusso: autentica l'admin, valida uno scope esplicito e delega la persistenza al service server-only.
+ * Flusso: valida il payload Zod, autentica l'admin e delega la persistenza al service server-only.
  */
 
 import { z } from 'zod'
@@ -31,13 +31,12 @@ export async function GET(request: Request) {
 
 export async function PUT(request: Request) {
   const requestId = getRequestId(request)
-  if (!(await getAdminSession())) return apiErr('UNAUTHORIZED', 'Unauthorized', 401, requestId)
-
   try {
     ensureSameOrigin(request)
     ensureJsonRequest(request)
     const parsed = bodySchema.safeParse(await request.json().catch(() => null))
     if (!parsed.success) return apiErr('VALIDATION_FAILED', 'Payload retry limit non valido', 400, requestId)
+    if (!(await getAdminSession())) return apiErr('UNAUTHORIZED', 'Unauthorized', 401, requestId)
 
     const admin = createAdminClient()
     const result = parsed.data.scope === 'credential'

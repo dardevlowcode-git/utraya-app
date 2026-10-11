@@ -18,7 +18,7 @@ vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: createAdminClientMoc
 import { performCredentialValidationAttempt, removeApiKey, saveApiKey } from '@/lib/services/integrations'
 
 /** Crea una credenziale privata nel confine utente e la conserva per il lettore service-role. */
-function createCredentialClient(credentialId: string) {
+function createCredentialClient(credentialId: string, keyVersion: string) {
   let row: Record<string, unknown> | null = null
   const selectQuery = {
     eq: vi.fn(() => selectQuery),
@@ -45,11 +45,28 @@ function createCredentialClient(credentialId: string) {
       }),
     })),
   }
-  return { client, getRow: () => row }
+  const saveRpc = vi.fn(async (name: string, args: Record<string, unknown>) => {
+    if (name !== 'save_user_provider_credential_atomic') return { data: null, error: null }
+    row = {
+      id: credentialId,
+      user_id: args.p_user_id,
+      provider: args.p_provider,
+      encrypted_key: args.p_encrypted_key,
+      is_configured: true,
+      is_valid: null,
+      last_error: null,
+      last_used_at: null,
+    }
+    return {
+      data: [{ status: 'saved', credential_id: credentialId, retry_limit: 0, key_version: keyVersion }],
+      error: null,
+    }
+  })
+  return { client, getRow: () => row, saveRpc }
 }
 
 /** Configura il service-role reader e il sink append-only del ledger. */
-function configureAdminClient(getCredentialRow: () => Record<string, unknown> | null, keyVersion: string) {
+function configureAdminClient(getCredentialRow: () => Record<string, unknown> | null, keyVersion: string, saveRpc: ReturnType<typeof vi.fn>) {
   const credentialQuery = {
     eq: vi.fn(() => credentialQuery),
     maybeSingle: vi.fn(async () => ({ data: getCredentialRow(), error: null })),
@@ -59,6 +76,7 @@ function configureAdminClient(getCredentialRow: () => Record<string, unknown> | 
     maybeSingle: vi.fn(async () => ({ data: { retry_limit: 0, key_version: keyVersion }, error: null })),
   }
   createAdminClientMock.mockReturnValue({
+    rpc: saveRpc,
     from: vi.fn((table: string) => {
       if (table === 'user_provider_credentials') return { select: vi.fn(() => credentialQuery) }
       if (table === 'user_provider_credential_retry_limits') return { select: vi.fn(() => policyQuery) }
@@ -78,8 +96,9 @@ describe('performCredentialValidationAttempt', () => {
     const ownerId = 'youtube-attempt-owner'
     const credentialId = '00000000-0000-4000-8000-000000000010'
     const keyVersion = '00000000-0000-4000-8000-000000000011'
-    const { client, getRow } = createCredentialClient(credentialId)
+    const { client, getRow, saveRpc } = createCredentialClient(credentialId, keyVersion)
     process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
+    configureAdminClient(getRow, keyVersion, saveRpc)
     await saveApiKey({
       userId: ownerId,
       provider: 'youtube',
@@ -87,7 +106,6 @@ describe('performCredentialValidationAttempt', () => {
       validateNow: false,
       supabase: client as unknown as AppSupabaseClient,
     })
-    configureAdminClient(getRow, keyVersion)
     const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 503 }))
     vi.stubGlobal('fetch', fetchMock)
 
@@ -124,8 +142,9 @@ describe('performCredentialValidationAttempt', () => {
     const ownerId = 'gemini-attempt-owner'
     const credentialId = '00000000-0000-4000-8000-000000000020'
     const keyVersion = '00000000-0000-4000-8000-000000000021'
-    const { client, getRow } = createCredentialClient(credentialId)
+    const { client, getRow, saveRpc } = createCredentialClient(credentialId, keyVersion)
     process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
+    configureAdminClient(getRow, keyVersion, saveRpc)
     await saveApiKey({
       userId: ownerId,
       provider: 'gemini',
@@ -133,7 +152,6 @@ describe('performCredentialValidationAttempt', () => {
       validateNow: false,
       supabase: client as unknown as AppSupabaseClient,
     })
-    configureAdminClient(getRow, keyVersion)
     const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 429 }))
     vi.stubGlobal('fetch', fetchMock)
 
@@ -172,7 +190,7 @@ describe('performCredentialValidationAttempt', () => {
     const credentialId = '00000000-0000-4000-8000-000000000030'
     const keyVersion = '00000000-0000-4000-8000-000000000031'
     const apiKey = 'test-firecrawl-provider-key'
-    const { client, getRow } = createCredentialClient(credentialId)
+    const { client, getRow, saveRpc } = createCredentialClient(credentialId, keyVersion)
     const discoveryResponse = {
       success: true,
       data: {
@@ -189,6 +207,7 @@ describe('performCredentialValidationAttempt', () => {
     }
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(discoveryResponse), { status: 200 }))
     process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
+    configureAdminClient(getRow, keyVersion, saveRpc)
     await saveApiKey({
       userId: ownerId,
       provider: 'firecrawl',
@@ -196,7 +215,6 @@ describe('performCredentialValidationAttempt', () => {
       validateNow: false,
       supabase: client as unknown as AppSupabaseClient,
     })
-    configureAdminClient(getRow, keyVersion)
     vi.stubGlobal('fetch', fetchMock)
 
     try {
@@ -269,10 +287,10 @@ describe('performCredentialValidationAttempt', () => {
     const credentialId = '00000000-0000-4000-8000-000000000040'
     const keyVersion = '00000000-0000-4000-8000-000000000041'
     const apiKey = 'test-firecrawl-rate-limit-key'
-    const { client, getRow } = createCredentialClient(credentialId)
+    const { client, getRow, saveRpc } = createCredentialClient(credentialId, keyVersion)
     process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
+    configureAdminClient(getRow, keyVersion, saveRpc)
     await saveApiKey({ userId: ownerId, provider: 'firecrawl', apiKey, validateNow: false, supabase: client as unknown as AppSupabaseClient })
-    configureAdminClient(getRow, keyVersion)
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: `private ${apiKey}` }), { status: 429 }))
     vi.stubGlobal('fetch', fetchMock)
 
@@ -310,14 +328,14 @@ describe('performCredentialValidationAttempt', () => {
     const credentialId = '00000000-0000-4000-8000-000000000050'
     const keyVersion = '00000000-0000-4000-8000-000000000051'
     const apiKey = 'test-firecrawl-key-removed-before-lease'
-    const { client, getRow } = createCredentialClient(credentialId)
+    const { client, getRow, saveRpc } = createCredentialClient(credentialId, keyVersion)
     const fetchMock = vi.fn()
     process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
 
     try {
+      configureAdminClient(getRow, keyVersion, saveRpc)
       await saveApiKey({ userId: ownerId, provider: 'firecrawl', apiKey, validateNow: false, supabase: client as unknown as AppSupabaseClient })
       await removeApiKey({ userId: ownerId, provider: 'firecrawl', supabase: client as unknown as AppSupabaseClient })
-      configureAdminClient(getRow, keyVersion)
       vi.stubGlobal('fetch', fetchMock)
 
       const result = await performCredentialValidationAttempt({

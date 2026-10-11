@@ -73,6 +73,24 @@ describe('admin retry limits route', () => {
     expect(setCredentialRetryLimitMock).not.toHaveBeenCalled()
   })
 
+  it('valida il payload prima dell’autenticazione e non riflette campi sensibili', async () => {
+    const secret = 'must-not-appear-in-validation-errors'
+    const response = await PUT(adminRequest('PUT', {
+      scope: 'credential',
+      credentialId: 'not-a-uuid',
+      retryLimit: 1,
+      encrypted_key: secret,
+    }))
+    const payload = await response.json()
+
+    expect(response.status).toBe(400)
+    expect(payload).toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED' } })
+    expect(JSON.stringify(payload)).not.toContain(secret)
+    expect(getAdminSessionMock).not.toHaveBeenCalled()
+    expect(setCredentialRetryLimitMock).not.toHaveBeenCalled()
+    expect(setSharedYoutubeRetryLimitMock).not.toHaveBeenCalled()
+  })
+
   it('espone soltanto view model di limiti e la chiave condivisa separata', async () => {
     const response = await GET(adminRequest('GET'))
 

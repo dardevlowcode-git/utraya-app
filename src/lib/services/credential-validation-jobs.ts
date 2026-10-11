@@ -6,6 +6,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { computeRetryAt } from '@/lib/utils/retry-backoff'
 import { AppError } from '@/lib/utils/errors'
 import type { AppSupabaseClient } from '@/lib/supabase/types'
 
@@ -13,8 +14,6 @@ export const CREDENTIAL_VALIDATION_JOB_TYPE = 'validate_provider_credential'
 export const CREDENTIAL_VALIDATION_WORKER_BATCH_LIMIT = 3
 export const CREDENTIAL_VALIDATION_LEASE_MS = 60_000
 
-const RETRY_BACKOFF_BASE_MS = 1_000
-const RETRY_BACKOFF_MAX_MS = 60_000
 
 type AdminClient = ReturnType<typeof createAdminClient>
 export type ValidationProvider = 'youtube' | 'gemini' | 'firecrawl'
@@ -149,11 +148,6 @@ function parseCredentialValidationPayload(value: unknown): CredentialValidationJ
   }
 }
 
-/** Calcola il backoff di una richiesta retryable da persistere in `jobs.next_attempt_at`. */
-function getRetryDelayMs(attemptNumber: number): number {
-  return Math.min(RETRY_BACKOFF_BASE_MS * 2 ** Math.max(attemptNumber - 1, 0), RETRY_BACKOFF_MAX_MS)
-}
-
 /** Esegue un singolo tentativo protetto da lease e persiste la transizione prima di ritornare. */
 export async function processCredentialValidationJob(params: {
   jobId: string
@@ -189,7 +183,7 @@ export async function processCredentialValidationJob(params: {
   const retry = result.retryable && !result.credentialChanged && attemptNumber <= payload.retryLimit
   const completedAt = clock()
   const nextAttemptAt = retry
-    ? new Date(completedAt.getTime() + getRetryDelayMs(attemptNumber)).toISOString()
+    ? computeRetryAt(attemptNumber, null, completedAt.getTime())
     : null
   const status: CredentialValidationStatus = retry ? 'pending' : result.isValid ? 'completed' : 'failed'
 
