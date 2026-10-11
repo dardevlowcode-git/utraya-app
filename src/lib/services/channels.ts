@@ -12,6 +12,7 @@ import { normalizeChannelUrl, parseYouTubeChannelUrl } from '@/lib/utils/youtube
 import type { Database } from '@/lib/types/database'
 import { importChannelVideos } from '@/lib/services/videos'
 import type { AppSupabaseClient } from '@/lib/supabase/types'
+import { deferScanJobAttempt, getDeferredScanDisposition } from '@/lib/services/youtube-channel-scan'
 
 type UserChannelRow = Database['public']['Tables']['user_channels']['Row']
 type ChannelRow = Database['public']['Tables']['channels']['Row']
@@ -602,8 +603,19 @@ export async function enqueueScanJobForUser(
   return { queued: true, jobId: jobRow.id, deduplicated: false }
 }
 
-export async function runScanJob(params: { userId: string; channelId: string; jobId: string; maxResults?: number }) {
-  const admin = createAdminClient()
+const MAX_CHANNEL_SCAN_PROVIDER_REQUESTS_PER_RUN = 4
+const MAX_CHANNEL_SCAN_LEASE_STEPS_PER_RUN = MAX_CHANNEL_SCAN_PROVIDER_REQUESTS_PER_RUN + 1
+
+interface ScanJobLeaseResult {
+  claimed: boolean
+  continueWithNewLease: boolean
+}
+
+/** Esegue un singolo lease del job; un checkpoint provider richiede una nuova lease prima della chiamata successiva. */
+async function runScanJobLease(
+  params: { userId: string; channelId: string; jobId: string; maxResults?: number },
+  admin: ReturnType<typeof createAdminClient>
+): Promise<ScanJobLeaseResult> {
   const startedAt = new Date().toISOString()
   const leaseId = randomUUID()
   const leaseExpiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
@@ -615,7 +627,7 @@ export async function runScanJob(params: { userId: string; channelId: string; jo
   })
   if (claimError) throw new AppError('Impossibile acquisire job scansione', 'unknown', 500, { cause: claimError.message })
   const claim = claims?.[0]
-  if (!claim) return { claimed: false }
+  if (!claim) return { claimed: false, continueWithNewLease: false }
   if (!claim.attempt_id || claim.lease_id !== leaseId) {
     throw new AppError('Claim job scansione incompleto', 'structural', 500)
   }
@@ -625,9 +637,8 @@ export async function runScanJob(params: { userId: string; channelId: string; jo
     await importChannelVideos({
       userId: params.userId,
       channelId: params.channelId,
-      lease: { jobId: params.jobId, leaseId },
-      // Import canonico richiede scrittura su tabelle admin-only (`videos`).
-      // Il controllo ownership canale e` gia` effettuato sopra.
+      lease: { jobId: params.jobId, leaseId, channelId: params.channelId },
+      // Import canonico richiede tabelle admin-only; il service verifica che resti un follower attivo.
       bypassUserChannelGuard: true,
       maxResults: params.maxResults,
     })
@@ -636,6 +647,21 @@ export async function runScanJob(params: { userId: string; channelId: string; jo
   }
 
   if (operationError) {
+    const deferred = getDeferredScanDisposition(operationError)
+    if (deferred) {
+      await deferScanJobAttempt({
+        admin,
+        jobId: params.jobId,
+        leaseId,
+        attemptId: claim.attempt_id,
+        disposition: deferred,
+      })
+      return {
+        claimed: true,
+        continueWithNewLease: deferred.reason === 'provider_request_checkpoint',
+      }
+    }
+
     const message = operationError instanceof AppError
       ? operationError.message
       : operationError instanceof Error
@@ -685,7 +711,24 @@ export async function runScanJob(params: { userId: string; channelId: string; jo
   if (finishError) throw new AppError('Impossibile chiudere job scansione', 'unknown', 500, { cause: finishError.message })
   if (!finished) throw new AppError('Lease job scaduta durante la scansione', 'temporary', 409)
 
-  return { claimed: true }
+  return { claimed: true, continueWithNewLease: false }
+}
+
+/** Avanza checkpoint di richieste distinte sotto lease successive; gli errori ritentabili tornano alla coda. */
+export async function runScanJob(params: { userId: string; channelId: string; jobId: string; maxResults?: number }) {
+  const admin = createAdminClient()
+  let claimed = false
+
+  // Il flusso YouTube corrente ha al massimo quattro operazioni provider (handle, snapshot, playlist, durate).
+  // Un lease aggiuntivo permette la scrittura canonica dopo che quelle risposte sono state riusate dalla cache.
+  for (let leaseStep = 0; leaseStep < MAX_CHANNEL_SCAN_LEASE_STEPS_PER_RUN; leaseStep += 1) {
+    const result = await runScanJobLease(params, admin)
+    if (!result.claimed) return { claimed }
+    claimed = true
+    if (!result.continueWithNewLease) return { claimed: true }
+  }
+
+  return { claimed }
 }
 
 export async function processPendingScanJobs(limit = 5): Promise<{ processed: number; failed: number }> {
@@ -700,6 +743,8 @@ export async function processPendingScanJobs(limit = 5): Promise<{ processed: nu
       .select('id, payload, lease_id, lease_expires_at')
       .eq('job_type', 'sync_channel_delta')
       .eq('status', 'pending')
+      .or(`available_at.is.null,available_at.lte.${nowIso}`)
+      .order('available_at', { ascending: true, nullsFirst: true })
       .order('created_at', { ascending: true })
       .limit(safeLimit),
     admin

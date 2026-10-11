@@ -685,6 +685,7 @@ export type Database = {
           error_message: string | null
           lease_id: string | null
           lease_expires_at: string | null
+          available_at: string | null
           next_attempt_at: string | null
         }
         Insert: {
@@ -701,6 +702,7 @@ export type Database = {
           error_message?: string | null
           lease_id?: string | null
           lease_expires_at?: string | null
+          available_at?: string | null
           next_attempt_at?: string | null
         }
         Update: {
@@ -710,6 +712,7 @@ export type Database = {
           error_message?: string | null
           lease_id?: string | null
           lease_expires_at?: string | null
+          available_at?: string | null
           next_attempt_at?: string | null
         }
         Relationships: []
@@ -1097,6 +1100,48 @@ export type Database = {
           p_job_id: string
           p_expected_lease_id: string | null
           p_legacy_cutoff: string
+        }
+        Returns: boolean
+      }
+      claim_channel_scan_provider_request: {
+        Args: {
+          p_job_id: string
+          p_lease_id: string
+          p_channel_id: string
+          p_request_key: string
+        }
+        Returns: {
+          status: 'assigned' | 'cached' | 'waiting' | 'exhausted' | 'backoff'
+          credential_id: string | null
+          user_id: string | null
+          key_version: string | null
+          retry_limit: number | null
+          attempt_number: number | null
+          retry_at: string | null
+          response: Json
+        }[]
+      }
+      finish_channel_scan_provider_attempt: {
+        Args: {
+          p_job_id: string
+          p_lease_id: string
+          p_request_key: string
+          p_credential_id: string
+          p_key_version: string
+          p_outcome: 'success' | 'retryable_error' | 'ineligible'
+          p_response: Json | null
+          p_retry_at: string | null
+        }
+        Returns: boolean
+      }
+      defer_scan_job_attempt: {
+        Args: {
+          p_job_id: string
+          p_lease_id: string
+          p_attempt_id: string
+          p_available_at: string | null
+          p_reason: string
+          p_completed_at: string
         }
         Returns: boolean
       }

@@ -42,6 +42,10 @@ describe('importChannelVideos worker context', () => {
     createClientMock.mockRejectedValue(new Error('request cookie context unavailable'))
     getProviderApiKeyForUserAsAdminMock.mockResolvedValue(null)
     createAdminClientMock.mockReturnValue({
+      rpc: vi.fn(async () => ({
+        data: [{ status: 'waiting', credential_id: null, user_id: null, retry_limit: null, attempt_number: null, retry_at: null, response: null }],
+        error: null,
+      })),
       from: vi.fn((table: string) => query({
         data: table === 'user_channels' ? { id: 'relation-1' } : {
           id: 'channel-1',
@@ -63,15 +67,17 @@ describe('importChannelVideos worker context', () => {
     })
   })
 
-  it('uses only the admin client when the worker bypasses the user-channel guard', async () => {
+  it('waits without a provider call when a worker has no eligible channel key', async () => {
     await expect(importChannelVideos({
       userId: 'user-1',
       channelId: 'channel-1',
       bypassUserChannelGuard: true,
-      lease: { jobId: 'job-1', leaseId: 'lease-1' },
-    })).rejects.toThrow('Configura prima la chiave YouTube API')
+      lease: { jobId: 'job-1', leaseId: 'lease-1', channelId: 'channel-1' },
+    })).rejects.toMatchObject({
+      context: expect.objectContaining({ channelScanDisposition: 'waiting' }),
+    })
 
     expect(createClientMock).not.toHaveBeenCalled()
-    expect(getProviderApiKeyForUserAsAdminMock).toHaveBeenCalledWith('user-1', 'youtube')
+    expect(getProviderApiKeyForUserAsAdminMock).not.toHaveBeenCalled()
   })
 })
