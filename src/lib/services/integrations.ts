@@ -4,11 +4,17 @@
  * Flusso: Le funzioni del servizio vengono chiamate da API route o pagine server: qui avviene l'orchestrazione delle query e delle trasformazioni dati.
  */
 
-import { createHash, createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
+import { createHash, createCipheriv, createDecipheriv, randomBytes, randomUUID } from 'node:crypto'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchAndRecordProviderRequest } from '@/lib/services/api-usage'
 import { AppError, classifyError } from '@/lib/utils/errors'
+import {
+  enqueueCredentialValidation,
+  getCredentialValidationStatusesForUser,
+  type CredentialValidationAttemptResult,
+  type CredentialValidationJobPayload,
+} from '@/lib/services/credential-validation-jobs'
 import type { CredentialStatus } from '@/lib/types/domain'
 import type { Database } from '@/lib/types/database'
 import type { AppSupabaseClient } from '@/lib/supabase/types'
@@ -22,8 +28,6 @@ const AES_GCM_IV_LENGTH = 12
 const AES_GCM_AUTH_TAG_LENGTH = 16
 const YOUTUBE_VALIDATION_TIMEOUT_MS = 10_000
 const GEMINI_VALIDATION_TIMEOUT_MS = 5_000
-const VALIDATION_RETRY_BASE_MS = 250
-const VALIDATION_RETRY_MAX_DELAY_MS = 1_000
 
 /**
  * Legge la chiave applicativa usata per cifrare le API key utente.
@@ -208,6 +212,21 @@ export async function getCredentialStatusesForUser(userId: string, client?: AppS
     }
   }
 
+  const credentialIds = (data ?? []).map((row) => row.id)
+  const keyVersions = new Map<string, string>()
+  if (credentialIds.length > 0) {
+    const { data: retryRows, error: retryError } = await createAdminClient()
+      .from('user_provider_credential_retry_limits')
+      .select('credential_id, key_version')
+      .in('credential_id', credentialIds)
+    if (retryError) {
+      throw new AppError('Impossibile leggere versione credenziali', 'unknown', 500, { cause: retryError.message })
+    }
+    for (const retryRow of retryRows ?? []) keyVersions.set(retryRow.credential_id, retryRow.key_version)
+  }
+
+  const activeValidationStatuses = await getCredentialValidationStatusesForUser(userId, supabase, keyVersions)
+
   const statuses: CredentialStatus[] = [] // Risposta uniforme per tutti i provider supportati.
 
   for (const provider of PROVIDERS) {
@@ -226,6 +245,9 @@ export async function getCredentialStatusesForUser(userId: string, client?: AppS
       provider,
       isConfigured: row?.is_configured ?? false,
       isValid: row?.is_valid ?? null,
+      validationStatus: row?.is_configured
+        ? activeValidationStatuses.get(row.id) ?? (row.is_valid === null ? 'idle' : 'completed')
+        : 'idle',
       lastValidatedAt: row?.last_validated_at ?? null,
       lastUsedAt: row?.last_used_at ?? null,
       lastError: row?.last_error ?? null,
@@ -238,7 +260,7 @@ export async function getCredentialStatusesForUser(userId: string, client?: AppS
 
 /**
  * Salva o aggiorna la chiave API di un provider.
- * Opzionalmente valida subito la chiave per dare feedback immediato alla UI.
+ * Opzionalmente accoda la verifica persistente e restituisce lo stato pending alla UI.
  */
 export async function saveApiKey(params: {
   userId: string
@@ -246,7 +268,13 @@ export async function saveApiKey(params: {
   apiKey: string
   validateNow?: boolean
   supabase?: AppSupabaseClient
-}): Promise<{ provider: Provider; maskedKey: string; isValid: boolean | null; validationMessage: string | null }> {
+}): Promise<{
+  provider: Provider
+  maskedKey: string
+  isValid: boolean | null
+  validationMessage: string | null
+  validationStatus: 'idle' | 'pending' | 'running' | 'completed'
+}> {
   assertProvider(params.provider)
 
   const normalized = params.apiKey.trim()
@@ -292,6 +320,7 @@ export async function saveApiKey(params: {
       maskedKey: maskApiKey(normalized) ?? '****',
       isValid: null,
       validationMessage: null,
+      validationStatus: 'idle',
     }
   }
 
@@ -306,121 +335,30 @@ export async function saveApiKey(params: {
     maskedKey: maskApiKey(normalized) ?? '****',
     isValid: validation.isValid,
     validationMessage: validation.message,
+    validationStatus: validation.validationStatus,
   }
 }
 
-/**
- * Verifica una chiave YouTube con una chiamata minima read-only.
- */
-async function validateYouTubeApiKey(apiKey: string, userId: string, retryLimit: number): Promise<void> {
-  // Chiamata minima a endpoint YouTube per confermare validita credenziale.
-  const url = new URL('https://www.googleapis.com/youtube/v3/search')
-  url.searchParams.set('part', 'snippet')
-  url.searchParams.set('q', 'youtube')
-  url.searchParams.set('maxResults', '1')
-  url.searchParams.set('type', 'video')
-  url.searchParams.set('key', apiKey)
-
-  const response = await fetchProviderValidationWithRetry(retryLimit, () => fetchAndRecordProviderRequest({
-    userId,
-    provider: 'youtube',
-    operation: 'search.list',
-    url: url.toString(),
-    init: {
-      method: 'GET',
-      headers: { Accept: 'application/json' },
-      cache: 'no-store',
-      signal: AbortSignal.timeout(YOUTUBE_VALIDATION_TIMEOUT_MS),
-    },
-  }))
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => '')
-    throw new Error(`YouTube validation failed (${response.status}): ${text.slice(0, 200)}`)
-  }
-}
-
-/**
- * Verifica una chiave Gemini con una chiamata minima read-only.
- */
-async function validateGeminiApiKey(apiKey: string, userId: string, retryLimit: number): Promise<void> {
-  // Chiamata minima a endpoint Gemini: se risponde 2xx la chiave e valida.
-  const url = new URL('https://generativelanguage.googleapis.com/v1beta/models')
-  url.searchParams.set('key', apiKey)
-
-  const response = await fetchProviderValidationWithRetry(retryLimit, () => fetchAndRecordProviderRequest({
-    userId,
-    provider: 'gemini',
-    operation: 'models.list',
-    url: url.toString(),
-    init: {
-      method: 'GET',
-      headers: { Accept: 'application/json' },
-      cache: 'no-store',
-      signal: AbortSignal.timeout(GEMINI_VALIDATION_TIMEOUT_MS),
-    },
-  }))
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => '')
-    throw new Error(`Gemini validation failed (${response.status}): ${text.slice(0, 200)}`)
-  }
-}
-
-/** Esegue una richiesta di verifica e ritenta solo errori di trasporto o HTTP 5xx sulla stessa chiave. */
-async function fetchProviderValidationWithRetry(
-  retryLimit: number,
-  request: () => Promise<Response>
-): Promise<Response> {
-  for (let retry = 0; retry <= retryLimit; retry += 1) {
-    let response: Response
-    try {
-      response = await request()
-    } catch (error) {
-      const temporaryTransportError = error instanceof TypeError
-        || (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError'))
-      if (!temporaryTransportError || retry === retryLimit) throw error
-      await delayForValidationRetry(retry)
-      continue
-    }
-
-    if (response.status < 500 || response.status > 599 || retry === retryLimit) return response
-    await response.body?.cancel().catch(() => undefined)
-    await delayForValidationRetry(retry)
-  }
-
-  throw new Error('Validation retry ended without a response')
-}
-
-/** Applica un backoff breve e limitato senza introdurre un tetto al numero amministrativo di retry. */
-async function delayForValidationRetry(retry: number): Promise<void> {
-  const delayMs = Math.min(VALIDATION_RETRY_BASE_MS * 2 ** retry, VALIDATION_RETRY_MAX_DELAY_MS)
-  await new Promise((resolve) => setTimeout(resolve, delayMs))
-}
-
-/** Legge il limite server-side e chiude in modo sicuro a zero se manca la riga seedata. */
-async function getCredentialRetryLimit(credentialId: string): Promise<number> {
+/** Legge limite e versione segreta in modo privilegiato senza restituirli alla UI. */
+async function getCredentialRetryPolicy(credentialId: string): Promise<{ retryLimit: number; keyVersion: string }> {
   const { data, error } = await createAdminClient()
     .from('user_provider_credential_retry_limits')
-    .select('retry_limit')
+    .select('retry_limit, key_version')
     .eq('credential_id', credentialId)
     .maybeSingle()
 
-  if (error) {
-    throw new AppError('Impossibile leggere il limite retry credenziale', 'unknown', 500, { cause: error.message })
-  }
-  return data?.retry_limit ?? 0
+  if (error) throw new AppError('Impossibile leggere il limite retry credenziale', 'unknown', 500, { cause: error.message })
+  if (!data?.key_version) throw new AppError('Versione retry credenziale mancante', 'structural', 500)
+  return { retryLimit: data.retry_limit, keyVersion: data.key_version }
 }
 
-/** Riporta a zero il limite privato quando viene sostituito il segreto associato. */
+/** Riporta a zero il limite privato e invalida i job della chiave sostituita. */
 async function resetCredentialRetryLimit(credentialId: string): Promise<void> {
   const { error } = await createAdminClient()
     .from('user_provider_credential_retry_limits')
-    .upsert({ credential_id: credentialId, retry_limit: 0 })
+    .upsert({ credential_id: credentialId, retry_limit: 0, key_version: randomUUID() })
 
-  if (error) {
-    throw new AppError('Impossibile azzerare il limite della nuova credenziale', 'unknown', 500, { cause: error.message })
-  }
+  if (error) throw new AppError('Impossibile azzerare il limite della nuova credenziale', 'unknown', 500, { cause: error.message })
 }
 
 /** Confronta il segreto precedente solo in memoria; un ciphertext illeggibile equivale a credenziale diversa. */
@@ -432,75 +370,118 @@ function safelyDecryptSecret(cipherText: string): string | null {
   }
 }
 
-/**
- * Esegue validazione provider-specific e persiste esito in `user_provider_credentials`.
- * Registra inoltre uno storico in `credential_checks`.
- */
+/** Accoda la verifica same-key: il provider verrà chiamato da una lease e non nella request utente. */
 export async function validateApiKey(params: {
   userId: string
   provider: Provider
   supabase?: AppSupabaseClient
-}): Promise<{ provider: Provider; isValid: boolean; message: string | null }> {
+}): Promise<{
+  provider: Provider
+  isValid: boolean | null
+  message: string | null
+  validationStatus: 'pending' | 'running'
+}> {
   assertProvider(params.provider)
-
   const credential = await getCredentialRow(params.userId, params.provider, params.supabase)
   if (!credential?.encrypted_key || !credential.is_configured) {
     throw new AppError('Chiave API non configurata', 'validation', 400)
   }
-
-  const apiKey = safelyDecryptSecret(credential.encrypted_key)
-  if (!apiKey) throw new AppError('Impossibile decifrare la chiave API', 'structural', 500)
-  const retryLimit = await getCredentialRetryLimit(credential.id)
-
-  const supabase = params.supabase ?? await createClient()
-  let isValid = false
-  let errorMessage: string | null = null
-
-  try {
-    if (params.provider === 'youtube') {
-      await validateYouTubeApiKey(apiKey, params.userId, retryLimit)
-    } else {
-      await validateGeminiApiKey(apiKey, params.userId, retryLimit)
-    }
-    isValid = true
-  } catch (error) {
-    isValid = false
-    errorMessage = error instanceof Error ? error.message : 'Errore sconosciuto'
+  if (!safelyDecryptSecret(credential.encrypted_key)) {
+    throw new AppError('Impossibile decifrare la chiave API', 'structural', 500)
   }
 
-  const now = new Date().toISOString()
-
-  // Salva stato piu recente usato dalla UI integrazioni.
-  const { error: updateError } = await supabase
-    .from('user_provider_credentials')
-    .update({
-      is_valid: isValid,
-      last_validated_at: now,
-      last_error: errorMessage,
-    })
-    .eq('user_id', params.userId)
-    .eq('provider', params.provider)
-
-  if (updateError) {
-    throw new AppError('Impossibile aggiornare lo stato validazione', 'unknown', 500, {
-      cause: updateError.message,
-    })
-  }
-
-  const credentialForAudit = await getCredentialRow(params.userId, params.provider, params.supabase)
-  if (credentialForAudit) {
-    await writeCredentialCheckAudit({
-      credential_id: credentialForAudit.id,
-      is_valid: isValid,
-      error_message: errorMessage,
-      error_type: isValid ? null : (classifyError(errorMessage) === 'temporary' ? 'temporary' : 'structural'),
-    })
-  }
+  const policy = await getCredentialRetryPolicy(credential.id)
+  const job = await enqueueCredentialValidation({
+    credentialId: credential.id,
+    userId: params.userId,
+    provider: params.provider,
+    keyVersion: policy.keyVersion,
+    retryLimit: policy.retryLimit,
+  })
 
   return {
     provider: params.provider,
-    isValid,
-    message: isValid ? null : errorMessage,
+    isValid: credential.is_valid,
+    message: null,
+    validationStatus: job.status,
+  }
+}
+
+/** Esegue un solo tentativo read-only per la versione esatta della credenziale inclusa nel job. */
+export async function performCredentialValidationAttempt(
+  payload: CredentialValidationJobPayload
+): Promise<CredentialValidationAttemptResult> {
+  const admin = createAdminClient()
+  const { data: credential, error: credentialError } = await admin
+    .from('user_provider_credentials')
+    .select('id, user_id, provider, encrypted_key, is_configured')
+    .eq('id', payload.credentialId)
+    .eq('user_id', payload.userId)
+    .eq('provider', payload.provider)
+    .maybeSingle()
+
+  if (credentialError) throw new AppError('Impossibile leggere la credenziale per la verifica', 'unknown', 500, { cause: credentialError.message })
+  const policy = await getCredentialRetryPolicy(payload.credentialId)
+  if (!credential?.is_configured || !credential.encrypted_key || policy.keyVersion !== payload.keyVersion) {
+    return { isValid: false, retryable: false, message: 'Credenziale sostituita o rimossa', errorType: 'structural', credentialChanged: true }
+  }
+
+  const apiKey = safelyDecryptSecret(credential.encrypted_key)
+  if (!apiKey) {
+    return { isValid: false, retryable: false, message: 'Impossibile decifrare la chiave API', errorType: 'structural', credentialChanged: false }
+  }
+
+  const url = payload.provider === 'youtube'
+    ? new URL('https://www.googleapis.com/youtube/v3/search')
+    : new URL('https://generativelanguage.googleapis.com/v1beta/models')
+  const operation = payload.provider === 'youtube' ? 'search.list' : 'models.list'
+  if (payload.provider === 'youtube') {
+    url.searchParams.set('part', 'snippet')
+    url.searchParams.set('q', 'youtube')
+    url.searchParams.set('maxResults', '1')
+    url.searchParams.set('type', 'video')
+  }
+  url.searchParams.set('key', apiKey)
+
+  try {
+    const response = await fetchAndRecordProviderRequest({
+      userId: payload.userId,
+      provider: payload.provider,
+      operation,
+      url: url.toString(),
+      init: {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+        signal: AbortSignal.timeout(payload.provider === 'youtube' ? YOUTUBE_VALIDATION_TIMEOUT_MS : GEMINI_VALIDATION_TIMEOUT_MS),
+      },
+    })
+
+    if (response.ok) {
+      await response.body?.cancel().catch(() => undefined)
+      return { isValid: true, retryable: false, message: null, errorType: null, credentialChanged: false }
+    }
+
+    const detail = await response.text().catch(() => '')
+    const message = `${payload.provider} validation failed (${response.status}): ${detail.slice(0, 200)}`
+    const retryable = response.status >= 500 && response.status <= 599
+    return {
+      isValid: false,
+      retryable,
+      message,
+      errorType: retryable ? 'temporary' : 'structural',
+      credentialChanged: false,
+    }
+  } catch (error) {
+    const retryable = error instanceof TypeError
+      || (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError'))
+    return {
+      isValid: false,
+      retryable,
+      message: retryable ? 'Provider validation temporarily unavailable' : 'Provider validation failed',
+      errorType: retryable ? 'temporary' : 'structural',
+      credentialChanged: false,
+    }
   }
 }
 

@@ -92,13 +92,14 @@ describe('API v1 view models', () => {
       provider: 'youtube',
       isConfigured: true,
       isValid: false,
+      validationStatus: 'completed',
       lastValidatedAt: '2026-09-02T10:00:00.000Z',
       lastUsedAt: null,
       lastError: 'quota_exceeded_dettaglio_interno',
       maskedKey: 'AIza...abcd',
     }
     const view = toIntegrationApiView(status)
-    expect(view).toMatchObject({ provider: 'youtube', isConfigured: true, isValid: false, hasValidationError: true, maskedKey: 'AIza...abcd' })
+    expect(view).toMatchObject({ provider: 'youtube', isConfigured: true, isValid: false, validationStatus: 'completed', hasValidationError: true, maskedKey: 'AIza...abcd' })
     expect(JSON.stringify(view)).not.toContain('quota_exceeded_dettaglio_interno')
   })
 

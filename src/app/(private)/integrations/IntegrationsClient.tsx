@@ -6,7 +6,7 @@
 
 'use client'
 
-import { useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import type { CredentialStatus } from '@/lib/types/domain'
 import { useTranslations } from 'next-intl'
 import YouTubeApiKeyGuide from '@/components/integrations/YouTubeApiKeyGuide'
@@ -52,6 +52,41 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
     return map
   }, [statuses])
 
+  const pendingValidationSignature = statuses
+    .filter((status) => status.validationStatus === 'pending' || status.validationStatus === 'running')
+    .map((status) => status.provider)
+    .sort()
+    .join(',')
+
+  useEffect(() => {
+    if (!pendingValidationSignature) return
+
+    let active = true
+    let timer: ReturnType<typeof setTimeout>
+    const pollStatuses = async () => {
+      try {
+        const response = await fetch('/api/integrations', { method: 'GET', cache: 'no-store' })
+        const payload = await response.json().catch(() => null) as
+          | { data: CredentialStatus[] | null; error: string | null }
+          | null
+        if (!response.ok || !payload?.data) throw new Error(payload?.error ?? t('integrations.refreshError'))
+        if (!active) return
+        setStatuses(payload.data)
+        if (payload.data.some((status) => status.validationStatus === 'pending' || status.validationStatus === 'running')) {
+          timer = setTimeout(pollStatuses, 5_000)
+        }
+      } catch {
+        if (active) timer = setTimeout(pollStatuses, 10_000)
+      }
+    }
+
+    timer = setTimeout(pollStatuses, 5_000)
+    return () => {
+      active = false
+      clearTimeout(timer)
+    }
+  }, [pendingValidationSignature, t])
+
   function clearFeedback() {
     setMessage(null)
     setError(null)
@@ -90,7 +125,7 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
       })
 
       const payload = (await response.json().catch(() => null)) as
-        | { data: { isValid: boolean | null; validationMessage: string | null } | null; error: string | null }
+        | { data: { isValid: boolean | null; validationMessage: string | null; validationStatus?: string } | null; error: string | null }
         | null
 
       if (!response.ok) {
@@ -99,7 +134,12 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
 
       setProviderInput((current) => ({ ...current, [provider]: '' }))
 
-      if (payload?.data?.isValid === false && payload.data.validationMessage) {
+      if (payload?.data?.validationStatus === 'pending' || payload?.data?.validationStatus === 'running') {
+        setStatuses((current) => current.map((status) => status.provider === provider
+          ? { ...status, isConfigured: true, isValid: null, validationStatus: payload.data?.validationStatus as 'pending' | 'running' }
+          : status))
+        setMessage(t('integrations.validationPending'))
+      } else if (payload?.data?.isValid === false && payload.data.validationMessage) {
         setError(`${t('integrations.savedButInvalid')}: ${payload.data.validationMessage}`)
       } else {
         setMessage(t('integrations.saved'))
@@ -125,14 +165,19 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
       })
 
       const payload = (await response.json().catch(() => null)) as
-        | { data: { isValid: boolean; message: string | null } | null; error: string | null }
+        | { data: { isValid: boolean | null; message: string | null; validationStatus?: string } | null; error: string | null }
         | null
 
       if (!response.ok) {
         throw new Error(payload?.error ?? t('integrations.validateError'))
       }
 
-      if (payload?.data?.isValid) {
+      if (payload?.data?.validationStatus === 'pending' || payload?.data?.validationStatus === 'running') {
+        setStatuses((current) => current.map((status) => status.provider === provider
+          ? { ...status, validationStatus: payload.data?.validationStatus as 'pending' | 'running' }
+          : status))
+        setMessage(t('integrations.validationPending'))
+      } else if (payload?.data?.isValid) {
         setMessage(t('integrations.validationSuccess'))
       } else {
         setError(payload?.data?.message ?? t('integrations.keyError'))
@@ -219,6 +264,7 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
           const isBusy = busyProvider === provider
           const isConfigured = status?.isConfigured ?? false
           const isValid = status?.isValid
+          const isValidationPending = status?.validationStatus === 'pending' || status?.validationStatus === 'running'
 
           return (
             <div key={provider} className="bg-surface-container-lowest rounded-2xl p-6 shadow-ambient">
@@ -250,21 +296,27 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
                     <div className="flex flex-wrap items-center gap-3 text-xs mb-2">
                       <span
                         className={`flex items-center gap-1.5 font-semibold px-3 py-1 rounded-full
-                                  ${isConfigured
-                                    ? isValid === false
-                                      ? 'bg-error-container text-error'
-                                      : 'bg-green-100 text-green-700'
+                                    ${isConfigured
+                                      ? isValidationPending
+                                        ? 'bg-primary-fixed text-on-primary-fixed'
+                                        : isValid === false
+                                        ? 'bg-error-container text-error'
+                                        : 'bg-green-100 text-green-700'
                                     : 'bg-surface-container text-on-surface-variant'}`}
                       >
                         <span
                           className={`w-1.5 h-1.5 rounded-full
                                     ${isConfigured
-                                      ? isValid === false ? 'bg-error' : 'bg-green-500'
+                                      ? isValidationPending ? 'bg-primary'
+                                        : isValid === false ? 'bg-error' : 'bg-green-500'
                                       : 'bg-outline'}`}
                         />
+                        <span aria-live="polite">
                         {isConfigured
-                          ? isValid === false ? t('integrations.status.invalid') : t('integrations.status.configured')
+                          ? isValidationPending ? t('integrations.status.pending')
+                            : isValid === false ? t('integrations.status.invalid') : t('integrations.status.configured')
                           : t('integrations.status.notConfigured')}
+                        </span>
                       </span>
 
                       {status?.maskedKey && (
@@ -278,7 +330,7 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
                       )}
                     </div>
 
-                    {status?.lastError && (
+                    {status?.lastError && !isValidationPending && (
                       <p className="text-xs text-error">{status.lastError}</p>
                     )}
                   </div>

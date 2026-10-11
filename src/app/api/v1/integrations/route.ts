@@ -1,7 +1,7 @@
 /* Commento didattico:
  * Scopo del file: espone stato e gestione delle chiavi provider senza mai restituire segreti in chiaro.
  * Moduli richiamati: `@/lib/http/apiV1`, `@/lib/services/integrations`.
- * Flusso: Bearer user + RLS delimitano la riga; il service cifra, valida e maschera la chiave.
+ * Flusso: Bearer user + RLS delimitano la riga; il service cifra, accoda la verifica e maschera la chiave.
  */
 
 import { apiOk } from '@/lib/http/apiResponse'
@@ -41,11 +41,26 @@ export async function POST(request: Request) {
     if (!body.provider) return apiV1Validation('provider obbligatorio', requestId)
     if (body.action === 'validate') {
       const result = await validateApiKey({ userId: current.user.id, provider: body.provider, supabase: current.supabase })
-      return apiOk({ provider: result.provider, isValid: result.isValid, validationError: result.isValid ? null : 'provider_validation_failed' }, requestId)
+      return apiOk({
+        provider: result.provider,
+        isValid: result.isValid,
+        validationStatus: result.validationStatus,
+        validationError: result.validationStatus === 'pending' || result.validationStatus === 'running'
+          ? null
+          : result.isValid ? null : 'provider_validation_failed',
+      }, requestId)
     }
     if (!body.apiKey?.trim()) return apiV1Validation('apiKey obbligatoria', requestId)
     const result = await saveApiKey({ userId: current.user.id, provider: body.provider, apiKey: body.apiKey, validateNow: true, supabase: current.supabase })
-    return apiOk({ provider: result.provider, maskedKey: result.maskedKey, isValid: result.isValid, validationError: result.isValid === false ? 'provider_validation_failed' : null }, requestId)
+    return apiOk({
+      provider: result.provider,
+      maskedKey: result.maskedKey,
+      isValid: result.isValid,
+      validationStatus: result.validationStatus,
+      validationError: result.validationStatus === 'pending' || result.validationStatus === 'running'
+        ? null
+        : result.isValid === false ? 'provider_validation_failed' : null,
+    }, requestId)
   } catch (error) {
     return apiV1Error(error, requestId)
   }

@@ -194,15 +194,18 @@ export type Database = {
         Row: {
           credential_id: string
           retry_limit: number
+          key_version: string
           updated_at: string
         }
         Insert: {
           credential_id: string
           retry_limit?: number
+          key_version?: string
           updated_at?: string
         }
         Update: {
           retry_limit?: number
+          key_version?: string
           updated_at?: string
         }
         Relationships: []
@@ -682,6 +685,7 @@ export type Database = {
           error_message: string | null
           lease_id: string | null
           lease_expires_at: string | null
+          next_attempt_at: string | null
         }
         Insert: {
           id?: string
@@ -697,6 +701,7 @@ export type Database = {
           error_message?: string | null
           lease_id?: string | null
           lease_expires_at?: string | null
+          next_attempt_at?: string | null
         }
         Update: {
           status?: 'pending' | 'running' | 'completed' | 'failed'
@@ -705,6 +710,7 @@ export type Database = {
           error_message?: string | null
           lease_id?: string | null
           lease_expires_at?: string | null
+          next_attempt_at?: string | null
         }
         Relationships: []
       }
@@ -1041,6 +1047,38 @@ export type Database = {
           p_lease_expires_at: string
         }
         Returns: { job_id: string; lease_id: string; attempt_id: string; attempt_number: number }[]
+      }
+      claim_credential_validation_job_with_attempt: {
+        Args: {
+          p_job_id: string
+          p_started_at: string
+          p_lease_id: string
+          p_lease_expires_at: string
+        }
+        Returns: {
+          job_id: string
+          lease_id: string
+          attempt_id: string
+          attempt_number: number
+          payload: Json
+        }[]
+      }
+      finish_credential_validation_job_attempt: {
+        Args: {
+          p_job_id: string
+          p_lease_id: string
+          p_attempt_id: string
+          p_attempt_number: number
+          p_retry_limit: number
+          p_status: 'pending' | 'completed' | 'failed'
+          p_completed_at: string
+          p_next_attempt_at: string | null
+          p_is_valid: boolean
+          p_error_message: string | null
+          p_error_type: 'temporary' | 'structural' | null
+          p_credential_changed: boolean
+        }
+        Returns: boolean
       }
       finish_scan_job_attempt: {
         Args: {

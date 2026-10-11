@@ -62,6 +62,7 @@ export interface CredentialStatus {
   provider: 'youtube' | 'gemini'
   isConfigured: boolean
   isValid: boolean | null
+  validationStatus: 'idle' | 'pending' | 'running' | 'completed'
   lastValidatedAt: string | null
   lastUsedAt: string | null
   lastError: string | null

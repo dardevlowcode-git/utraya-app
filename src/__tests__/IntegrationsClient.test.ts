@@ -9,6 +9,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { NextIntlClientProvider } from 'next-intl'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { CredentialStatus } from '@/lib/types/domain'
 import englishMessages from '../../messages/en.json'
 import italianMessages from '../../messages/it.json'
 import IntegrationsClient from '../app/(private)/integrations/IntegrationsClient'
@@ -20,14 +21,14 @@ type TestIntlProviderProps = Omit<React.ComponentProps<typeof NextIntlClientProv
 const TestIntlProvider = NextIntlClientProvider as React.ComponentType<TestIntlProviderProps>
 
 /** Renderizza la schermata integrazioni con i messaggi del locale scelto. */
-function renderIntegrations(locale: Locale): string {
+function renderIntegrations(locale: Locale, initialStatuses: CredentialStatus[] = []): string {
   const messages = locale === 'it' ? italianMessages : englishMessages
   vi.stubGlobal('React', React)
 
   return renderToStaticMarkup(createElement(
     TestIntlProvider,
     { locale, messages, timeZone: 'UTC' },
-    createElement(IntegrationsClient, { initialStatuses: [] })
+    createElement(IntegrationsClient, { initialStatuses })
   ))
 }
 
@@ -65,6 +66,8 @@ describe('IntegrationsClient YouTube setup guide', () => {
     expect(html).toContain('100 richieste search.list')
     expect(html).toContain('10.000 unità al giorno')
     expect(html).toContain('non pubblica qui un prezzo in denaro per richiesta')
+    expect(html).toContain('accoda una verifica')
+    expect(html).not.toContain('la verifica subito con una richiesta API')
     expect(html).toContain('lg:flex-row')
     expect(html).toContain('flex-col')
     expect(html).toContain('w-full')
@@ -99,6 +102,8 @@ describe('IntegrationsClient YouTube setup guide', () => {
     expect(html).toContain('100 search.list requests per day')
     expect(html).toContain('10,000 units per day')
     expect(html).toContain('does not publish a dollar price')
+    expect(html).toContain('queues a verification')
+    expect(html).not.toContain('immediately checks it with an API request')
     expect(html).toContain('lg:flex-row')
     expect(html).toContain('flex-col')
     expect(html).toContain('w-full')
@@ -114,6 +119,27 @@ describe('IntegrationsClient YouTube setup guide', () => {
     expect(englishPasswordInput.toLowerCase()).toContain('inputmode="text"')
     expect(englishPasswordInput.toLowerCase()).toContain('autocomplete="off"')
     expect(englishPasswordInput.toLowerCase()).toContain('enterkeyhint="done"')
+  })
+
+  it('mostra uno stato pending anche se la verifica precedente era valida', () => {
+    const status: CredentialStatus = {
+      provider: 'youtube',
+      isConfigured: true,
+      isValid: true,
+      validationStatus: 'pending',
+      lastValidatedAt: null,
+      lastUsedAt: null,
+      lastError: null,
+      maskedKey: '****1234',
+    }
+
+    const italian = renderIntegrations('it', [status])
+    const english = renderIntegrations('en', [status])
+
+    expect(italian).toContain('Verifica in corso')
+    expect(english).toContain('Checking')
+    expect(italianMessages.integrations.validationPending).toContain('verifica in corso')
+    expect(englishMessages.integrations.validationPending).toContain('verification is continuing in the background')
   })
 
   it('fornisce lo stesso insieme di traduzioni per la guida nei due locali', () => {

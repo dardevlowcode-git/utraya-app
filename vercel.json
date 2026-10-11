@@ -13,6 +13,10 @@
       "schedule": "20 3 * * *"
     },
     {
+      "path": "/api/cron/credential-validations",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/transcripts",
       "schedule": "0 2 * * *"
     }

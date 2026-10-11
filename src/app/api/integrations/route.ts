@@ -91,7 +91,7 @@ export async function POST(request: Request) {
       return errorResponse('apiKey mancante', 'validation', 400, requestId)
     }
 
-    // Salvataggio e validazione immediata per feedback UX piu chiaro.
+    // Salvataggio e accodamento della verifica persistente senza trattenere la request.
     const result = await saveApiKey({
       userId,
       provider,

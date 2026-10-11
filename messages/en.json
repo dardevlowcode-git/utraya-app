@@ -500,6 +500,7 @@
     "saved": "API key saved successfully",
     "validateError": "Error while validating key",
     "validationSuccess": "Validation completed: key is valid",
+    "validationPending": "Key saved; verification is continuing in the background.",
     "removeConfirm": "Remove API key for this provider?",
     "removeError": "Error while removing key",
     "removed": "API key removed",
@@ -519,7 +520,8 @@
     "status": {
       "configured": "Configured",
       "invalid": "Invalid",
-      "notConfigured": "Not configured"
+      "notConfigured": "Not configured",
+      "pending": "Checking"
     },
     "subtitle": "Configure your API keys to enable synchronization and AI analysis.",
     "title": "Integrations",
@@ -542,7 +544,7 @@
       "restrictText": "After creation, open the key details and confirm that API restrictions include only YouTube Data API v3; do not use the key if this restriction is missing. Google also recommends an application restriction. Utraya calls Google from its server, so do not set Websites/HTTP referrers. If your hosting provider gives you stable outbound IP addresses, use IP addresses; if you do not know them or they are not stable, leave the application unrestricted and keep the API restriction. Never publish the key.",
       "securityLink": "Read how to protect API keys",
       "saveTitle": "Save the key in Utraya",
-      "saveText": "Return to Integrations, paste the key into the YouTube Data API field, and choose Save key. Utraya stores it encrypted server-side and immediately checks it with an API request; the full key is not shown in the browser. Do not send it in chat or documents.",
+      "saveText": "Return to Integrations, paste the key into the YouTube Data API field, and choose Save key. Utraya stores it encrypted server-side and queues a verification; you will see it as pending until it completes. The full key is not shown in the browser. Do not send it in chat or documents.",
       "quotaTitle": "Verified limits and costs",
       "quotaSearch": "Google's documentation checked on October 10, 2026 lists a separate default limit of 100 search.list requests per day; each costs 1 quota unit. Saving a key and using Utraya's Validate button call this method.",
       "quotaReads": "Other metadata read methods, such as channels.list, playlistItems.list, and videos.list, each cost 1 unit and share the project's default allocation of 10,000 units per day.",

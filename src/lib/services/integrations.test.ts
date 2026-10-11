@@ -1,43 +1,52 @@
 /* Commento didattico:
- * Scopo del file: verifica il writer privilegiato dello storico validazioni credenziali.
- * Moduli richiamati: `integrations`, client Supabase admin e `vitest`.
- * Flusso: controlla che l'insert usi la tabella server-only e che un rifiuto RLS resti fail-open.
+ * Scopo del file: verifica il salvataggio credenziale e il confine fra API sincrona e job pending.
+ * Moduli richiamati: integrations, route utente, client Supabase mock e vitest.
+ * Flusso: verifica owner-scoping, reset/preservazione e che il save non invochi direttamente il provider.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppSupabaseClient } from '@/lib/supabase/types'
 
-const { createAdminClientMock, createClientMock, fromMock, insertMock, getCurrentSessionMock } = vi.hoisted(() => ({
+const {
+  createAdminClientMock,
+  createClientMock,
+  fromMock,
+  insertMock,
+  getCurrentSessionMock,
+  enqueueCredentialValidationMock,
+  getCredentialValidationStatusesForUserMock,
+} = vi.hoisted(() => ({
   createAdminClientMock: vi.fn(),
   createClientMock: vi.fn(),
   fromMock: vi.fn(),
   insertMock: vi.fn(),
   getCurrentSessionMock: vi.fn(),
+  enqueueCredentialValidationMock: vi.fn(),
+  getCredentialValidationStatusesForUserMock: vi.fn(async () => new Map()),
 }))
 
-vi.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: createAdminClientMock,
-}))
-
+vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: createAdminClientMock }))
 vi.mock('@/lib/supabase/server', () => ({ createClient: createClientMock }))
 vi.mock('@/lib/auth/provider', () => ({ getCurrentSession: getCurrentSessionMock }))
+vi.mock('@/lib/services/credential-validation-jobs', () => ({
+  enqueueCredentialValidation: enqueueCredentialValidationMock,
+  getCredentialValidationStatusesForUser: getCredentialValidationStatusesForUserMock,
+}))
 
 import { maxDuration as integrationsMaxDuration, POST as postIntegrations } from '@/app/api/integrations/route'
-import { saveApiKey, writeCredentialCheckAudit } from '@/lib/services/integrations'
+import { getCredentialStatusesForUser, saveApiKey, writeCredentialCheckAudit } from '@/lib/services/integrations'
 
-/** Crea un client minimo per salvare, rileggere e aggiornare una credenziale di test. */
+/** Crea un client utente minimo che conserva la riga credenziale durante il test. */
 function createCredentialSupabase(credentialId: string) {
   let credentialRow: Record<string, unknown> | null = null
   const selectQuery = {
     eq: vi.fn(() => selectQuery),
     maybeSingle: vi.fn(async () => ({ data: credentialRow, error: null })),
+    then: (resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) =>
+      Promise.resolve({ data: credentialRow ? [credentialRow] : [], error: null }).then(resolve, reject),
   }
-  let updateFilterCount = 0
   const updateQuery = {
-    eq: vi.fn(() => {
-      updateFilterCount += 1
-      return updateFilterCount % 2 === 0 ? Promise.resolve({ error: null }) : updateQuery
-    }),
+    eq: vi.fn(() => Promise.resolve({ error: null })),
   }
   const supabase = {
     from: vi.fn(() => ({
@@ -46,22 +55,22 @@ function createCredentialSupabase(credentialId: string) {
         credentialRow = { id: credentialId, ...values }
         return { error: null }
       }),
-      update: vi.fn((values: Record<string, unknown>) => {
-        credentialRow = { ...(credentialRow ?? {}), ...values }
-        return updateQuery
-      }),
+      update: vi.fn(() => updateQuery),
     })),
   }
-
   return { supabase, getCredentialRow: () => credentialRow }
 }
 
-/** Simula soltanto il confine DB privilegiato per il limite e il ledger richieste. */
-function configureRetryLimitClient(retryLimit: number) {
+/** Configura il confine privilegiato con retry metadata e insert audit/usage. */
+function configureRetryLimitClient(retryLimit: number, keyVersion = 'version-default') {
   const retryLimitUpsert = vi.fn(async () => ({ error: null }))
   const retryQuery = {
     eq: vi.fn(() => retryQuery),
-    maybeSingle: vi.fn(async () => ({ data: { retry_limit: retryLimit }, error: null })),
+    in: vi.fn(async () => ({
+      data: [{ credential_id: 'credential-pending', retry_limit: retryLimit, key_version: keyVersion }],
+      error: null,
+    })),
+    maybeSingle: vi.fn(async () => ({ data: { retry_limit: retryLimit, key_version: keyVersion }, error: null })),
   }
   createAdminClientMock.mockReturnValue({
     from: vi.fn((table: string) => table === 'user_provider_credential_retry_limits'
@@ -71,16 +80,18 @@ function configureRetryLimitClient(retryLimit: number) {
   return { retryLimitUpsert }
 }
 
-describe('writeCredentialCheckAudit', () => {
+describe('credential save and validation enqueue', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     fromMock.mockReturnValue({ insert: insertMock })
     createAdminClientMock.mockReturnValue({ from: fromMock })
     insertMock.mockResolvedValue({ error: null })
+    enqueueCredentialValidationMock.mockResolvedValue({ jobId: 'validation-job-1', status: 'pending' })
+    getCredentialValidationStatusesForUserMock.mockResolvedValue(new Map())
     configureRetryLimitClient(0)
   })
 
-  it('riserva 30 secondi alla route integrazioni per il retry provider limitato', () => {
+  it('keeps the HTTP function timeout independent from persisted retries', () => {
     expect(integrationsMaxDuration).toBe(30)
   })
 
@@ -114,410 +125,35 @@ describe('writeCredentialCheckAudit', () => {
     errorSpy.mockRestore()
   })
 
-  it('attribuisce al proprietario della chiave la chiamata effettiva di validazione YouTube', async () => {
-    const ownerId = 'credential-owner'
-    const apiKey = 'test-youtube-key-for-owner'
+  it('salva la chiave e risponde pending senza eseguire richieste provider', async () => {
+    const userId = 'validation-owner'
+    const { supabase } = createCredentialSupabase('credential-pending')
     const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
-    let credentialRow: Record<string, unknown> | null = null
-    const selectQuery = {
-      eq: vi.fn(() => selectQuery),
-      maybeSingle: vi.fn(async () => ({ data: credentialRow, error: null })),
-    }
-    let updateFilterCount = 0
-    const updateQuery = {
-      eq: vi.fn(() => {
-        updateFilterCount += 1
-        return updateFilterCount === 2 ? Promise.resolve({ error: null }) : updateQuery
-      }),
-    }
-    const supabase = {
-      from: vi.fn(() => ({
-        select: vi.fn(() => selectQuery),
-        upsert: vi.fn(async (values: Record<string, unknown>) => {
-          credentialRow = { id: 'credential-1', ...values }
-          return { error: null }
-        }),
-        update: vi.fn((values: Record<string, unknown>) => {
-          credentialRow = { ...(credentialRow ?? {}), ...values }
-          return updateQuery
-        }),
-      })),
-    }
-    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }))
-
-    process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
-    vi.stubGlobal('fetch', fetchMock)
-
-    try {
-      await saveApiKey({
-        userId: ownerId,
-        provider: 'youtube',
-        apiKey,
-        supabase: supabase as unknown as AppSupabaseClient,
-      })
-
-      const requestEvent = insertMock.mock.calls
-        .map(([payload]) => payload)
-        .find((payload) => typeof payload === 'object' && payload !== null && 'provider' in payload)
-
-      expect(requestEvent).toMatchObject({
-        user_id: ownerId,
-        provider: 'youtube',
-        operation: 'search.list',
-        outcome: 'success',
-      })
-      expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: 'GET' })
-      expect(fetchMock.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal)
-      expect(selectQuery.eq).toHaveBeenCalledWith('user_id', ownerId)
-      expect(fromMock.mock.calls.map(([table]) => table)).toEqual(['api_usage_events', 'credential_checks'])
-      expect(new URL(String(fetchMock.mock.calls[0]?.[0])).searchParams.get('key')).toBe(apiKey)
-      expect(JSON.stringify(insertMock.mock.calls)).not.toContain(apiKey)
-    } finally {
-      vi.unstubAllGlobals()
-      if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY
-      else process.env.CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey
-    }
-  })
-
-  it('non attribuisce token o costo inventati alla validazione Gemini models.list', async () => {
-    const ownerId = 'gemini-credential-owner'
-    const apiKey = 'test-gemini-key-for-owner'
-    const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
-    let credentialRow: Record<string, unknown> | null = null
-    const selectQuery = {
-      eq: vi.fn(() => selectQuery),
-      maybeSingle: vi.fn(async () => ({ data: credentialRow, error: null })),
-    }
-    let updateFilterCount = 0
-    const updateQuery = {
-      eq: vi.fn(() => {
-        updateFilterCount += 1
-        return updateFilterCount === 2 ? Promise.resolve({ error: null }) : updateQuery
-      }),
-    }
-    const supabase = {
-      from: vi.fn(() => ({
-        select: vi.fn(() => selectQuery),
-        upsert: vi.fn(async (values: Record<string, unknown>) => {
-          credentialRow = { id: 'credential-gemini', ...values }
-          return { error: null }
-        }),
-        update: vi.fn((values: Record<string, unknown>) => {
-          credentialRow = { ...(credentialRow ?? {}), ...values }
-          return updateQuery
-        }),
-      })),
-    }
-    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }))
-
-    process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
-    vi.stubGlobal('fetch', fetchMock)
-
-    try {
-      await saveApiKey({
-        userId: ownerId,
-        provider: 'gemini',
-        apiKey,
-        supabase: supabase as unknown as AppSupabaseClient,
-      })
-
-      const requestEvent = insertMock.mock.calls
-        .map(([payload]) => payload as Record<string, unknown>)
-        .find((payload) => payload.provider === 'gemini')
-
-      expect(requestEvent).toMatchObject({
-        user_id: ownerId,
-        operation: 'models.list',
-        outcome: 'success',
-        http_status: 200,
-        input_tokens: null,
-        output_tokens: null,
-        total_tokens: null,
-        estimated_cost_usd: null,
-        input_rate_usd_per_million: null,
-        output_rate_usd_per_million: null,
-      })
-      expect(JSON.stringify(insertMock.mock.calls)).not.toContain(apiKey)
-    } finally {
-      vi.unstubAllGlobals()
-      if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY
-      else process.env.CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey
-    }
-  })
-
-  it('registra separatamente il fallimento e il retry manuale nel flusso di validazione credenziali', async () => {
-    const ownerId = 'retry-flow-owner'
-    const apiKey = 'test-youtube-key-for-manual-retry'
-    const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
-    let credentialRow: Record<string, unknown> | null = null
-    const selectQuery = {
-      eq: vi.fn(() => selectQuery),
-      maybeSingle: vi.fn(async () => ({ data: credentialRow, error: null })),
-    }
-    let updateFilterCount = 0
-    const updateQuery = {
-      eq: vi.fn(() => {
-        updateFilterCount += 1
-        return updateFilterCount % 2 === 0 ? Promise.resolve({ error: null }) : updateQuery
-      }),
-    }
-    const supabase = {
-      from: vi.fn(() => ({
-        select: vi.fn(() => selectQuery),
-        upsert: vi.fn(async (values: Record<string, unknown>) => {
-          credentialRow = { id: 'credential-retry', ...values }
-          return { error: null }
-        }),
-        update: vi.fn((values: Record<string, unknown>) => {
-          credentialRow = { ...(credentialRow ?? {}), ...values }
-          return updateQuery
-        }),
-      })),
-    }
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(new Response('{}', { status: 503 }))
-      .mockResolvedValueOnce(new Response('{}', { status: 200 }))
-
     process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
-    vi.stubGlobal('fetch', fetchMock)
     createClientMock.mockResolvedValue(supabase)
+    getCurrentSessionMock.mockResolvedValue({ userId })
+    vi.stubGlobal('fetch', fetchMock)
 
     try {
-      getCurrentSessionMock.mockResolvedValue({ userId: ownerId })
-      const post = (body: Record<string, string>) => postIntegrations(new Request('http://localhost/api/integrations', {
+      const response = await postIntegrations(new Request('http://localhost/api/integrations', {
         method: 'POST',
         headers: { origin: 'http://localhost', 'content-type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ provider: 'youtube', apiKey: 'test-youtube-key-pending', action: 'save' }),
       }))
-      const firstResponse = await post({ provider: 'youtube', apiKey, action: 'save' })
-      const firstAttempt = await firstResponse.json()
-      const retryResponse = await post({ provider: 'youtube', action: 'validate' })
-      const retry = await retryResponse.json()
+      const payload = await response.json()
 
-      expect(firstResponse.status).toBe(200)
-      expect(firstAttempt.data.isValid).toBe(false)
-      expect(retryResponse.status).toBe(200)
-      expect(retry.data).toMatchObject({ provider: 'youtube', isValid: true, message: null })
-      expect(getCurrentSessionMock).toHaveBeenCalledTimes(2)
-      expect(fetchMock).toHaveBeenCalledTimes(2)
-      expect(fetchMock.mock.calls.map(([url]) => new URL(String(url)).pathname)).toEqual([
-        '/youtube/v3/search',
-        '/youtube/v3/search',
-      ])
-
-      const insertedRows = insertMock.mock.calls.map(([row]) => row as Record<string, unknown>)
-      expect(insertedRows.filter((row) => row.provider === 'youtube')).toMatchObject([
-        { user_id: ownerId, operation: 'search.list', outcome: 'http_error', http_status: 503, quota_units: 1 },
-        { user_id: ownerId, operation: 'search.list', outcome: 'success', http_status: 200, quota_units: 1 },
-      ])
-      expect(insertedRows.filter((row) => 'credential_id' in row)).toMatchObject([
-        { credential_id: 'credential-retry', is_valid: false },
-        { credential_id: 'credential-retry', is_valid: true, error_type: null },
-      ])
-      expect(credentialRow).toMatchObject({ user_id: ownerId, is_valid: true })
-      expect(JSON.stringify(insertMock.mock.calls)).not.toContain(apiKey)
-    } finally {
-      vi.unstubAllGlobals()
-      if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY
-      else process.env.CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey
-    }
-  })
-
-  it('ritenta errori temporanei Gemini solo sulla GET idempotente e registra ogni tentativo', async () => {
-    const ownerId = 'gemini-retry-owner'
-    const apiKey = 'test-gemini-key-for-retry'
-    const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
-    const { supabase } = createCredentialSupabase('credential-gemini-retry')
-    const fetchMock = vi.fn()
-      .mockRejectedValueOnce(new TypeError('temporary network failure'))
-      .mockResolvedValueOnce(new Response('{}', { status: 503 }))
-      .mockResolvedValueOnce(new Response('{}', { status: 200 }))
-
-    configureRetryLimitClient(2)
-    process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
-    vi.stubGlobal('fetch', fetchMock)
-
-    try {
-      const result = await saveApiKey({
-        userId: ownerId,
-        provider: 'gemini',
-        apiKey,
-        supabase: supabase as unknown as AppSupabaseClient,
-      })
-
-      expect(result.isValid).toBe(true)
-      expect(fetchMock).toHaveBeenCalledTimes(3)
-      expect(fetchMock.mock.calls.every(([, init]) => init?.method === 'GET')).toBe(true)
-      expect(fetchMock.mock.calls.every(([, init]) => init?.signal instanceof AbortSignal)).toBe(true)
-      expect(insertMock.mock.calls
-        .map(([row]) => row as Record<string, unknown>)
-        .filter((row) => row.provider === 'gemini')).toMatchObject([
-        { provider: 'gemini', outcome: 'network_error' },
-        { provider: 'gemini', outcome: 'http_error', http_status: 503 },
-        { provider: 'gemini', outcome: 'success', http_status: 200 },
-      ])
-      expect(JSON.stringify(insertMock.mock.calls)).not.toContain(apiKey)
-    } finally {
-      vi.unstubAllGlobals()
-      if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY
-      else process.env.CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey
-    }
-  })
-
-  it('non ritenta gli errori Gemini 429/quota', async () => {
-    const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
-    const { supabase } = createCredentialSupabase('credential-gemini-quota')
-    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 429 }))
-
-    configureRetryLimitClient(2)
-    process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
-    vi.stubGlobal('fetch', fetchMock)
-
-    try {
-      const result = await saveApiKey({
-        userId: 'gemini-quota-owner',
-        provider: 'gemini',
-        apiKey: 'test-gemini-key-for-quota',
-        supabase: supabase as unknown as AppSupabaseClient,
-      })
-
-      expect(result.isValid).toBe(false)
-      expect(fetchMock).toHaveBeenCalledOnce()
-      expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('GET')
-      expect(insertMock.mock.calls
-        .map(([row]) => row as Record<string, unknown>)
-        .filter((row) => row.provider === 'gemini')).toMatchObject([
-        { provider: 'gemini', outcome: 'http_error', http_status: 429 },
-      ])
-    } finally {
-      vi.unstubAllGlobals()
-      if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY
-      else process.env.CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey
-    }
-  })
-
-  it('limita a una richiesta la validazione di una nuova chiave con retry predefiniti a zero', async () => {
-    const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
-    const { supabase } = createCredentialSupabase('credential-gemini-default-retry')
-    const fetchMock = vi.fn()
-      .mockRejectedValueOnce(new TypeError('temporary network failure'))
-      .mockResolvedValueOnce(new Response('{}', { status: 200 }))
-
-    configureRetryLimitClient(0)
-    process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
-    vi.stubGlobal('fetch', fetchMock)
-
-    try {
-      const result = await saveApiKey({
-        userId: 'gemini-default-retry-owner',
-        provider: 'gemini',
-        apiKey: 'test-gemini-key-default-retry',
-        supabase: supabase as unknown as AppSupabaseClient,
-      })
-
-      expect(result.isValid).toBe(false)
-      expect(fetchMock).toHaveBeenCalledOnce()
-    } finally {
-      vi.unstubAllGlobals()
-      if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY
-      else process.env.CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey
-    }
-  })
-
-  it('consente un solo retry Gemini quando il limite amministrativo è uno', async () => {
-    const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
-    const { supabase } = createCredentialSupabase('credential-gemini-one-retry')
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(new Response('{}', { status: 503 }))
-      .mockResolvedValueOnce(new Response('{}', { status: 200 }))
-
-    configureRetryLimitClient(1)
-    process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
-    vi.stubGlobal('fetch', fetchMock)
-
-    try {
-      const result = await saveApiKey({
-        userId: 'gemini-one-retry-owner',
-        provider: 'gemini',
-        apiKey: 'test-gemini-key-one-retry',
-        supabase: supabase as unknown as AppSupabaseClient,
-      })
-
-      expect(result.isValid).toBe(true)
-      expect(fetchMock).toHaveBeenCalledTimes(2)
-      expect(insertMock.mock.calls.map(([row]) => row as Record<string, unknown>)
-        .filter((row) => row.provider === 'gemini')).toMatchObject([
-        { provider: 'gemini', outcome: 'http_error', http_status: 503 },
-        { provider: 'gemini', outcome: 'success', http_status: 200 },
-      ])
-    } finally {
-      vi.unstubAllGlobals()
-      if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY
-      else process.env.CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey
-    }
-  })
-
-  it('rispetta il limite di dieci retry Gemini con undici richieste massime e accounting per richiesta', async () => {
-    const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
-    const { supabase } = createCredentialSupabase('credential-gemini-ten-retries')
-    const fetchMock = vi.fn().mockImplementation(async () => new Response('{}', { status: 503 }))
-
-    configureRetryLimitClient(10)
-    process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
-    vi.stubGlobal('fetch', fetchMock)
-    vi.useFakeTimers()
-
-    try {
-      const validation = saveApiKey({
-        userId: 'gemini-ten-retries-owner',
-        provider: 'gemini',
-        apiKey: 'test-gemini-key-ten-retries',
-        supabase: supabase as unknown as AppSupabaseClient,
-      })
-      await vi.runAllTimersAsync()
-      const result = await validation
-      const usageEvents = insertMock.mock.calls
-        .map(([row]) => row as Record<string, unknown>)
-        .filter((row) => row.provider === 'gemini')
-
-      expect(result.isValid).toBe(false)
-      expect(fetchMock).toHaveBeenCalledTimes(11)
-      expect(usageEvents).toHaveLength(11)
-      expect(usageEvents.every((event) => event.user_id === 'gemini-ten-retries-owner')).toBe(true)
-    } finally {
-      vi.useRealTimers()
-      vi.unstubAllGlobals()
-      if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY
-      else process.env.CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey
-    }
-  })
-
-  it('applica il limite retry anche alla verifica della chiave YouTube privata', async () => {
-    const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
-    const { supabase } = createCredentialSupabase('credential-youtube-one-retry')
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(new Response('{}', { status: 503 }))
-      .mockResolvedValueOnce(new Response('{}', { status: 200 }))
-
-    configureRetryLimitClient(1)
-    process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
-    vi.stubGlobal('fetch', fetchMock)
-
-    try {
-      const result = await saveApiKey({
-        userId: 'youtube-one-retry-owner',
+      expect(response.status).toBe(200)
+      expect(payload.data).toMatchObject({ isValid: null, validationStatus: 'pending' })
+      expect(enqueueCredentialValidationMock).toHaveBeenCalledWith(expect.objectContaining({
+        userId,
+        credentialId: 'credential-pending',
         provider: 'youtube',
-        apiKey: 'test-youtube-key-one-retry',
-        supabase: supabase as unknown as AppSupabaseClient,
-      })
-
-      expect(result.isValid).toBe(true)
-      expect(fetchMock).toHaveBeenCalledTimes(2)
-      expect(insertMock.mock.calls.map(([row]) => row as Record<string, unknown>)
-        .filter((row) => row.provider === 'youtube')).toMatchObject([
-        { user_id: 'youtube-one-retry-owner', outcome: 'http_error', http_status: 503 },
-        { user_id: 'youtube-one-retry-owner', outcome: 'success', http_status: 200 },
-      ])
+        retryLimit: 0,
+        keyVersion: 'version-default',
+      }))
+      expect(JSON.stringify(enqueueCredentialValidationMock.mock.calls)).not.toContain('test-youtube-key-pending')
+      expect(fetchMock).not.toHaveBeenCalled()
     } finally {
       vi.unstubAllGlobals()
       if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY
@@ -525,28 +161,49 @@ describe('writeCredentialCheckAudit', () => {
     }
   })
 
-  it('mantiene il limite admin quando si risalva lo stesso segreto', async () => {
+  it('mappa il job pending solo sulla versione corrente e non cambia owner/provider', async () => {
+    const { supabase } = createCredentialSupabase('credential-pending')
+    const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
+    process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
+
+    try {
+      await saveApiKey({
+        userId: 'validation-owner',
+        provider: 'youtube',
+        apiKey: 'test-youtube-key-status',
+        validateNow: false,
+        supabase: supabase as unknown as AppSupabaseClient,
+      })
+      getCredentialValidationStatusesForUserMock.mockResolvedValueOnce(
+        new Map([['credential-pending', 'pending']])
+      )
+
+      const statuses = await getCredentialStatusesForUser('validation-owner', supabase as unknown as AppSupabaseClient)
+
+      expect(statuses.find((status) => status.provider === 'youtube')).toMatchObject({
+        isConfigured: true,
+        validationStatus: 'pending',
+      })
+      expect(getCredentialValidationStatusesForUserMock).toHaveBeenCalledWith(
+        'validation-owner',
+        supabase,
+        new Map([['credential-pending', 'version-default']])
+      )
+    } finally {
+      if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY
+      else process.env.CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey
+    }
+  })
+
+  it('mantiene l’override admin quando si risalva lo stesso segreto', async () => {
     const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
     const { supabase } = createCredentialSupabase('credential-same-secret')
-    const { retryLimitUpsert } = configureRetryLimitClient(0)
+    const { retryLimitUpsert } = configureRetryLimitClient(7)
     process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
 
     try {
-      await saveApiKey({
-        userId: 'same-secret-owner',
-        provider: 'youtube',
-        apiKey: 'test-youtube-key-same-secret',
-        validateNow: false,
-        supabase: supabase as unknown as AppSupabaseClient,
-      })
-      await saveApiKey({
-        userId: 'same-secret-owner',
-        provider: 'youtube',
-        apiKey: 'test-youtube-key-same-secret',
-        validateNow: false,
-        supabase: supabase as unknown as AppSupabaseClient,
-      })
-
+      await saveApiKey({ userId: 'same-secret-owner', provider: 'youtube', apiKey: 'test-youtube-key-same-secret', validateNow: false, supabase: supabase as unknown as AppSupabaseClient })
+      await saveApiKey({ userId: 'same-secret-owner', provider: 'youtube', apiKey: 'test-youtube-key-same-secret', validateNow: false, supabase: supabase as unknown as AppSupabaseClient })
       expect(retryLimitUpsert).not.toHaveBeenCalled()
     } finally {
       if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY
@@ -554,29 +211,20 @@ describe('writeCredentialCheckAudit', () => {
     }
   })
 
-  it('azzera il limite admin quando si sostituisce una chiave privata', async () => {
+  it('azzera il limite e cambia versione solo quando si sostituisce la chiave', async () => {
     const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
     const { supabase } = createCredentialSupabase('credential-replaced-secret')
-    const { retryLimitUpsert } = configureRetryLimitClient(0)
+    const { retryLimitUpsert } = configureRetryLimitClient(7)
     process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
 
     try {
-      await saveApiKey({
-        userId: 'replacement-owner',
-        provider: 'youtube',
-        apiKey: 'test-youtube-key-before-replacement',
-        validateNow: false,
-        supabase: supabase as unknown as AppSupabaseClient,
-      })
-      await saveApiKey({
-        userId: 'replacement-owner',
-        provider: 'youtube',
-        apiKey: 'test-youtube-key-after-replacement',
-        validateNow: false,
-        supabase: supabase as unknown as AppSupabaseClient,
-      })
-
-      expect(retryLimitUpsert).toHaveBeenCalledWith({ credential_id: 'credential-replaced-secret', retry_limit: 0 })
+      await saveApiKey({ userId: 'replacement-owner', provider: 'youtube', apiKey: 'test-youtube-key-before-replacement', validateNow: false, supabase: supabase as unknown as AppSupabaseClient })
+      await saveApiKey({ userId: 'replacement-owner', provider: 'youtube', apiKey: 'test-youtube-key-after-replacement', validateNow: false, supabase: supabase as unknown as AppSupabaseClient })
+      expect(retryLimitUpsert).toHaveBeenCalledWith(expect.objectContaining({
+        credential_id: 'credential-replaced-secret',
+        retry_limit: 0,
+        key_version: expect.any(String),
+      }))
     } finally {
       if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY
       else process.env.CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey

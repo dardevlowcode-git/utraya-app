@@ -11,6 +11,7 @@ export function toIntegrationApiView(status: CredentialStatus) {
     provider: status.provider,
     isConfigured: status.isConfigured,
     isValid: status.isValid,
+    validationStatus: status.validationStatus,
     lastValidatedAt: status.lastValidatedAt,
     lastUsedAt: status.lastUsedAt,
     hasValidationError: Boolean(status.lastError),
