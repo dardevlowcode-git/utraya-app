@@ -34,11 +34,11 @@ export default async function AdminLayout({
       <TopNav variant="admin" session={session} />
       <div className="flex flex-1 pt-16">
         <AdminSideNav />
-        <main className="flex-1 ml-64 min-h-full">
+        <main className="min-w-0 flex-1 ml-24 md:ml-64 min-h-full">
           {children}
         </main>
       </div>
-      <div className="ml-64">
+      <div className="ml-24 md:ml-64">
         <Footer />
       </div>
     </div>

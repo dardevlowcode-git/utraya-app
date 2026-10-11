@@ -100,23 +100,23 @@ export default function AdminSideNav() {
   const pathname = usePathname()
 
   return (
-    <aside className="fixed bottom-0 left-0 top-16 z-40 flex w-64 flex-col border-r border-stroke-subtle bg-surface-elevated">
-      <div className="px-4 pt-6 pb-4">
-        <div className="flex items-center gap-2 px-3">
+    <aside className="fixed bottom-0 left-0 top-16 z-40 flex w-24 flex-col border-r border-stroke-subtle bg-surface-elevated md:w-64">
+      <div className="px-2 pt-6 pb-4 md:px-4">
+        <div className="flex items-center justify-center gap-2 px-1 md:justify-start md:px-3">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg gradient-ai shadow-soft">
             <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
             </svg>
           </div>
-          <div>
+          <div className="sr-only md:not-sr-only">
             <p className="text-sm font-bold text-on-surface">Utraya</p>
             <p className="text-xs text-on-surface-variant">{t('admin.title')}</p>
           </div>
         </div>
       </div>
 
-      <nav className="flex-1 px-3 space-y-1 overflow-y-auto">
+      <nav aria-label={t('admin.title')} className="flex-1 space-y-2 overflow-y-auto px-2 md:space-y-1 md:px-3">
         {adminNavItems.map((item) => {
           const isActive = item.exact
             ? pathname === item.href
@@ -126,8 +126,9 @@ export default function AdminSideNav() {
             <Link
               key={item.href}
               href={item.href}
+              title={t(item.labelKey)}
               className={cn(
-                'flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200',
+                'flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-center text-xs font-medium leading-tight transition-all duration-200 md:min-h-0 md:flex-row md:justify-start md:gap-3 md:px-4 md:py-3 md:text-left md:text-sm',
                 isActive
                   ? 'bg-secondary-fixed text-on-secondary-fixed shadow-soft'
                   : 'text-on-surface-variant hover:bg-surface-container hover:translate-x-1'
@@ -136,23 +137,24 @@ export default function AdminSideNav() {
               <span className={cn(isActive ? 'text-on-secondary-fixed' : 'text-on-surface-variant')}>
                 {item.icon}
               </span>
-              {t(item.labelKey)}
+              <span className="text-center md:text-left">{t(item.labelKey)}</span>
             </Link>
           )
         })}
       </nav>
 
-      <div className="px-3 py-4 border-t border-surface-container-high">
+      <div className="border-t border-surface-container-high px-2 py-4 md:px-3">
         <Link
           href="/dashboard"
-          className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium
-                     text-on-surface-variant hover:bg-surface-container transition-all"
+          title={t('admin.backToApp')}
+          className="flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-center text-xs font-medium leading-tight
+                     text-on-surface-variant transition-all hover:bg-surface-container md:min-h-0 md:flex-row md:justify-start md:gap-3 md:px-4 md:py-3 md:text-left md:text-sm"
         >
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
               d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
           </svg>
-          {t('admin.backToApp')}
+          <span className="text-center md:text-left">{t('admin.backToApp')}</span>
         </Link>
       </div>
     </aside>
