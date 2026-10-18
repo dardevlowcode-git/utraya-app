@@ -23,7 +23,7 @@ describe('VideoEmbedPlayer', () => {
       title: 'Video di prova',
     }))
 
-    expect(markup).toContain('src="https://www.youtube-nocookie.com/embed/video-123"')
+    expect(markup).toContain('src="https://www.youtube-nocookie.com/embed/video-123?enablejsapi=1"')
     expect(markup).toContain('title="Video di prova"')
   })
 
@@ -38,18 +38,18 @@ describe('VideoEmbedPlayer', () => {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(2200)
       })
-      expect(mounted.container.querySelector('iframe')?.getAttribute('src')).toBe('https://www.youtube.com/embed/video-1')
+      expect(mounted.container.querySelector('iframe')?.getAttribute('src')).toBe('https://www.youtube.com/embed/video-1?enablejsapi=1')
 
       await mounted.rerender(createElement(VideoEmbedPlayer, {
         youtubeVideoId: 'video-2',
         title: 'Video due',
       }))
-      expect(mounted.container.querySelector('iframe')?.getAttribute('src')).toBe('https://www.youtube-nocookie.com/embed/video-2')
+      expect(mounted.container.querySelector('iframe')?.getAttribute('src')).toBe('https://www.youtube-nocookie.com/embed/video-2?enablejsapi=1')
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(2200)
       })
-      expect(mounted.container.querySelector('iframe')?.getAttribute('src')).toBe('https://www.youtube.com/embed/video-2')
+      expect(mounted.container.querySelector('iframe')?.getAttribute('src')).toBe('https://www.youtube.com/embed/video-2?enablejsapi=1')
 
       await mounted.rerender(createElement(VideoEmbedPlayer, {
         youtubeVideoId: 'video-3',
@@ -62,7 +62,7 @@ describe('VideoEmbedPlayer', () => {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(2200)
       })
-      expect(mounted.container.querySelector('iframe')?.getAttribute('src')).toBe('https://www.youtube-nocookie.com/embed/video-3')
+      expect(mounted.container.querySelector('iframe')?.getAttribute('src')).toBe('https://www.youtube-nocookie.com/embed/video-3?enablejsapi=1')
     } finally {
       await mounted.unmount()
     }

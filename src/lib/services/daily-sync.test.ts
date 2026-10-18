@@ -21,6 +21,7 @@ vi.mock('@/lib/services/channels', () => ({
   processPendingScanJobs: vi.fn(),
   requestScanNowForUser: vi.fn(),
 }))
+vi.mock('@/lib/services/transcription-requests', () => ({ recoverTranscriptionJobs: vi.fn() }))
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: vi.fn() }))
 
 import {

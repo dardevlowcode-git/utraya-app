@@ -8,6 +8,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { processPendingScanJobs, requestScanNowForUser } from '@/lib/services/channels'
 import { processPendingCredentialValidationJobs } from '@/lib/services/credential-validation-jobs'
 import { performCredentialValidationAttempt } from '@/lib/services/integrations'
+import { recoverTranscriptionJobs } from '@/lib/services/transcription-requests'
 import { AppError } from '@/lib/utils/errors'
 import type { Database } from '@/lib/types/database'
 
@@ -331,6 +332,17 @@ export async function runDailyChannelSync(): Promise<DailySyncResult> {
       }
     } catch (error) {
       await writeLog(admin, 'warn', 'Unable to recover pending credential validation jobs', {
+        error: error instanceof Error ? error.message : 'recovery_failed',
+      })
+    }
+
+    try {
+      const recovered = await recoverTranscriptionJobs()
+      if (recovered.found > 0) {
+        await writeLog(admin, 'info', 'Recovered pending transcription jobs', recovered)
+      }
+    } catch (error) {
+      await writeLog(admin, 'warn', 'Unable to recover pending transcription jobs', {
         error: error instanceof Error ? error.message : 'recovery_failed',
       })
     }

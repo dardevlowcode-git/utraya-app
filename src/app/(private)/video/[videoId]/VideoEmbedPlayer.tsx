@@ -7,6 +7,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { EMBED_LISTENING_MESSAGE, EMBED_PLAYER_ELEMENT_ID } from '@/lib/utils/youtube-embed-control'
 
 interface VideoEmbedPlayerProps {
   youtubeVideoId: string
@@ -24,8 +25,8 @@ export default function VideoEmbedPlayer({ youtubeVideoId, title }: VideoEmbedPl
 function VideoEmbedPlayerInstance({ youtubeVideoId, title }: VideoEmbedPlayerProps) {
   const sources = useMemo(
     () => [
-      `https://www.youtube-nocookie.com/embed/${youtubeVideoId}`,
-      `https://www.youtube.com/embed/${youtubeVideoId}`,
+      `https://www.youtube-nocookie.com/embed/${youtubeVideoId}?enablejsapi=1`,
+      `https://www.youtube.com/embed/${youtubeVideoId}?enablejsapi=1`,
     ],
     [youtubeVideoId]
   )
@@ -45,6 +46,7 @@ function VideoEmbedPlayerInstance({ youtubeVideoId, title }: VideoEmbedPlayerPro
 
   return (
     <iframe
+      id={EMBED_PLAYER_ELEMENT_ID}
       key={sources[sourceIndex]}
       src={sources[sourceIndex]}
       title={title}
@@ -52,7 +54,16 @@ function VideoEmbedPlayerInstance({ youtubeVideoId, title }: VideoEmbedPlayerPro
       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
       referrerPolicy="strict-origin-when-cross-origin"
       allowFullScreen
-      onLoad={() => setHasLoaded(true)}
+      onLoad={(event) => {
+        setHasLoaded(true)
+        // Handshake per accettare i comandi postMessage (salto al secondo dalle frasi).
+        const frame = event.currentTarget
+        try {
+          frame.contentWindow?.postMessage(EMBED_LISTENING_MESSAGE, new URL(frame.src).origin)
+        } catch {
+          // Il player resta usabile anche senza controllo dalla pagina.
+        }
+      }}
     />
   )
 }

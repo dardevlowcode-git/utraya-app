@@ -419,7 +419,28 @@
     "deepDive": "Deep dive",
     "keyMoments": "Key moments",
     "publishedBy": "Published by",
-    "relatedIntelligence": "Related content"
+    "relatedIntelligence": "Related content",
+    "transcript": {
+      "title": "Transcript",
+      "absent": "No transcript for this video yet.",
+      "running": "Transcribing: {done} of {total} parts.",
+      "runningNoProgress": "Transcribing.",
+      "complete": "Click a phrase to start the video from that point.",
+      "needsReview": "Transcript available, but some points need review. Click a phrase to start the video from that point.",
+      "unavailable": "A transcript is not available for this video.",
+      "request": "Transcribe",
+      "requesting": "Requesting…",
+      "blockedGeminiKey": "Transcribing needs a valid personal Gemini key: add it in",
+      "doubtfulTime": "Time to be checked",
+      "openOnYoutube": "Open on YouTube at {time}",
+      "jumpTo": "Jump to {time}",
+      "missingPartsOne": "{count} part not transcribed",
+      "missingPartsOther": "{count} parts not transcribed",
+      "doubtfulOne": "{count} phrase with a time to check",
+      "doubtfulOther": "{count} phrases with a time to check",
+      "requestError": "Could not start the transcription. Try again later.",
+      "noPhrases": "The transcript contains no speech."
+    }
   },
   "common": {
     "loading": "Loading...",

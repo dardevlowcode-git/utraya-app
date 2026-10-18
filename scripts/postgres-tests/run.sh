@@ -32,7 +32,8 @@ tar -C "$repo_root" -cf - \
       20261012001000_youtube_channel_key_rotation.sql \
       20261012002000_firecrawl_transcript_recovery.sql \
       20261012003000_atomic_credential_replacement.sql \
-      20261018100000_remove_firecrawl_import_enqueue.sql; do
+      20261018100000_remove_firecrawl_import_enqueue.sql \
+      20261018120000_gemini_transcriptions.sql; do
       psql -X -v ON_ERROR_STOP=1 -f "supabase/migrations/$migration"
     done
     psql -X -v ON_ERROR_STOP=1 -f scripts/postgres-tests/assertions.sql

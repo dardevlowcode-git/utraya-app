@@ -19,6 +19,8 @@ export type ErrorCode =
   | 'CRON_UNAUTHORIZED'
   | 'CRON_MISCONFIGURED'
   | 'RATE_LIMITED'
+  | 'GEMINI_KEY_REQUIRED'
+  | 'TRANSCRIPTION_UNAVAILABLE'
 
 /** Converte gli errori di dominio nel vocabolario API stabile. */
 export function mapAppErrorTypeToCode(

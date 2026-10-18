@@ -837,5 +837,281 @@ SELECT public.test_assert_true(
   'finish_scan_job_attempt rende terminale il job e pulisce response/owner'
 );
 
+-- ===== Trascrizioni Gemini (ticket 03): schema, RLS, ACL, vincoli e RPC con lease =====
+SELECT public.test_assert_true(
+  (SELECT model = 'gemini-3.1-flash-lite' AND thinking_level = 'minimal'
+          AND input_price_per_million = 0.25 AND output_price_per_million = 1.5
+   FROM public.transcription_profile WHERE id = TRUE),
+  'il profilo di trascrizione nasce con i default approvati'
+);
+SELECT public.test_assert_true(
+  (SELECT bool_and(c.relrowsecurity) FROM pg_catalog.pg_class c
+   WHERE c.oid IN ('public.transcription_profile'::regclass, 'public.transcriptions'::regclass,
+                   'public.transcription_phrases'::regclass, 'public.transcription_parts'::regclass)),
+  'RLS attiva su tutte le tabelle di trascrizione'
+);
+SELECT public.test_assert_true(
+  has_table_privilege('authenticated', 'public.transcriptions', 'SELECT')
+  AND has_table_privilege('authenticated', 'public.transcription_phrases', 'SELECT')
+  AND has_table_privilege('authenticated', 'public.transcription_parts', 'SELECT')
+  AND NOT has_table_privilege('authenticated', 'public.transcriptions', 'INSERT')
+  AND NOT has_table_privilege('authenticated', 'public.transcriptions', 'UPDATE')
+  AND NOT has_table_privilege('authenticated', 'public.transcriptions', 'DELETE')
+  AND NOT has_table_privilege('authenticated', 'public.transcription_phrases', 'INSERT')
+  AND NOT has_table_privilege('authenticated', 'public.transcription_phrases', 'UPDATE')
+  AND NOT has_table_privilege('authenticated', 'public.transcription_phrases', 'DELETE')
+  AND NOT has_table_privilege('authenticated', 'public.transcription_parts', 'INSERT')
+  AND NOT has_table_privilege('authenticated', 'public.transcription_parts', 'UPDATE')
+  AND NOT has_table_privilege('authenticated', 'public.transcription_parts', 'DELETE'),
+  'authenticated legge soltanto le tabelle canoniche di trascrizione'
+);
+SELECT public.test_assert_true(
+  NOT has_table_privilege('anon', 'public.transcriptions', 'SELECT')
+  AND NOT has_table_privilege('anon', 'public.transcription_phrases', 'SELECT')
+  AND NOT has_table_privilege('anon', 'public.transcription_parts', 'SELECT')
+  AND NOT has_table_privilege('anon', 'public.transcription_profile', 'SELECT')
+  AND NOT has_table_privilege('authenticated', 'public.transcription_profile', 'SELECT')
+  AND NOT has_table_privilege('authenticated', 'public.transcription_profile', 'UPDATE'),
+  'anon non legge nulla e il profilo non è leggibile dagli utenti'
+);
+SELECT public.test_assert_true(
+  has_table_privilege('service_role', 'public.transcriptions', 'INSERT')
+  AND has_table_privilege('service_role', 'public.transcription_phrases', 'DELETE')
+  AND has_table_privilege('service_role', 'public.transcription_parts', 'UPDATE')
+  AND has_table_privilege('service_role', 'public.transcription_profile', 'SELECT')
+  AND has_table_privilege('service_role', 'public.transcription_profile', 'UPDATE')
+  AND has_function_privilege('service_role', 'public.claim_transcription_job_with_attempt(uuid,timestamptz,uuid,timestamptz)', 'EXECUTE')
+  AND has_function_privilege('service_role', 'public.finish_transcription_job_attempt(uuid,uuid,uuid,text,timestamptz,text,jsonb)', 'EXECUTE')
+  AND has_function_privilege('service_role', 'public.save_transcription_part(uuid,uuid,uuid,integer,text,integer,text,text,jsonb)', 'EXECUTE')
+  AND has_function_privilege('service_role', 'public.finalize_transcription(uuid,uuid,uuid,boolean)', 'EXECUTE')
+  AND NOT has_function_privilege('authenticated', 'public.save_transcription_part(uuid,uuid,uuid,integer,text,integer,text,text,jsonb)', 'EXECUTE')
+  AND NOT has_function_privilege('anon', 'public.claim_transcription_job_with_attempt(uuid,timestamptz,uuid,timestamptz)', 'EXECUTE')
+  AND NOT has_function_privilege('authenticated', 'public.finalize_transcription(uuid,uuid,uuid,boolean)', 'EXECUTE'),
+  'solo service_role scrive e invoca le RPC di trascrizione'
+);
+
+INSERT INTO public.channels (id, youtube_channel_id, title)
+VALUES ('20000000-0000-4000-8000-0000000000a1', 'UC-transcription', 'Transcription channel');
+INSERT INTO public.videos (id, channel_id, youtube_video_id, title, published_at, duration_seconds, video_url)
+VALUES
+  ('61000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-0000000000a1', 'synthetic-v1', 'Video sintetico 1', NOW(), 300, 'https://www.youtube.com/watch?v=synthetic-v1'),
+  ('61000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-0000000000a1', 'synthetic-v2', 'Video sintetico 2', NOW(), 300, 'https://www.youtube.com/watch?v=synthetic-v2');
+
+INSERT INTO public.transcriptions (id, video_id, status, model, thinking_level)
+VALUES ('62000000-0000-4000-8000-000000000001', '61000000-0000-4000-8000-000000000001', 'pending', 'gemini-3.1-flash-lite', 'minimal');
+INSERT INTO public.transcription_parts (transcription_id, position, start_seconds, end_seconds) VALUES
+  ('62000000-0000-4000-8000-000000000001', 0, 0, 120),
+  ('62000000-0000-4000-8000-000000000001', 1, 120, 240),
+  ('62000000-0000-4000-8000-000000000001', 2, 240, 300);
+
+-- Vincoli: una trascrizione per video, stati chiusi, posizioni e tempi validi.
+DO $$
+DECLARE v_failures INTEGER := 0;
+BEGIN
+  BEGIN
+    INSERT INTO public.transcriptions (video_id, status, model, thinking_level)
+    VALUES ('61000000-0000-4000-8000-000000000001', 'pending', 'm', 'minimal');
+  EXCEPTION WHEN unique_violation THEN v_failures := v_failures + 1; END;
+  BEGIN
+    INSERT INTO public.transcriptions (video_id, status, model, thinking_level)
+    VALUES ('61000000-0000-4000-8000-000000000002', 'done', 'm', 'minimal');
+  EXCEPTION WHEN check_violation THEN v_failures := v_failures + 1; END;
+  BEGIN
+    INSERT INTO public.transcriptions (video_id, status, model, thinking_level, language_code)
+    VALUES ('61000000-0000-4000-8000-000000000002', 'pending', 'm', 'minimal', 'Italiano!');
+  EXCEPTION WHEN check_violation THEN v_failures := v_failures + 1; END;
+  BEGIN
+    INSERT INTO public.transcription_parts (transcription_id, position, start_seconds, end_seconds)
+    VALUES ('62000000-0000-4000-8000-000000000001', 9, 50, 50);
+  EXCEPTION WHEN check_violation THEN v_failures := v_failures + 1; END;
+  BEGIN
+    INSERT INTO public.transcription_parts (transcription_id, position, start_seconds, end_seconds)
+    VALUES ('62000000-0000-4000-8000-000000000001', 0, 0, 120);
+  EXCEPTION WHEN unique_violation THEN v_failures := v_failures + 1; END;
+  BEGIN
+    INSERT INTO public.transcription_phrases (transcription_id, position, start_seconds, text)
+    VALUES ('62000000-0000-4000-8000-000000000001', 0, -1, 'testo');
+  EXCEPTION WHEN check_violation THEN v_failures := v_failures + 1; END;
+  BEGIN
+    UPDATE public.transcription_profile SET thinking_level = 'extreme' WHERE id = TRUE;
+  EXCEPTION WHEN check_violation THEN v_failures := v_failures + 1; END;
+  BEGIN
+    UPDATE public.transcription_profile SET model = 'bad/model?x' WHERE id = TRUE;
+  EXCEPTION WHEN check_violation THEN v_failures := v_failures + 1; END;
+  IF v_failures <> 8 THEN RAISE EXCEPTION 'vincoli trascrizione non rispettati: %', v_failures; END IF;
+END;
+$$;
+
+-- RLS: authenticated legge, anon è respinto, authenticated non scrive.
+INSERT INTO public.transcription_phrases (transcription_id, position, start_seconds, text)
+VALUES ('62000000-0000-4000-8000-000000000001', 5, 3, 'frase sintetica di prova');
+SET ROLE authenticated;
+DO $$
+BEGIN
+  IF (SELECT count(*) FROM public.transcriptions) <> 1
+     OR (SELECT count(*) FROM public.transcription_phrases) <> 1
+     OR (SELECT count(*) FROM public.transcription_parts) <> 3 THEN
+    RAISE EXCEPTION 'authenticated deve leggere il canonico';
+  END IF;
+  BEGIN
+    INSERT INTO public.transcription_phrases (transcription_id, position, start_seconds, text)
+    VALUES ('62000000-0000-4000-8000-000000000001', 6, 3, 'non consentito');
+    RAISE EXCEPTION 'authenticated non deve scrivere';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+  BEGIN
+    PERFORM 1 FROM public.transcription_profile;
+    RAISE EXCEPTION 'authenticated non deve leggere il profilo';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+END;
+$$;
+RESET ROLE;
+SET ROLE anon;
+DO $$
+BEGIN
+  BEGIN
+    PERFORM 1 FROM public.transcriptions;
+    RAISE EXCEPTION 'anon non deve leggere le trascrizioni';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+END;
+$$;
+RESET ROLE;
+DELETE FROM public.transcription_phrases WHERE transcription_id = '62000000-0000-4000-8000-000000000001';
+
+-- Job con lease: claim, fencing, salvataggio per parte, finalizzazione e recupero.
+INSERT INTO public.jobs (id, job_type, status, payload)
+VALUES ('63000000-0000-4000-8000-000000000001', 'transcribe_video', 'pending',
+        '{"videoId":"61000000-0000-4000-8000-000000000001"}'::JSONB);
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO public.jobs (job_type, status, payload)
+    VALUES ('transcribe_video', 'pending', '{"videoId":"61000000-0000-4000-8000-000000000001"}'::JSONB);
+    RAISE EXCEPTION 'un secondo job attivo per lo stesso video deve essere respinto';
+  EXCEPTION WHEN unique_violation THEN NULL; END;
+END;
+$$;
+
+SET ROLE service_role;
+DO $$
+DECLARE
+  v_job UUID := '63000000-0000-4000-8000-000000000001';
+  v_tr UUID := '62000000-0000-4000-8000-000000000001';
+  v_lease UUID := '64000000-0000-4000-8000-000000000001';
+  v_claim RECORD;
+  v_status TEXT;
+BEGIN
+  SELECT * INTO v_claim FROM public.claim_transcription_job_with_attempt(v_job, clock_timestamp(), v_lease, clock_timestamp() + INTERVAL '5 minutes');
+  IF v_claim.attempt_id IS NULL OR v_claim.attempt_number <> 1 OR v_claim.payload->>'videoId' IS NULL THEN
+    RAISE EXCEPTION 'claim non riuscito';
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.claim_transcription_job_with_attempt(v_job, clock_timestamp(), '64000000-0000-4000-8000-0000000000ff', clock_timestamp() + INTERVAL '5 minutes')) THEN
+    RAISE EXCEPTION 'un job running con lease valida non è reclamabile';
+  END IF;
+
+  IF public.save_transcription_part(v_job, '64000000-0000-4000-8000-0000000000ff', v_tr, 0, 'done', 1, NULL, 'it',
+       '[{"idx":0,"start_seconds":1,"text":"uno","doubtful_time":false}]'::JSONB) THEN
+    RAISE EXCEPTION 'una lease diversa non può scrivere';
+  END IF;
+
+  IF NOT public.save_transcription_part(v_job, v_lease, v_tr, 0, 'done', 1, NULL, 'it',
+       '[{"idx":0,"start_seconds":1,"text":"uno","doubtful_time":false},{"idx":1,"start_seconds":130,"text":"due fuori blocco","doubtful_time":true}]'::JSONB) THEN
+    RAISE EXCEPTION 'salvataggio parte 0 fallito';
+  END IF;
+  -- Rilancio della stessa parte: sostituisce le frasi senza duplicarle.
+  IF NOT public.save_transcription_part(v_job, v_lease, v_tr, 0, 'done', 2, NULL, 'en',
+       '[{"idx":0,"start_seconds":1,"text":"uno","doubtful_time":false},{"idx":1,"start_seconds":130,"text":"due fuori blocco","doubtful_time":true}]'::JSONB) THEN
+    RAISE EXCEPTION 'riscrittura parte 0 fallita';
+  END IF;
+  IF (SELECT count(*) FROM public.transcription_phrases WHERE transcription_id = v_tr) <> 2
+     OR NOT EXISTS (SELECT 1 FROM public.transcription_phrases WHERE transcription_id = v_tr AND position = 1 AND doubtful_time)
+     OR (SELECT language_code FROM public.transcriptions WHERE id = v_tr) <> 'it'
+     OR (SELECT doubtful_phrase_count FROM public.transcriptions WHERE id = v_tr) <> 1
+     OR (SELECT status FROM public.transcriptions WHERE id = v_tr) <> 'running' THEN
+    RAISE EXCEPTION 'contatori o frasi parte 0 errati';
+  END IF;
+
+  v_status := public.finalize_transcription(v_job, v_lease, v_tr, FALSE);
+  IF v_status <> 'running' THEN RAISE EXCEPTION 'con parti pending lo stato resta running: %', v_status; END IF;
+  IF public.finalize_transcription(v_job, '64000000-0000-4000-8000-0000000000ff', v_tr, FALSE) IS NOT NULL THEN
+    RAISE EXCEPTION 'finalize con lease errata deve restituire NULL';
+  END IF;
+
+  PERFORM public.save_transcription_part(v_job, v_lease, v_tr, 1, 'missing', 2, 'provider_http_500', NULL, NULL);
+  v_status := public.finalize_transcription(v_job, v_lease, v_tr, TRUE);
+  IF v_status <> 'needs_review'
+     OR (SELECT missing_part_count FROM public.transcriptions WHERE id = v_tr) <> 2
+     OR (SELECT doubtful_phrase_count FROM public.transcriptions WHERE id = v_tr) <> 1
+     OR (SELECT last_error FROM public.transcription_parts WHERE transcription_id = v_tr AND position = 2) <> 'job_stopped'
+     OR (SELECT completed_at IS NULL FROM public.transcriptions WHERE id = v_tr) THEN
+    RAISE EXCEPTION 'finalizzazione needs_review errata: %', v_status;
+  END IF;
+
+  IF NOT public.finish_transcription_job_attempt(v_job, v_lease, v_claim.attempt_id, 'completed', clock_timestamp(), NULL, NULL) THEN
+    RAISE EXCEPTION 'chiusura attempt fallita';
+  END IF;
+  IF public.finish_transcription_job_attempt(v_job, v_lease, v_claim.attempt_id, 'completed', clock_timestamp(), NULL, NULL) THEN
+    RAISE EXCEPTION 'una seconda chiusura non deve riuscire';
+  END IF;
+  IF (SELECT status FROM public.jobs WHERE id = v_job) <> 'completed'
+     OR (SELECT status FROM public.job_attempts WHERE id = v_claim.attempt_id) <> 'completed' THEN
+    RAISE EXCEPTION 'job o attempt non terminali';
+  END IF;
+END;
+$$;
+RESET ROLE;
+
+-- Una trascrizione completa senza frasi dubbie né parti mancanti; rilascio `pending` per la continuazione e recupero lease scaduta.
+INSERT INTO public.transcriptions (id, video_id, status, model, thinking_level)
+VALUES ('62000000-0000-4000-8000-000000000002', '61000000-0000-4000-8000-000000000002', 'pending', 'gemini-3.1-flash-lite', 'minimal');
+INSERT INTO public.transcription_parts (transcription_id, position, start_seconds, end_seconds)
+VALUES ('62000000-0000-4000-8000-000000000002', 0, 0, 120);
+INSERT INTO public.jobs (id, job_type, status, payload)
+VALUES ('63000000-0000-4000-8000-000000000002', 'transcribe_video', 'pending',
+        '{"videoId":"61000000-0000-4000-8000-000000000002"}'::JSONB);
+SET ROLE service_role;
+DO $$
+DECLARE
+  v_job UUID := '63000000-0000-4000-8000-000000000002';
+  v_tr UUID := '62000000-0000-4000-8000-000000000002';
+  v_claim RECORD;
+  v_claim2 RECORD;
+BEGIN
+  SELECT * INTO v_claim FROM public.claim_transcription_job_with_attempt(v_job, clock_timestamp(), '64000000-0000-4000-8000-000000000002', clock_timestamp() + INTERVAL '5 minutes');
+  IF NOT public.finish_transcription_job_attempt(v_job, '64000000-0000-4000-8000-000000000002', v_claim.attempt_id, 'pending', clock_timestamp(), NULL, '{"yielded":true}'::JSONB) THEN
+    RAISE EXCEPTION 'rilascio pending fallito';
+  END IF;
+  IF (SELECT status FROM public.jobs WHERE id = v_job) <> 'pending' OR (SELECT lease_id FROM public.jobs WHERE id = v_job) IS NOT NULL THEN
+    RAISE EXCEPTION 'il job rilasciato deve tornare pending senza lease';
+  END IF;
+  SELECT * INTO v_claim FROM public.claim_transcription_job_with_attempt(v_job, clock_timestamp(), '64000000-0000-4000-8000-000000000003', clock_timestamp() + INTERVAL '5 minutes');
+  IF v_claim.attempt_number <> 2 THEN RAISE EXCEPTION 'la ripresa usa il numero attempt successivo'; END IF;
+  -- Simula un worker morto: la lease scade e un nuovo claim chiude l'attempt orfano.
+  UPDATE public.jobs SET lease_expires_at = clock_timestamp() - INTERVAL '1 second' WHERE id = v_job;
+  SELECT * INTO v_claim2 FROM public.claim_transcription_job_with_attempt(v_job, clock_timestamp(), '64000000-0000-4000-8000-000000000004', clock_timestamp() + INTERVAL '5 minutes');
+  IF v_claim2.attempt_number <> 3
+     OR (SELECT status FROM public.job_attempts WHERE id = v_claim.attempt_id) <> 'failed' THEN
+    RAISE EXCEPTION 'recupero lease scaduta errato';
+  END IF;
+  -- Con la lease scaduta il vecchio worker non può più scrivere.
+  IF public.save_transcription_part(v_job, '64000000-0000-4000-8000-000000000003', v_tr, 0, 'done', 1, NULL, 'it', '[]'::JSONB) THEN
+    RAISE EXCEPTION 'il worker scaduto non deve scrivere';
+  END IF;
+  PERFORM public.save_transcription_part(v_job, '64000000-0000-4000-8000-000000000004', v_tr, 0, 'done', 1, NULL, 'it',
+    '[{"idx":0,"start_seconds":2,"text":"ciao","doubtful_time":false}]'::JSONB);
+  IF public.finalize_transcription(v_job, '64000000-0000-4000-8000-000000000004', v_tr, FALSE) <> 'complete' THEN
+    RAISE EXCEPTION 'senza dubbi né mancanze la trascrizione è complete';
+  END IF;
+  PERFORM public.finish_transcription_job_attempt(v_job, '64000000-0000-4000-8000-000000000004', v_claim2.attempt_id, 'completed', clock_timestamp(), NULL, NULL);
+END;
+$$;
+RESET ROLE;
+-- Eliminare il video elimina a cascata trascrizione, parti e frasi.
+DELETE FROM public.videos WHERE id = '61000000-0000-4000-8000-000000000002';
+SELECT public.test_assert_true(
+  NOT EXISTS (SELECT 1 FROM public.transcriptions WHERE video_id = '61000000-0000-4000-8000-000000000002')
+  AND NOT EXISTS (SELECT 1 FROM public.transcription_parts WHERE transcription_id = '62000000-0000-4000-8000-000000000002'),
+  'la cancellazione del video elimina trascrizione e parti'
+);
+
 DROP FUNCTION public.test_assert_true(BOOLEAN, TEXT);
 SELECT 'POSTGRES REAL MIGRATION/RPC TESTS PASS' AS result;

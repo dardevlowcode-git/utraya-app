@@ -516,6 +516,131 @@ export type Database = {
         }
         Relationships: []
       }
+      transcription_profile: {
+        Row: {
+          id: boolean
+          model: string
+          thinking_level: 'minimal' | 'low' | 'medium' | 'high'
+          input_price_per_million: number
+          output_price_per_million: number
+          updated_at: string
+        }
+        Insert: {
+          id?: boolean
+          model?: string
+          thinking_level?: 'minimal' | 'low' | 'medium' | 'high'
+          input_price_per_million?: number
+          output_price_per_million?: number
+          updated_at?: string
+        }
+        Update: {
+          model?: string
+          thinking_level?: 'minimal' | 'low' | 'medium' | 'high'
+          input_price_per_million?: number
+          output_price_per_million?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      transcriptions: {
+        Row: {
+          id: string
+          video_id: string
+          language_code: string | null
+          status: 'pending' | 'running' | 'complete' | 'needs_review' | 'unavailable'
+          model: string
+          thinking_level: 'minimal' | 'low' | 'medium' | 'high'
+          requested_by_user_id: string | null
+          doubtful_phrase_count: number
+          missing_part_count: number
+          chunk_seconds: number
+          created_at: string
+          updated_at: string
+          completed_at: string | null
+        }
+        Insert: {
+          id?: string
+          video_id: string
+          language_code?: string | null
+          status?: 'pending' | 'running' | 'complete' | 'needs_review' | 'unavailable'
+          model: string
+          thinking_level: 'minimal' | 'low' | 'medium' | 'high'
+          requested_by_user_id?: string | null
+          doubtful_phrase_count?: number
+          missing_part_count?: number
+          chunk_seconds?: number
+          created_at?: string
+          updated_at?: string
+          completed_at?: string | null
+        }
+        Update: {
+          language_code?: string | null
+          status?: 'pending' | 'running' | 'complete' | 'needs_review' | 'unavailable'
+          model?: string
+          thinking_level?: 'minimal' | 'low' | 'medium' | 'high'
+          requested_by_user_id?: string | null
+          doubtful_phrase_count?: number
+          missing_part_count?: number
+          updated_at?: string
+          completed_at?: string | null
+        }
+        Relationships: []
+      }
+      transcription_phrases: {
+        Row: {
+          id: string
+          transcription_id: string
+          position: number
+          start_seconds: number
+          text: string
+          doubtful_time: boolean
+        }
+        Insert: {
+          id?: string
+          transcription_id: string
+          position: number
+          start_seconds: number
+          text: string
+          doubtful_time?: boolean
+        }
+        Update: {
+          start_seconds?: number
+          text?: string
+          doubtful_time?: boolean
+        }
+        Relationships: []
+      }
+      transcription_parts: {
+        Row: {
+          id: string
+          transcription_id: string
+          position: number
+          start_seconds: number
+          end_seconds: number
+          status: 'pending' | 'done' | 'missing'
+          attempts: number
+          last_error: string | null
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          transcription_id: string
+          position: number
+          start_seconds: number
+          end_seconds: number
+          status?: 'pending' | 'done' | 'missing'
+          attempts?: number
+          last_error?: string | null
+          updated_at?: string
+        }
+        Update: {
+          status?: 'pending' | 'done' | 'missing'
+          attempts?: number
+          last_error?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       channel_scan_firecrawl_transcript_targets: {
         Row: {
           job_id: string
@@ -1216,6 +1341,50 @@ export type Database = {
           p_completed_at: string
         }
         Returns: boolean
+      }
+      claim_transcription_job_with_attempt: {
+        Args: {
+          p_job_id: string
+          p_started_at: string
+          p_lease_id: string
+          p_lease_expires_at: string
+        }
+        Returns: { job_id: string; lease_id: string; attempt_id: string; attempt_number: number; payload: Json }[]
+      }
+      finish_transcription_job_attempt: {
+        Args: {
+          p_job_id: string
+          p_lease_id: string
+          p_attempt_id: string
+          p_status: 'pending' | 'completed' | 'failed'
+          p_completed_at: string
+          p_error_message: string | null
+          p_error_details: Json | null
+        }
+        Returns: boolean
+      }
+      save_transcription_part: {
+        Args: {
+          p_job_id: string
+          p_lease_id: string
+          p_transcription_id: string
+          p_part_position: number
+          p_status: 'pending' | 'done' | 'missing'
+          p_attempts: number
+          p_last_error: string | null
+          p_language_code: string | null
+          p_phrases: Json | null
+        }
+        Returns: boolean
+      }
+      finalize_transcription: {
+        Args: {
+          p_job_id: string
+          p_lease_id: string
+          p_transcription_id: string
+          p_close_pending: boolean
+        }
+        Returns: string | null
       }
       get_my_api_usage_summary: {
         Args: { p_since: string }

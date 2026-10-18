@@ -14,7 +14,7 @@ import { ESLint } from 'eslint'
 const require = createRequire(import.meta.url)
 const { getRootDirs } = require('@next/eslint-plugin-next/dist/utils/get-root-dirs')
 const { getUrlFromAppDirectory, getUrlFromPagesDirectories } = require('@next/eslint-plugin-next/dist/utils/url')
-const BASELINE_ROUTE_DIGEST = '986385dcc2679b156abbf3322d6be3ec93403d27ace981d33ee225559c074e69'
+const BASELINE_ROUTE_DIGEST = 'ee7fee8caa60e4a84da0770946ee655b9bee1241ec20e6cbed75d981ab92675d'
 
 /** Converte rootDirs Next nei medesimi path app/pages controllati dalla regola upstream. */
 function findNextRouteDirectories(rootDirs, relativeDirectories) {
@@ -63,13 +63,13 @@ describe('contratto rootDir nelle route Next', () => {
     fs.rmSync(fixtureRoot, { recursive: true, force: true })
   })
 
-  it('mantiene il default Utraya e verifica tutte le 101 route regex della baseline', async () => {
+  it('mantiene il default Utraya e verifica tutte le 105 route regex della baseline', async () => {
     const effectiveConfig = await new ESLint().calculateConfigForFile('eslint.config.mjs')
     const settings = effectiveConfig?.settings ?? {}
     const { rootDirs, routes } = discoverNextRoutes(settings)
 
     expect(rootDirs).toEqual([process.cwd()])
-    expect(routes).toHaveLength(101)
+    expect(routes).toHaveLength(105)
     expect(crypto.createHash('sha256').update(JSON.stringify(routes)).digest('hex')).toBe(BASELINE_ROUTE_DIGEST)
   })
 

@@ -11,6 +11,8 @@ import { notFound } from 'next/navigation'
 import { getLocale, getTranslations } from 'next-intl/server'
 import VideoActionsClient from './VideoActionsClient'
 import VideoEmbedPlayer from './VideoEmbedPlayer'
+import VideoTranscriptPanel, { type VideoTranscriptLabels } from '@/components/video/VideoTranscriptPanel'
+import { getTranscriptionViewModel } from '@/lib/services/transcription-requests'
 import { extractYouTubeVideoId } from '@/lib/utils/youtube-video-id'
 
 export const metadata: Metadata = {
@@ -95,6 +97,34 @@ export default async function VideoDetailPage({ params }: Props) {
   const embedUrl = youtubeVideoId
     ? `https://www.youtube-nocookie.com/embed/${youtubeVideoId}`
     : null
+
+  const transcription = await getTranscriptionViewModel({
+    supabase,
+    userId: session.userId,
+    video: { id: video.id, youtube_video_id: video.youtube_video_id, video_url: video.video_url },
+  })
+  const transcriptLabels: VideoTranscriptLabels = {
+    title: t('video.transcript.title'),
+    absent: t('video.transcript.absent'),
+    running: t('video.transcript.running', { done: '{done}', total: '{total}' }),
+    runningNoProgress: t('video.transcript.runningNoProgress'),
+    complete: t('video.transcript.complete'),
+    needsReview: t('video.transcript.needsReview'),
+    unavailable: t('video.transcript.unavailable'),
+    request: t('video.transcript.request'),
+    requesting: t('video.transcript.requesting'),
+    blockedGeminiKey: t('video.transcript.blockedGeminiKey'),
+    integrationsLink: t('nav.integrations'),
+    doubtfulTime: t('video.transcript.doubtfulTime'),
+    openOnYoutube: t('video.transcript.openOnYoutube', { time: '{time}' }),
+    jumpTo: t('video.transcript.jumpTo', { time: '{time}' }),
+    missingPartsOne: t('video.transcript.missingPartsOne', { count: '{count}' }),
+    missingPartsOther: t('video.transcript.missingPartsOther', { count: '{count}' }),
+    doubtfulOne: t('video.transcript.doubtfulOne', { count: '{count}' }),
+    doubtfulOther: t('video.transcript.doubtfulOther', { count: '{count}' }),
+    requestError: t('video.transcript.requestError'),
+    noPhrases: t('video.transcript.noPhrases'),
+  }
 
   // Format duration
   function formatDuration(seconds: number | null): string {
@@ -284,6 +314,8 @@ export default async function VideoDetailPage({ params }: Props) {
               </p>
             </div>
           )}
+
+          <VideoTranscriptPanel videoId={video.id} initial={transcription} labels={transcriptLabels} />
         </div>
 
         {/* SIDEBAR */}

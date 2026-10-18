@@ -483,7 +483,28 @@
     "subcategory": "Sottocategoria",
     "watchOnYoutube": "Guarda su YouTube",
     "aiAnalysisTitle": "Analisi AI Utraya",
-    "analysisPendingDetail": "Il risultato sarà disponibile tra qualche momento."
+    "analysisPendingDetail": "Il risultato sarà disponibile tra qualche momento.",
+    "transcript": {
+      "title": "Trascrizione",
+      "absent": "Nessuna trascrizione per questo video.",
+      "running": "Trascrizione in corso: {done} parti su {total}.",
+      "runningNoProgress": "Trascrizione in corso.",
+      "complete": "Clicca una frase per far partire il video da quel punto.",
+      "needsReview": "Trascrizione disponibile, ma alcuni punti vanno rivisti. Clicca una frase per far partire il video da quel punto.",
+      "unavailable": "Per questo video la trascrizione non è disponibile.",
+      "request": "Trascrivi",
+      "requesting": "Richiesta in corso…",
+      "blockedGeminiKey": "Per trascrivere serve una chiave Gemini personale valida: aggiungila in",
+      "doubtfulTime": "Tempo da verificare",
+      "openOnYoutube": "Apri su YouTube a {time}",
+      "jumpTo": "Vai a {time}",
+      "missingPartsOne": "{count} parte non trascritta",
+      "missingPartsOther": "{count} parti non trascritte",
+      "doubtfulOne": "{count} frase con tempo da verificare",
+      "doubtfulOther": "{count} frasi con tempo da verificare",
+      "requestError": "Impossibile avviare la trascrizione. Riprova più tardi.",
+      "noPhrases": "La trascrizione non contiene parlato."
+    }
   },
   "integrations": {
     "title": "Integrazioni",

@@ -478,3 +478,64 @@ describe('api usage accounting', () => {
     })
   })
 })
+
+describe('api usage: token letti dalla risposta e tariffe del profilo', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    insertMock.mockResolvedValue({ error: null })
+    fromMock.mockReturnValue({ insert: insertMock })
+    createAdminClientMock.mockReturnValue({ from: fromMock })
+  })
+
+  it('registra nello stesso evento i token letti su un clone senza consumare la risposta', async () => {
+    const response = await fetchAndRecordProviderRequest({
+      userId: 'owner-1',
+      provider: 'gemini',
+      operation: 'generateContent.transcribe',
+      model: 'gemini-3.1-flash-lite',
+      inputRateUsdPerMillion: 0.25,
+      outputRateUsdPerMillion: 1.5,
+      url: 'https://example.invalid/model:generateContent',
+      fetcher: vi.fn(async () => Response.json({ usageMetadata: { promptTokenCount: 11_000, candidatesTokenCount: 200, totalTokenCount: 11_200 } })),
+      readUsage: async (cloned) => {
+        const body = await cloned.json() as { usageMetadata: { promptTokenCount: number; candidatesTokenCount: number; totalTokenCount: number } }
+        return {
+          inputTokens: body.usageMetadata.promptTokenCount,
+          outputTokens: body.usageMetadata.candidatesTokenCount,
+          totalTokens: body.usageMetadata.totalTokenCount,
+        }
+      },
+    })
+
+    expect(await response.json()).toHaveProperty('usageMetadata')
+    expect(insertMock).toHaveBeenCalledTimes(1)
+    expect(insertMock.mock.calls[0][0]).toMatchObject({
+      outcome: 'success',
+      input_tokens: 11_000,
+      output_tokens: 200,
+      total_tokens: 11_200,
+      estimated_cost_usd: 0.00305,
+      input_rate_usd_per_million: 0.25,
+      output_rate_usd_per_million: 1.5,
+    })
+  })
+
+  it('un errore nella lettura dei token non cambia risposta ed esito', async () => {
+    const response = await fetchAndRecordProviderRequest({
+      userId: 'owner-1',
+      provider: 'gemini',
+      operation: 'generateContent.transcribe',
+      url: 'https://example.invalid/model:generateContent',
+      fetcher: vi.fn(async () => Response.json({ ok: true })),
+      readUsage: async () => { throw new Error('boom') },
+    })
+    expect(response.ok).toBe(true)
+    expect(insertMock.mock.calls[0][0]).toMatchObject({ outcome: 'success', input_tokens: null, estimated_cost_usd: null })
+  })
+
+  it('senza tariffe esplicite restano quelle predefinite', () => {
+    expect(buildApiUsageEventInsert({
+      userId: 'o', provider: 'gemini', operation: 'x', outcome: 'success', inputTokens: 1_000_000, outputTokens: 0, totalTokens: 1_000_000,
+    })).toMatchObject({ input_rate_usd_per_million: 0.3, estimated_cost_usd: 0.3 })
+  })
+})

@@ -40,8 +40,14 @@ export interface RecordApiUsageInput {
   totalTokens?: number | null
   quotaUnits?: number | null
   quotaBucket?: 'default' | 'search' | null
+  /** Tariffe Gemini USD/1M token del profilo di trascrizione; se assenti valgono quelle predefinite. */
+  inputRateUsdPerMillion?: number | null
+  outputRateUsdPerMillion?: number | null
   occurredAt?: string
 }
+
+/** Campi d'uso letti dalla risposta del provider dopo la richiesta (token Gemini). */
+export type ProviderResponseUsage = Pick<RecordApiUsageInput, 'inputTokens' | 'outputTokens' | 'totalTokens'>
 
 export function getYouTubeQuotaEstimate(operation: string): { units: number; bucket: 'default' | 'search' } {
   // Gli endpoint read correnti dell'app costano 1 unità per richiesta secondo Google.
@@ -57,9 +63,16 @@ export function getYouTubeQuotaEstimate(operation: string): { units: number; buc
   return { units: 1, bucket: operation === 'search.list' ? 'search' : 'default' }
 }
 
-export function estimateGeminiCostUsd(inputTokens: number, outputTokens: number): number {
-  const raw = (inputTokens * GEMINI_INPUT_RATE_USD_PER_MILLION
-    + outputTokens * GEMINI_OUTPUT_RATE_USD_PER_MILLION) / 1_000_000
+export function estimateGeminiCostUsd(
+  inputTokens: number,
+  outputTokens: number,
+  rates: { inputUsdPerMillion: number; outputUsdPerMillion: number } = {
+    inputUsdPerMillion: GEMINI_INPUT_RATE_USD_PER_MILLION,
+    outputUsdPerMillion: GEMINI_OUTPUT_RATE_USD_PER_MILLION,
+  }
+): number {
+  const raw = (inputTokens * rates.inputUsdPerMillion
+    + outputTokens * rates.outputUsdPerMillion) / 1_000_000
   return Number(raw.toFixed(9))
 }
 
@@ -68,6 +81,8 @@ export function buildApiUsageEventInsert(input: RecordApiUsageInput): Database['
   const inputTokens = isGemini ? input.inputTokens ?? null : null
   const outputTokens = isGemini ? input.outputTokens ?? null : null
   const hasTokenUsage = isGemini && inputTokens !== null && outputTokens !== null
+  const inputRate = input.inputRateUsdPerMillion ?? GEMINI_INPUT_RATE_USD_PER_MILLION
+  const outputRate = input.outputRateUsdPerMillion ?? GEMINI_OUTPUT_RATE_USD_PER_MILLION
   const quota = input.provider === 'youtube'
     ? input.quotaUnits === undefined || input.quotaUnits === null
       ? getYouTubeQuotaEstimate(input.operation)
@@ -86,9 +101,11 @@ export function buildApiUsageEventInsert(input: RecordApiUsageInput): Database['
     input_tokens: inputTokens,
     output_tokens: outputTokens,
     total_tokens: isGemini ? input.totalTokens ?? null : null,
-    estimated_cost_usd: hasTokenUsage ? estimateGeminiCostUsd(inputTokens, outputTokens) : null,
-    input_rate_usd_per_million: hasTokenUsage ? GEMINI_INPUT_RATE_USD_PER_MILLION : null,
-    output_rate_usd_per_million: hasTokenUsage ? GEMINI_OUTPUT_RATE_USD_PER_MILLION : null,
+    estimated_cost_usd: hasTokenUsage
+      ? estimateGeminiCostUsd(inputTokens, outputTokens, { inputUsdPerMillion: inputRate, outputUsdPerMillion: outputRate })
+      : null,
+    input_rate_usd_per_million: hasTokenUsage ? inputRate : null,
+    output_rate_usd_per_million: hasTokenUsage ? outputRate : null,
     quota_units: quota?.units ?? null,
     quota_bucket: quota?.bucket ?? null,
   }
@@ -98,15 +115,24 @@ export interface FetchAndRecordInput extends Omit<RecordApiUsageInput, 'outcome'
   url: string
   init?: RequestInit
   fetcher?: typeof fetch
+  /**
+   * Legge i token dalla risposta (su un clone, mai sull'originale) per registrarli nello stesso evento.
+   * Un errore nella lettura non cambia la risposta ne' l'esito: l'evento resta senza token.
+   */
+  readUsage?: (response: Response) => Promise<ProviderResponseUsage | null>
 }
 
 /** Esegue una singola richiesta provider e registra l'esito senza serializzare URL o payload. */
 export async function fetchAndRecordProviderRequest(input: FetchAndRecordInput): Promise<Response> {
-  const { url, init, fetcher = fetch, ...usageInput } = input
+  const { url, init, fetcher = fetch, readUsage, ...usageInput } = input
   try {
     const response = await fetcher(url, init)
+    const responseUsage = response.ok && readUsage
+      ? await Promise.resolve().then(() => readUsage(response.clone())).catch(() => null)
+      : null
     await recordApiUsageEvent({
       ...usageInput,
+      ...(responseUsage ?? {}),
       outcome: response.ok ? 'success' : 'http_error',
       httpStatus: response.status,
       errorCategory: response.ok ? null : 'provider_error',
