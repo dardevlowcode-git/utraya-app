@@ -81,8 +81,12 @@ export async function recordLegalAcceptance(params: {
     }
   })
 
-  const { error } = await supabase.from('legal_acceptances').insert(rows)
-  if (error && !error.message.includes('duplicate key value')) {
-    throw new Error(`Errore insert legal_acceptances: ${error.message}`)
+  // Una insert per riga: un duplicato (indice unico parziale user/kind/version) non deve scartare le altre righe.
+  for (const row of rows) {
+    const { error } = await supabase.from('legal_acceptances').insert(row)
+    const isDuplicate = error && (error.code === '23505' || error.message?.includes('duplicate key value'))
+    if (error && !isDuplicate) {
+      throw new Error(`Errore insert legal_acceptances: ${error.message}`)
+    }
   }
 }
