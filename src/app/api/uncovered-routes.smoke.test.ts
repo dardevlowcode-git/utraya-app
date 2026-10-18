@@ -43,8 +43,6 @@ import { POST as postAdminLogout } from '@/app/api/admin/auth/logout/route'
 import { POST as postAdminScanNow } from '@/app/api/admin/channels/[channelId]/scan-now/route'
 import { DELETE as deleteAdminJob, POST as postAdminJob } from '@/app/api/admin/jobs/[jobId]/route'
 import { POST as postAdminLogsCleanup } from '@/app/api/admin/logs/cleanup/route'
-import { POST as postAdminTranscriptRunNow } from '@/app/api/admin/transcripts/run-now/route'
-import { GET as getAdminTranscriptSettings, PUT as putAdminTranscriptSettings } from '@/app/api/admin/transcripts/settings/route'
 import { DELETE as deleteAdminUser } from '@/app/api/admin/users/[userId]/route'
 import { GET as getDailyDeletionExecutor } from '@/app/api/cron/daily-deletion-executor/route'
 import { DELETE as deleteIntegrations, GET as getIntegrations, POST as postIntegrations } from '@/app/api/integrations/route'
@@ -93,9 +91,6 @@ const smokeCases: SmokeCase[] = [
   { routeFile: 'src/app/api/admin/jobs/[jobId]/route.ts', method: 'POST', expectedStatus: 401, run: () => postAdminJob(requestFor('POST', '/admin/jobs/not-a-real-id'), { params: Promise.resolve({ jobId: 'not-a-real-id' }) }) },
   { routeFile: 'src/app/api/admin/jobs/[jobId]/route.ts', method: 'DELETE', expectedStatus: 401, run: () => deleteAdminJob(requestFor('DELETE', '/admin/jobs/not-a-real-id'), { params: Promise.resolve({ jobId: 'not-a-real-id' }) }) },
   { routeFile: 'src/app/api/admin/logs/cleanup/route.ts', method: 'POST', expectedStatus: 401, run: () => postAdminLogsCleanup(requestFor('POST', '/admin/logs/cleanup')) },
-  { routeFile: 'src/app/api/admin/transcripts/run-now/route.ts', method: 'POST', expectedStatus: 401, run: () => postAdminTranscriptRunNow(requestFor('POST', '/admin/transcripts/run-now')) },
-  { routeFile: 'src/app/api/admin/transcripts/settings/route.ts', method: 'GET', expectedStatus: 401, run: () => getAdminTranscriptSettings(requestFor('GET', '/admin/transcripts/settings')) },
-  { routeFile: 'src/app/api/admin/transcripts/settings/route.ts', method: 'PUT', expectedStatus: 401, run: () => putAdminTranscriptSettings(requestFor('PUT', '/admin/transcripts/settings')) },
   { routeFile: 'src/app/api/admin/users/[userId]/route.ts', method: 'DELETE', expectedStatus: 401, run: () => deleteAdminUser(requestFor('DELETE', '/admin/users/not-a-real-id'), { params: Promise.resolve({ userId: 'not-a-real-id' }) }) },
   { routeFile: 'src/app/api/cron/daily-deletion-executor/route.ts', method: 'GET', expectedStatus: 401, run: () => getDailyDeletionExecutor(requestFor('GET', '/cron/daily-deletion-executor')) },
   { routeFile: 'src/app/api/legal/accept/route.ts', method: 'POST', expectedStatus: 401, run: () => postLegalAcceptance(requestFor('POST', '/legal/accept')) },

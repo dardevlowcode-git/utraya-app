@@ -35,6 +35,19 @@ SELECT public.test_assert_true(
   'service_role non superuser possiede gli EXECUTE e i privilegi effettivi richiesti'
 );
 
+SELECT public.test_assert_true(
+  has_function_privilege('service_role', 'public.commit_fenced_channel_import(uuid,uuid,uuid,uuid,text,text,text,jsonb,jsonb,text,integer)', 'EXECUTE'),
+  'commit_fenced_channel_import resta eseguibile da service_role'
+);
+SELECT public.test_assert_true(
+  (SELECT p.prosecdef FROM pg_catalog.pg_proc p WHERE p.oid = 'public.commit_fenced_channel_import(uuid,uuid,uuid,uuid,text,text,text,jsonb,jsonb,text,integer)'::regprocedure),
+  'commit_fenced_channel_import resta SECURITY DEFINER'
+);
+SELECT public.test_assert_true(
+  (SELECT pg_catalog.array_to_string(p.proconfig, ',') = 'search_path=""' FROM pg_catalog.pg_proc p WHERE p.oid = 'public.commit_fenced_channel_import(uuid,uuid,uuid,uuid,text,text,text,jsonb,jsonb,text,integer)'::regprocedure),
+  'commit_fenced_channel_import mantiene search_path vuoto'
+);
+
 INSERT INTO public.channels (id, youtube_channel_id, title) VALUES
   ('20000000-0000-4000-8000-000000000001', 'UC-rotation', 'Rotation channel'),
   ('20000000-0000-4000-8000-000000000002', 'UC-revocation', 'Revocation channel'),
@@ -54,7 +67,7 @@ INSERT INTO public.user_channels (user_id, channel_id, is_active, added_at) VALU
   ('00000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000003', TRUE, '2020-01-01T00:00:00Z'),
   ('00000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000004', TRUE, '2020-01-01T00:00:00Z');
 
--- Un gate Firecrawl chiuso non deve alimentare placeholder della pipeline transcript legacy.
+-- L'import canonico non crea placeholder transcript né target di recupero (gate storico chiuso).
 INSERT INTO public.jobs (id, job_type, status, payload, lease_id, lease_expires_at)
 VALUES (
   '30000000-0000-4000-8000-000000000008', 'sync_channel_delta', 'running',
@@ -72,10 +85,10 @@ BEGIN
     'success', 1
   );
   IF EXISTS (SELECT 1 FROM public.video_transcripts WHERE youtube_video_id = 'yt-new-gate-off') THEN
-    RAISE EXCEPTION 'closed_firecrawl_gate_created_legacy_transcript_placeholder';
+    RAISE EXCEPTION 'import_created_legacy_transcript_placeholder';
   END IF;
   IF EXISTS (SELECT 1 FROM public.channel_scan_firecrawl_transcript_targets WHERE youtube_video_id = 'yt-new-gate-off') THEN
-    RAISE EXCEPTION 'closed_firecrawl_gate_created_recovery_target';
+    RAISE EXCEPTION 'import_created_recovery_target';
   END IF;
 END;
 $$;
@@ -731,7 +744,7 @@ END;
 $$;
 RESET ROLE;
 
--- Canonical import enqueues only a genuinely new video; cached provider replies and transcript writes stay idempotent.
+-- Dopo la rimozione del recupero Firecrawl l'import canonico non accoda target, nemmeno con il gate storico aperto.
 INSERT INTO public.videos (id, channel_id, youtube_video_id, title, published_at, video_url)
 VALUES (
   '21000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000004',
@@ -754,103 +767,37 @@ SET ROLE service_role;
 DO $$
 DECLARE
   v_import JSONB;
-  v_claim RECORD;
-  v_cached RECORD;
-  v_completion JSONB;
-  v_video_id UUID;
-  v_request_key TEXT := pg_catalog.repeat('b', 64);
   v_rows JSONB := '[
     {"youtube_video_id":"yt-existing","title":"Existing video refreshed","published_at":"2025-01-01T00:00:00Z","video_url":"https://youtube.invalid/watch?v=yt-existing","video_type":"standard","availability_status":"available"},
     {"youtube_video_id":"yt-new","title":"New video","published_at":"2026-01-01T00:00:00Z","video_url":"https://youtube.invalid/watch?v=yt-new","video_type":"standard","availability_status":"available"}
   ]'::JSONB;
 BEGIN
-  v_import := public.commit_fenced_channel_import(
-    '30000000-0000-4000-8000-000000000006', '50000000-0000-4000-8000-000000000030',
-    '00000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000004',
-    'UC-canonical', 'Canonical channel', '@canonical', '{}'::JSONB, v_rows, 'success', 2
-  );
-  IF (SELECT count(*) FROM public.channel_scan_firecrawl_transcript_targets
-      WHERE job_id = '30000000-0000-4000-8000-000000000006') <> 1
-     OR NOT EXISTS (SELECT 1 FROM public.channel_scan_firecrawl_transcript_targets
-                    WHERE job_id = '30000000-0000-4000-8000-000000000006' AND youtube_video_id = 'yt-new') THEN
-    RAISE EXCEPTION 'new_video_target_enqueue_failed_or_included_existing_video';
+  FOR i IN 1..2 LOOP
+    v_import := public.commit_fenced_channel_import(
+      '30000000-0000-4000-8000-000000000006', '50000000-0000-4000-8000-000000000030',
+      '00000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000004',
+      'UC-canonical', 'Canonical channel', '@canonical', '{}'::JSONB, v_rows, 'success', 2
+    );
+    IF (v_import->>'importedCount')::INTEGER <> 2 OR (v_import->>'scannedCount')::INTEGER <> 2 THEN
+      RAISE EXCEPTION 'canonical_import_result_changed';
+    END IF;
+  END LOOP;
+  IF (SELECT title FROM public.videos WHERE youtube_video_id = 'yt-existing') <> 'Existing video refreshed'
+     OR (SELECT count(*) FROM public.videos WHERE youtube_video_id = 'yt-new') <> 1 THEN
+    RAISE EXCEPTION 'canonical_import_did_not_upsert_videos';
   END IF;
-
-  PERFORM public.commit_fenced_channel_import(
-    '30000000-0000-4000-8000-000000000006', '50000000-0000-4000-8000-000000000030',
-    '00000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000004',
-    'UC-canonical', 'Canonical channel', '@canonical', '{}'::JSONB, v_rows, 'success', 2
-  );
-  IF (SELECT count(*) FROM public.channel_scan_firecrawl_transcript_targets
-      WHERE job_id = '30000000-0000-4000-8000-000000000006') <> 1 THEN
-    RAISE EXCEPTION 'repeated_canonical_import_duplicated_transcript_target';
+  IF EXISTS (SELECT 1 FROM public.channel_scan_firecrawl_transcript_targets
+             WHERE job_id = '30000000-0000-4000-8000-000000000006') THEN
+    RAISE EXCEPTION 'canonical_import_enqueued_firecrawl_target';
   END IF;
-
-  SELECT video_id INTO v_video_id FROM public.channel_scan_firecrawl_transcript_targets
-  WHERE job_id = '30000000-0000-4000-8000-000000000006' AND youtube_video_id = 'yt-new';
-  SELECT * INTO v_claim FROM public.claim_channel_scan_provider_request(
-    '30000000-0000-4000-8000-000000000006', '50000000-0000-4000-8000-000000000030',
-    '20000000-0000-4000-8000-000000000004', v_request_key, 'firecrawl'
-  );
-  IF v_claim.status <> 'assigned' OR v_claim.user_id <> '00000000-0000-4000-8000-000000000001' THEN
-    RAISE EXCEPTION 'firecrawl_request_not_claimed_by_eligible_follower';
-  END IF;
-
-  IF NOT public.finish_channel_scan_provider_attempt(
-    '30000000-0000-4000-8000-000000000006', '50000000-0000-4000-8000-000000000030', v_request_key,
-    v_claim.credential_id, v_claim.key_version, 'success', '{"result":"cached synthetic response"}'::JSONB, NULL
-  ) THEN RAISE EXCEPTION 'successful_firecrawl_response_not_persisted'; END IF;
-
-  SELECT * INTO v_cached FROM public.claim_channel_scan_provider_request(
-    '30000000-0000-4000-8000-000000000006', '50000000-0000-4000-8000-000000000030',
-    '20000000-0000-4000-8000-000000000004', v_request_key, 'firecrawl'
-  );
-  IF v_cached.status <> 'cached' OR v_cached.response->>'result' <> 'cached synthetic response' THEN
-    RAISE EXCEPTION 'successful_provider_response_not_reused_canonically';
-  END IF;
-
-  v_completion := public.complete_firecrawl_transcript_recovery_target(
-    '30000000-0000-4000-8000-000000000006', '50000000-0000-4000-8000-000000000030',
-    v_video_id, 'yt-new', 'fetched', 'unknown', 'synthetic test transcript'
-  );
-  IF v_completion->>'status' <> 'fetched' OR (v_completion->>'hasPending')::BOOLEAN THEN
-    RAISE EXCEPTION 'fenced_transcript_completion_failed';
-  END IF;
-
-  PERFORM public.commit_fenced_channel_import(
-    '30000000-0000-4000-8000-000000000006', '50000000-0000-4000-8000-000000000030',
-    '00000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000004',
-    'UC-canonical', 'Canonical channel', '@canonical', '{}'::JSONB, v_rows, 'success', 2
-  );
-  IF (SELECT count(*) FROM public.video_transcripts WHERE youtube_video_id = 'yt-new' AND transcript_status = 'fetched') <> 1
-     OR (SELECT count(*) FROM public.channel_scan_firecrawl_transcript_targets
-         WHERE youtube_video_id = 'yt-new') <> 1 THEN
-    RAISE EXCEPTION 'canonical_transcript_or_target_not_idempotent';
+  IF EXISTS (SELECT 1 FROM public.video_transcripts WHERE youtube_video_id = 'yt-new') THEN
+    RAISE EXCEPTION 'canonical_import_created_transcript_row';
   END IF;
 END;
 $$;
 RESET ROLE;
 
 UPDATE public.firecrawl_transcript_recovery_settings SET enabled = FALSE WHERE id = TRUE;
-UPDATE public.channel_scan_firecrawl_transcript_targets
-SET status = 'pending'
-WHERE job_id = '30000000-0000-4000-8000-000000000006' AND youtube_video_id = 'yt-new';
-SET ROLE service_role;
-DO $$
-DECLARE
-  v_claim RECORD;
-BEGIN
-  SELECT * INTO v_claim FROM public.claim_channel_scan_provider_request(
-    '30000000-0000-4000-8000-000000000006', '50000000-0000-4000-8000-000000000030',
-    '20000000-0000-4000-8000-000000000004', pg_catalog.repeat('d', 64), 'firecrawl'
-  );
-  IF v_claim.status <> 'disabled' THEN RAISE EXCEPTION 'closed_firecrawl_gate_did_not_block_claim'; END IF;
-END;
-$$;
-RESET ROLE;
-UPDATE public.channel_scan_firecrawl_transcript_targets
-SET status = 'disabled'
-WHERE job_id = '30000000-0000-4000-8000-000000000006' AND youtube_video_id = 'yt-new';
 SELECT public.test_assert_true(
   (SELECT enabled = FALSE FROM public.firecrawl_transcript_recovery_settings WHERE id = TRUE),
   'il test lascia il gate Firecrawl chiuso'

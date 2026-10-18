@@ -13,7 +13,6 @@ import type { Database } from '@/lib/types/database'
 import { importChannelVideos } from '@/lib/services/videos'
 import type { AppSupabaseClient } from '@/lib/supabase/types'
 import { deferScanJobAttempt, getDeferredScanDisposition } from '@/lib/services/youtube-channel-scan'
-import { processNextFirecrawlTranscriptRecovery } from '@/lib/services/firecrawl-transcript-recovery'
 
 type UserChannelRow = Database['public']['Tables']['user_channels']['Row']
 type ChannelRow = Database['public']['Tables']['channels']['Row']
@@ -642,9 +641,6 @@ async function runScanJobLease(
       // Import canonico richiede tabelle admin-only; il service verifica che resti un follower attivo.
       bypassUserChannelGuard: true,
       maxResults: params.maxResults,
-    })
-    await processNextFirecrawlTranscriptRecovery({
-      lease: { jobId: params.jobId, leaseId, channelId: params.channelId },
     })
   } catch (error) {
     operationError = error

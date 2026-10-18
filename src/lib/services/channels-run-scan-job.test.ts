@@ -7,13 +7,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AppError } from '@/lib/utils/errors'
 
-const { createAdminClientMock, claimScanJobMock, finishScanJobMock, deferScanJobMock, importChannelVideosMock, processFirecrawlMock, events } = vi.hoisted(() => ({
+const { createAdminClientMock, claimScanJobMock, finishScanJobMock, deferScanJobMock, importChannelVideosMock, events } = vi.hoisted(() => ({
   createAdminClientMock: vi.fn(),
   claimScanJobMock: vi.fn(),
   finishScanJobMock: vi.fn(),
   deferScanJobMock: vi.fn(),
   importChannelVideosMock: vi.fn(),
-  processFirecrawlMock: vi.fn(),
   events: [] as string[],
 }))
 
@@ -23,9 +22,6 @@ vi.mock('@/lib/supabase/admin', () => ({
 
 vi.mock('@/lib/services/videos', () => ({
   importChannelVideos: importChannelVideosMock,
-}))
-vi.mock('@/lib/services/firecrawl-transcript-recovery', () => ({
-  processNextFirecrawlTranscriptRecovery: processFirecrawlMock,
 }))
 
 import { runScanJob } from '@/lib/services/channels'
@@ -61,7 +57,6 @@ describe('runScanJob attempt lifecycle', () => {
       return { data: true, error: null }
     })
     deferScanJobMock.mockImplementation(async () => ({ data: true, error: null }))
-    processFirecrawlMock.mockResolvedValue({ status: 'disabled' })
     createAdminClientMock.mockReturnValue({
       rpc: vi.fn((name: string, args: unknown) => {
         if (name === 'claim_scan_job_with_attempt') return claimScanJobMock(args)
@@ -85,10 +80,6 @@ describe('runScanJob attempt lifecycle', () => {
       await importGate
       return { channelId: 'channel-1', importedCount: 0, scannedCount: 0 }
     })
-    processFirecrawlMock.mockImplementation(async () => {
-      events.push('firecrawl-recovery')
-      return { status: 'disabled' }
-    })
 
     const execution = runScanJob({ userId: 'user-1', channelId: 'channel-1', jobId: 'job-1' })
     await importStarted
@@ -100,17 +91,13 @@ describe('runScanJob attempt lifecycle', () => {
     }
 
     await expect(execution).resolves.toEqual({ claimed: true })
-    expect(events).toEqual(['claim-with-running-attempt', 'import-started', 'firecrawl-recovery', 'finish-attempt'])
+    expect(events).toEqual(['claim-with-running-attempt', 'import-started', 'finish-attempt'])
     expect(finishScanJobMock).toHaveBeenCalledWith(expect.objectContaining({
       p_job_id: 'job-1',
       p_lease_id: claimScanJobMock.mock.calls[0][0].p_lease_id,
       p_attempt_id: 'attempt-1',
       p_status: 'completed',
     }))
-    expect(processFirecrawlMock).toHaveBeenCalledWith({ lease: expect.objectContaining({
-      jobId: 'job-1',
-      channelId: 'channel-1',
-    }) })
   })
 
   it('records a missing provider key on the same attempt and terminalizes the job', async () => {
@@ -240,31 +227,5 @@ describe('runScanJob attempt lifecycle', () => {
       p_attempt_id: 'attempt-2',
       p_status: 'completed',
     }))
-  })
-
-  it('defers Firecrawl con la stessa lease fenced dopo import e riprende nella lease seguente', async () => {
-    let claimNumber = 0
-    claimScanJobMock.mockImplementation(async (args: { p_lease_id: string }) => {
-      claimNumber += 1
-      return { data: [{ job_id: 'job-1', lease_id: args.p_lease_id, attempt_id: `attempt-${claimNumber}`, attempt_number: claimNumber }], error: null }
-    })
-    importChannelVideosMock.mockImplementation(async () => { events.push('import-committed') })
-    processFirecrawlMock
-      .mockRejectedValueOnce(new AppError('Firecrawl checkpoint', 'temporary', 409, {
-        channelScanDisposition: 'deferred',
-        dispositionReason: 'provider_request_checkpoint',
-      }))
-      .mockImplementationOnce(async () => { events.push('firecrawl-recovered'); return { status: 'idle' } })
-
-    await expect(runScanJob({ userId: 'user-1', channelId: 'channel-1', jobId: 'job-1' }))
-      .resolves.toEqual({ claimed: true })
-
-    expect(deferScanJobMock).toHaveBeenCalledWith(expect.objectContaining({
-      p_attempt_id: 'attempt-1',
-      p_reason: 'provider_request_checkpoint',
-    }))
-    expect(events).toEqual(['import-committed', 'import-committed', 'firecrawl-recovered', 'finish-attempt'])
-    expect(processFirecrawlMock).toHaveBeenCalledTimes(2)
-    expect(finishScanJobMock).toHaveBeenCalledWith(expect.objectContaining({ p_attempt_id: 'attempt-2', p_status: 'completed' }))
   })
 })

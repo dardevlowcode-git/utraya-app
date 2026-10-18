@@ -237,7 +237,6 @@ try {
 
   for (const [name, pathname] of [
     ['cron daily-sync', '/api/cron/daily-sync'],
-    ['cron transcripts', '/api/cron/transcripts'],
   ]) {
     await check(name, pathname, (response, body) =>
       response.status === 401
