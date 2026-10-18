@@ -20,6 +20,7 @@ updates:
   # ---------------------------------------------------------------------------
   - package-ecosystem: "npm"
     directory: "/"          # package.json e' qui
+    target-branch: "dev"    # le PR entrano dal flusso dev → preprod → main
     schedule:
       interval: "weekly"
       day: "monday"
@@ -54,6 +55,7 @@ updates:
   # ---------------------------------------------------------------------------
   - package-ecosystem: "github-actions"
     directory: "/"             # i workflow sono in /.github/workflows/
+    target-branch: "dev"
     schedule:
       interval: "weekly"
       day: "monday"
