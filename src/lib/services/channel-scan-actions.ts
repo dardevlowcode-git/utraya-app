@@ -9,6 +9,7 @@ import {
   enqueueScanJobForUser,
   runScanJob,
 } from '@/lib/services/channels'
+import { runAutoTranscriptionsForChannel } from '@/lib/services/transcription-auto'
 import type { AppSupabaseClient } from '@/lib/supabase/types'
 
 export type QueuedScan = {
@@ -21,6 +22,7 @@ type ScanSource = 'manual_scan' | 'import_channel' | 'add_channel'
 
 // Costruisce il task background che esegue lo scan dopo la risposta API.
 // Gli errori restano registrati sul job; la risposta e` gia` stata consegnata.
+// Dopo lo scan lavora un job di trascrizione automatica del canale (video nuovi fino a 90 minuti), nello stesso after().
 function buildScanBackground(params: { userId: string; channelId: string; jobId: string; maxResults?: number }): () => Promise<void> {
   return async () => {
     try {
@@ -28,6 +30,7 @@ function buildScanBackground(params: { userId: string; channelId: string; jobId:
     } catch {
       // Il job registra lo stato failed; nessuna azione sulla risposta API.
     }
+    await runAutoTranscriptionsForChannel(params.channelId)
   }
 }
 

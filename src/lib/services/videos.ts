@@ -980,6 +980,25 @@ export async function importChannelVideos(params: {
     }
   }
 
+  // Video davvero nuovi: letti prima dell'upsert, dopo non sarebbero più distinguibili da quelli già presenti.
+  const { data: existingRows, error: existingError } = await admin
+    .from('videos')
+    .select('youtube_video_id')
+    .in('youtube_video_id', dedupedRows.map((row) => row.youtube_video_id))
+  if (existingError) throw new AppError('Lettura video esistenti fallita', 'unknown', 500, { cause: existingError.message })
+  // Prima scansione del canale (nessuna sync precedente, letta prima di aggiornare lo stato): video storici, nessun accodamento.
+  const { data: previousSync, error: previousSyncError } = await admin
+    .from('canonical_sync_state')
+    .select('last_sync_at')
+    .eq('channel_id', channel.id)
+    .maybeSingle()
+  if (previousSyncError) throw new AppError('Lettura stato sync fallita', 'unknown', 500, { cause: previousSyncError.message })
+  const isFirstScan = !previousSync?.last_sync_at
+  const existingIds = new Set((existingRows ?? []).map((row) => row.youtube_video_id))
+  const newVideoIds = isFirstScan
+    ? []
+    : dedupedRows.map((row) => row.youtube_video_id).filter((id) => !existingIds.has(id))
+
   const { data: insertedRows, error: insertError } = await queryClient
     .from('videos')
     .upsert(dedupedRows, { onConflict: 'youtube_video_id' })
@@ -1009,6 +1028,13 @@ export async function importChannelVideos(params: {
     .eq('user_id', params.userId)
     .eq('provider', 'youtube')
   if (credentialUpdateError) throw new AppError('Aggiornamento stato credenziale fallito', 'unknown', 500, { cause: credentialUpdateError.message })
+
+    // Percorso senza lease (import manuale): accodamento idempotente dei soli video nuovi, non bloccante.
+    if (newVideoIds.length > 0) {
+      await admin
+        .rpc('enqueue_auto_transcriptions', { p_channel_id: channel.id, p_youtube_video_ids: newVideoIds })
+        .then(() => undefined, () => undefined)
+    }
 
     return {
       channelId: channel.id,

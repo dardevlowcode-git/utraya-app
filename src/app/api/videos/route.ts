@@ -4,6 +4,7 @@
  * Flusso: La route viene richiamata dal client (o da altre parti server), usa servizi/utilita` in `src/lib` e poi ritorna JSON/HTTP status.
  */
 
+import { after } from 'next/server'
 import { getCurrentSession } from '@/lib/auth/provider'
 import {
   getVideosForUser,
@@ -11,8 +12,12 @@ import {
   setVideoSeenStatusForUser,
   setVideoWatchlistForUser,
 } from '@/lib/services/videos'
+import { runAutoTranscriptionsForChannel } from '@/lib/services/transcription-auto'
 import { AppError, errorResponse } from '@/lib/utils/errors'
 import { ensureJsonRequest, ensureSameOrigin, getRequestId } from '@/lib/security/http'
+
+/** L'import gira nella richiesta e il worker di trascrizione in after(): serve la durata massima dei job lunghi. */
+export const maxDuration = 300
 
 interface VideosPostBody {
   action?: 'import_channel' | 'set_seen_status' | 'set_watchlist'
@@ -125,6 +130,8 @@ export async function POST(request: Request) {
         // ownership del canale prima di eseguire la scrittura globale.
         bypassUserChannelGuard: true,
       })
+      // after() riceve la Promise del worker (ADR-014): trascrizione automatica dei video appena importati.
+      after(() => runAutoTranscriptionsForChannel(result.channelId))
 
       return Response.json({
         data: {

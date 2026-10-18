@@ -436,6 +436,19 @@ export async function runDailyChannelSync(): Promise<DailySyncResult> {
       }
     }
 
+    // Le scansioni di questa esecuzione possono aver accodato trascrizioni automatiche: si avviano con la
+    // continuazione interna (un job per invocazione, nessun lavoro in linea) senza consumare il budget del cron.
+    try {
+      const queued = await recoverTranscriptionJobs(5, { inline: false })
+      if (queued.found > 0) {
+        await writeLog(admin, 'info', 'Started pending transcription jobs after sync', queued)
+      }
+    } catch (error) {
+      await writeLog(admin, 'warn', 'Unable to start pending transcription jobs after sync', {
+        error: error instanceof Error ? error.message : 'recovery_failed',
+      })
+    }
+
     baseResult.success = baseResult.failedChannels === 0
   } finally {
     if (baseResult.lockAcquired) {

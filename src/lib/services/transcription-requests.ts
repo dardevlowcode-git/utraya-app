@@ -9,6 +9,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import type { AppSupabaseClient } from '@/lib/supabase/types'
 import {
   buildTranscriptionParts,
+  parseTranscriptionJobPayload,
   runTranscriptionJob,
   TRANSCRIPTION_CHUNK_SECONDS,
   TRANSCRIPTION_JOB_TYPE,
@@ -47,6 +48,8 @@ export interface RequestTranscriptionResult {
 }
 
 const PAGE_SIZE = 1000
+/** Il recupero legge più righe del limite per saltare i job automatici in attesa di una chiave. */
+const RECOVERY_SCAN_FACTOR = 10
 const DEFAULT_PROFILE = { model: 'gemini-3.1-flash-lite', thinking_level: 'minimal' as ThinkingLevel }
 
 /** Errore applicativo con codice stabile esposto dalla route. */
@@ -296,27 +299,57 @@ export function runTranscriptionJobNow(
   })
 }
 
+/** Canale del job se è automatico (chiave in rotazione fra i follower), altrimenti null. */
+export function autoJobChannelId(payload: unknown): string | null {
+  const parsed = parseTranscriptionJobPayload(payload)
+  return parsed && parsed.credentialOwnerUserId === null ? parsed.channelId : null
+}
+
+/** Vero se il canale ha almeno una chiave Gemini eleggibile (follower attivo, chiave valida). */
+export async function hasEligibleChannelCredential(admin: AdminClient, channelId: string): Promise<boolean> {
+  const { data, error } = await admin.rpc('has_eligible_transcription_credential', { p_channel_id: channelId })
+  if (error) throw new AppError('Impossibile verificare le chiavi del canale', 'unknown', 500, { cause: error.message })
+  return data === true
+}
+
 /**
- * Recupero per il daily-sync: job di trascrizione pending o con lease scaduta. Il primo è ripreso in linea con un
- * budget ridotto, gli altri ricevono una richiesta di continuazione (best effort).
+ * Recupero per il daily-sync: job di trascrizione pending o con lease scaduta. I job automatici senza chiave eleggibile
+ * restano in attesa senza essere reclamati. Con `inline` il primo è ripreso in linea con un budget ridotto; gli altri
+ * (o tutti, senza `inline`) ricevono una richiesta di continuazione (best effort).
  */
-export async function recoverTranscriptionJobs(limit = 5): Promise<{ found: number; resumedInline: number; continued: number }> {
+export async function recoverTranscriptionJobs(
+  limit = 5,
+  options: { inline?: boolean } = {}
+): Promise<{ found: number; resumedInline: number; continued: number }> {
+  const inline = options.inline ?? true
   const admin = createAdminClient()
   const nowIso = new Date().toISOString()
   const { data, error } = await admin
     .from('jobs')
-    .select('id')
+    .select('id, payload')
     .eq('job_type', TRANSCRIPTION_JOB_TYPE)
     .or(`status.eq.pending,and(status.eq.running,lease_expires_at.lt.${nowIso})`)
     .order('created_at', { ascending: true })
-    .limit(limit)
+    .limit(limit * RECOVERY_SCAN_FACTOR)
   if (error) throw new AppError('Impossibile leggere i job di trascrizione', 'unknown', 500, { cause: error.message })
 
-  const jobs = data ?? []
+  // Un solo controllo chiavi per canale; i job in attesa non occupano il budget del recupero.
+  const eligibleByChannel = new Map<string, boolean>()
+  const jobs: Array<{ id: string }> = []
+  for (const job of data ?? []) {
+    const channelId = autoJobChannelId(job.payload)
+    if (channelId) {
+      if (!eligibleByChannel.has(channelId)) eligibleByChannel.set(channelId, await hasEligibleChannelCredential(admin, channelId))
+      if (!eligibleByChannel.get(channelId)) continue
+    }
+    jobs.push({ id: job.id })
+    if (jobs.length >= limit) break
+  }
+
   let resumedInline = 0
   let continued = 0
   for (const [index, job] of jobs.entries()) {
-    if (index === 0) {
+    if (inline && index === 0) {
       await runTranscriptionJobNow(job.id, { softBudgetMs: 80_000, hardBudgetMs: 120_000 })
       resumedInline += 1
     } else {

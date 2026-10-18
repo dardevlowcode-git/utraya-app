@@ -8,7 +8,7 @@ import { after } from 'next/server'
 import { z } from 'zod'
 import { apiErr, apiOk } from '@/lib/http/apiResponse'
 import { getRequestId } from '@/lib/security/http'
-import { runTranscriptionJobNow } from '@/lib/services/transcription-requests'
+import { runTranscriptionJobAndChain } from '@/lib/services/transcription-auto'
 import { isAuthorizedCronRequest } from '@/lib/services/transcription-store'
 
 export const runtime = 'nodejs'
@@ -27,6 +27,6 @@ export async function POST(request: Request) {
 
   const { jobId } = body.data
   // after() riceve la Promise del worker (ADR-014).
-  after(() => runTranscriptionJobNow(jobId))
+  after(() => runTranscriptionJobAndChain(jobId))
   return apiOk({ accepted: true }, requestId, 202)
 }

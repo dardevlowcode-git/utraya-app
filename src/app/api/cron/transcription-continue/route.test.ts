@@ -8,7 +8,7 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 
 const { runJobMock, afterMock } = vi.hoisted(() => ({ runJobMock: vi.fn(), afterMock: vi.fn() }))
 
-vi.mock('@/lib/services/transcription-requests', () => ({ runTranscriptionJobNow: runJobMock }))
+vi.mock('@/lib/services/transcription-auto', () => ({ runTranscriptionJobAndChain: runJobMock }))
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: vi.fn() }))
 vi.mock('@/lib/services/integrations', () => ({ getProviderApiKeyForUserAsAdmin: vi.fn() }))
 vi.mock('next/server', async (importOriginal) => ({ ...(await importOriginal<typeof import('next/server')>()), after: afterMock }))

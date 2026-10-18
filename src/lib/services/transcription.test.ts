@@ -88,7 +88,7 @@ function createFakeStore(options: {
       state.jobStatus = 'running'
       return {
         attemptId: 'attempt-1',
-        payload: { videoId: 'video-1', transcriptionId: 'tr-1', requestedByUserId: OWNER, credentialOwnerUserId: OWNER },
+        payload: { videoId: 'video-1', transcriptionId: 'tr-1', requestedByUserId: OWNER, credentialOwnerUserId: OWNER, channelId: null },
       }
     },
     async loadContext() {
@@ -96,6 +96,12 @@ function createFakeStore(options: {
     },
     async loadCredential() {
       return credential
+    },
+    async acquireChannelCredential() {
+      throw new Error('richieste manuali: nessuna rotazione')
+    },
+    async releaseChannelCredential() {
+      throw new Error('richieste manuali: nessuna rotazione')
     },
     async savePart(input) {
       state.saves.push(input)

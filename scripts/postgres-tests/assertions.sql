@@ -1113,5 +1113,422 @@ SELECT public.test_assert_true(
   'la cancellazione del video elimina trascrizione e parti'
 );
 
+-- ===== Trascrizione automatica (ticket 04): accodamento atomico, eleggibilità e rotazione delle chiavi =====
+SELECT public.test_assert_true(
+  (SELECT bool_and(c.relrowsecurity) FROM pg_catalog.pg_class c
+   WHERE c.oid IN ('public.transcription_key_rotation_cursors'::regclass, 'public.transcription_job_credentials'::regclass)),
+  'RLS attiva sulle tabelle di rotazione'
+);
+SELECT public.test_assert_true(
+  NOT has_table_privilege('anon', 'public.transcription_key_rotation_cursors', 'SELECT')
+  AND NOT has_table_privilege('authenticated', 'public.transcription_key_rotation_cursors', 'SELECT')
+  AND NOT has_table_privilege('authenticated', 'public.transcription_job_credentials', 'SELECT')
+  AND NOT has_table_privilege('authenticated', 'public.transcription_job_credentials', 'INSERT')
+  AND has_table_privilege('service_role', 'public.transcription_key_rotation_cursors', 'UPDATE')
+  AND has_table_privilege('service_role', 'public.transcription_job_credentials', 'INSERT'),
+  'le tabelle di rotazione sono accessibili solo a service_role'
+);
+SELECT public.test_assert_true(
+  has_function_privilege('service_role', 'public.claim_transcription_job_credential(uuid,uuid,uuid)', 'EXECUTE')
+  AND has_function_privilege('service_role', 'public.release_transcription_job_credential(uuid,uuid,uuid,uuid,text,uuid,integer,text)', 'EXECUTE')
+  AND has_function_privilege('service_role', 'public.has_eligible_transcription_credential(uuid)', 'EXECUTE')
+  AND has_function_privilege('service_role', 'public.enqueue_auto_transcriptions(uuid,text[])', 'EXECUTE')
+  AND has_function_privilege('service_role', 'public.transcription_eligible_credentials(uuid)', 'EXECUTE')
+  AND NOT has_function_privilege('authenticated', 'public.claim_transcription_job_credential(uuid,uuid,uuid)', 'EXECUTE')
+  AND NOT has_function_privilege('authenticated', 'public.release_transcription_job_credential(uuid,uuid,uuid,uuid,text,uuid,integer,text)', 'EXECUTE')
+  AND NOT has_function_privilege('authenticated', 'public.has_eligible_transcription_credential(uuid)', 'EXECUTE')
+  AND NOT has_function_privilege('authenticated', 'public.enqueue_auto_transcriptions(uuid,text[])', 'EXECUTE')
+  AND NOT has_function_privilege('anon', 'public.enqueue_auto_transcriptions(uuid,text[])', 'EXECUTE')
+  AND NOT has_function_privilege('anon', 'public.claim_transcription_job_credential(uuid,uuid,uuid)', 'EXECUTE'),
+  'solo service_role esegue le RPC di rotazione e di accodamento automatico'
+);
+SELECT public.test_assert_true(
+  (SELECT p.prosecdef AND pg_catalog.array_to_string(p.proconfig, ',') = 'search_path=""'
+   FROM pg_catalog.pg_proc p WHERE p.oid = 'public.enqueue_auto_transcriptions(uuid,text[])'::regprocedure)
+  AND (SELECT p.prosecdef FROM pg_catalog.pg_proc p
+       WHERE p.oid = 'public.commit_fenced_channel_import(uuid,uuid,uuid,uuid,text,text,text,jsonb,jsonb,text,integer)'::regprocedure)
+  AND (SELECT pg_catalog.array_to_string(p.proconfig, ',') = 'search_path=""' FROM pg_catalog.pg_proc p
+       WHERE p.oid = 'public.commit_fenced_channel_import(uuid,uuid,uuid,uuid,text,text,text,jsonb,jsonb,text,integer)'::regprocedure)
+  AND has_function_privilege('service_role', 'public.commit_fenced_channel_import(uuid,uuid,uuid,uuid,text,text,text,jsonb,jsonb,text,integer)', 'EXECUTE'),
+  'accodamento SECURITY DEFINER con search_path vuoto; l import mantiene firma, definer e search_path'
+);
+
+-- ---- Accodamento atomico con l'import: solo video nuovi, soglia 90 minuti (5400 incluso), nessun doppione ----
+INSERT INTO public.users (id, email) VALUES
+  ('00000000-0000-4000-8000-0000000000a1', 'scan-owner@example.invalid'),
+  ('00000000-0000-4000-8000-0000000000b1', 'g1@example.invalid'),
+  ('00000000-0000-4000-8000-0000000000b2', 'g2@example.invalid'),
+  ('00000000-0000-4000-8000-0000000000b3', 'g3@example.invalid'),
+  ('00000000-0000-4000-8000-0000000000b4', 'outsider@example.invalid'),
+  ('00000000-0000-4000-8000-0000000000b5', 'invalid-key@example.invalid'),
+  ('00000000-0000-4000-8000-0000000000b6', 'left-channel@example.invalid'),
+  ('00000000-0000-4000-8000-0000000000b7', 'no-key@example.invalid');
+INSERT INTO public.channels (id, youtube_channel_id, title) VALUES
+  ('20000000-0000-4000-8000-0000000000c1', 'UC-auto-enqueue', 'Auto enqueue channel');
+INSERT INTO public.user_channels (user_id, channel_id, is_active, added_at) VALUES
+  ('00000000-0000-4000-8000-0000000000a1', '20000000-0000-4000-8000-0000000000c1', TRUE, '2020-01-01T00:00:00Z');
+INSERT INTO public.videos (id, channel_id, youtube_video_id, title, published_at, duration_seconds, video_url) VALUES
+  ('71000000-0000-4000-8000-000000000000', '20000000-0000-4000-8000-0000000000c1', 'auto-old', 'Video già presente', '2025-01-01T00:00:00Z', 300, 'https://youtube.invalid/watch?v=auto-old');
+INSERT INTO public.jobs (id, job_type, status, payload, lease_id, lease_expires_at) VALUES
+  ('72000000-0000-4000-8000-000000000001', 'sync_channel_delta', 'running',
+   jsonb_build_object('channelId', '20000000-0000-4000-8000-0000000000c1'),
+   '73000000-0000-4000-8000-000000000001', clock_timestamp() + INTERVAL '10 minutes');
+
+SET ROLE service_role;
+DO $$
+DECLARE
+  v_rows JSONB := '[
+    {"youtube_video_id":"auto-old","title":"Già presente","published_at":"2025-01-01T00:00:00Z","duration_seconds":300,"video_url":"https://youtube.invalid/watch?v=auto-old","video_type":"standard","availability_status":"available"},
+    {"youtube_video_id":"auto-hist","title":"Storico della prima scansione","published_at":"2025-02-01T00:00:00Z","duration_seconds":300,"video_url":"https://youtube.invalid/watch?v=auto-hist","video_type":"standard","availability_status":"available"},
+    {"youtube_video_id":"auto-5400","title":"Limite incluso","published_at":"2026-01-05T00:00:00Z","duration_seconds":5400,"video_url":"https://youtube.invalid/watch?v=auto-5400","video_type":"standard","availability_status":"available"},
+    {"youtube_video_id":"auto-5401","title":"Oltre il limite","published_at":"2026-01-04T00:00:00Z","duration_seconds":5401,"video_url":"https://youtube.invalid/watch?v=auto-5401","video_type":"standard","availability_status":"available"},
+    {"youtube_video_id":"auto-null","title":"Durata ignota","published_at":"2026-01-03T00:00:00Z","video_url":"https://youtube.invalid/watch?v=auto-null","video_type":"standard","availability_status":"available"},
+    {"youtube_video_id":"auto-zero","title":"Durata zero","published_at":"2026-01-02T00:00:00Z","duration_seconds":0,"video_url":"https://youtube.invalid/watch?v=auto-zero","video_type":"standard","availability_status":"available"},
+    {"youtube_video_id":"auto-one","title":"Un secondo","published_at":"2026-01-01T00:00:00Z","duration_seconds":1,"video_url":"https://youtube.invalid/watch?v=auto-one","video_type":"standard","availability_status":"available"},
+    {"youtube_video_id":"auto-private","title":"Privato","published_at":"2026-01-06T00:00:00Z","duration_seconds":100,"video_url":"https://youtube.invalid/watch?v=auto-private","video_type":"standard","availability_status":"private"}
+  ]'::JSONB;
+  v_first_rows JSONB := '[
+    {"youtube_video_id":"auto-hist","title":"Storico della prima scansione","published_at":"2025-02-01T00:00:00Z","duration_seconds":300,"video_url":"https://youtube.invalid/watch?v=auto-hist","video_type":"standard","availability_status":"available"},
+    {"youtube_video_id":"auto-first-short","title":"Corto ma storico","published_at":"2025-03-01T00:00:00Z","duration_seconds":60,"video_url":"https://youtube.invalid/watch?v=auto-first-short","video_type":"standard","availability_status":"available"}
+  ]'::JSONB;
+  v_import JSONB;
+BEGIN
+  -- Prima scansione del canale (nessuna sync precedente): nessun accodamento, anche per video corti e disponibili.
+  v_import := public.commit_fenced_channel_import(
+    '72000000-0000-4000-8000-000000000001', '73000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-0000000000a1', '20000000-0000-4000-8000-0000000000c1',
+    'UC-auto-enqueue', 'Auto enqueue channel', NULL, '{}'::JSONB, v_first_rows, 'success', 2
+  );
+  IF (v_import->>'transcriptionsQueued')::INTEGER <> 0 OR (v_import->>'importedCount')::INTEGER <> 2
+     OR EXISTS (SELECT 1 FROM public.transcriptions t JOIN public.videos v ON v.id = t.video_id
+                WHERE v.channel_id = '20000000-0000-4000-8000-0000000000c1')
+     OR EXISTS (SELECT 1 FROM public.jobs WHERE job_type = 'transcribe_video' AND payload->>'channelId' = '20000000-0000-4000-8000-0000000000c1')
+     OR (SELECT last_sync_at FROM public.canonical_sync_state WHERE channel_id = '20000000-0000-4000-8000-0000000000c1') IS NULL THEN
+    RAISE EXCEPTION 'prima scansione: nessuna trascrizione accodata e stato sync aggiornato: %', v_import;
+  END IF;
+
+  -- Seconda scansione con video nuovi: solo quelli entro 5400 secondi vengono accodati.
+  v_import := public.commit_fenced_channel_import(
+    '72000000-0000-4000-8000-000000000001', '73000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-0000000000a1', '20000000-0000-4000-8000-0000000000c1',
+    'UC-auto-enqueue', 'Auto enqueue channel', NULL, '{}'::JSONB, v_rows, 'success', 8
+  );
+  IF (v_import->>'transcriptionsQueued')::INTEGER <> 2 OR (v_import->>'importedCount')::INTEGER <> 8 THEN
+    RAISE EXCEPTION 'import automatico: attesi 2 accodati e 7 importati, ottenuto %', v_import;
+  END IF;
+  IF (SELECT array_agg(v.youtube_video_id ORDER BY v.youtube_video_id)
+      FROM public.transcriptions t JOIN public.videos v ON v.id = t.video_id
+      WHERE v.channel_id = '20000000-0000-4000-8000-0000000000c1') IS DISTINCT FROM ARRAY['auto-5400', 'auto-one'] THEN
+    RAISE EXCEPTION 'solo i video nuovi entro 5400 secondi vengono accodati';
+  END IF;
+  IF (SELECT count(*) FROM public.transcription_parts p JOIN public.transcriptions t ON t.id = p.transcription_id
+      JOIN public.videos v ON v.id = t.video_id WHERE v.youtube_video_id = 'auto-5400') <> 45
+     OR (SELECT max(p.end_seconds) FROM public.transcription_parts p JOIN public.transcriptions t ON t.id = p.transcription_id
+         JOIN public.videos v ON v.id = t.video_id WHERE v.youtube_video_id = 'auto-5400') <> 5400
+     OR (SELECT min(p.start_seconds) FROM public.transcription_parts p JOIN public.transcriptions t ON t.id = p.transcription_id
+         JOIN public.videos v ON v.id = t.video_id WHERE v.youtube_video_id = 'auto-5400' AND p.position = 44) <> 5280
+     OR (SELECT count(*) FROM public.transcription_parts p JOIN public.transcriptions t ON t.id = p.transcription_id
+         JOIN public.videos v ON v.id = t.video_id WHERE v.youtube_video_id = 'auto-one' AND p.start_seconds = 0 AND p.end_seconds = 1) <> 1 THEN
+    RAISE EXCEPTION 'parti da 120 secondi errate';
+  END IF;
+  IF (SELECT count(*) FROM public.jobs WHERE job_type = 'transcribe_video' AND payload->>'channelId' = '20000000-0000-4000-8000-0000000000c1') <> 2
+     OR EXISTS (SELECT 1 FROM public.jobs WHERE job_type = 'transcribe_video' AND payload ? 'channelId'
+                AND (payload->>'channelId' IS DISTINCT FROM '20000000-0000-4000-8000-0000000000c1'
+                     OR payload->'requestedByUserId' <> 'null'::JSONB OR payload->'credentialOwnerUserId' <> 'null'::JSONB
+                     OR created_by_user_id IS NOT NULL OR status <> 'pending'))
+     OR EXISTS (SELECT 1 FROM public.transcriptions t JOIN public.videos v ON v.id = t.video_id
+                WHERE v.channel_id = '20000000-0000-4000-8000-0000000000c1' AND (t.requested_by_user_id IS NOT NULL OR t.status <> 'pending')) THEN
+    RAISE EXCEPTION 'i job automatici non hanno richiedente e partono pending';
+  END IF;
+
+  -- Una seconda scansione degli stessi video non crea doppioni (i video ora esistono).
+  v_import := public.commit_fenced_channel_import(
+    '72000000-0000-4000-8000-000000000001', '73000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-0000000000a1', '20000000-0000-4000-8000-0000000000c1',
+    'UC-auto-enqueue', 'Auto enqueue channel', NULL, '{}'::JSONB, v_rows, 'success', 8
+  );
+  IF (v_import->>'transcriptionsQueued')::INTEGER <> 0
+     OR (SELECT count(*) FROM public.jobs WHERE job_type = 'transcribe_video' AND payload->>'channelId' = '20000000-0000-4000-8000-0000000000c1') <> 2 THEN
+    RAISE EXCEPTION 'la riscansione non deve accodare doppioni';
+  END IF;
+
+  -- Idempotenza diretta: trascrizione già esistente (anche manuale) e job attivo senza trascrizione non vengono rifatti.
+  IF public.enqueue_auto_transcriptions('20000000-0000-4000-8000-0000000000c1', ARRAY['auto-5400', 'auto-one']) <> 0 THEN
+    RAISE EXCEPTION 'nessun doppione se la trascrizione esiste';
+  END IF;
+  INSERT INTO public.videos (id, channel_id, youtube_video_id, title, published_at, duration_seconds, video_url)
+  VALUES ('71000000-0000-4000-8000-000000000008', '20000000-0000-4000-8000-0000000000c1', 'auto-active-job', 'Job già attivo',
+          '2026-01-07T00:00:00Z', 100, 'https://youtube.invalid/watch?v=auto-active-job');
+  INSERT INTO public.jobs (job_type, status, payload)
+  VALUES ('transcribe_video', 'running', '{"videoId":"71000000-0000-4000-8000-000000000008"}'::JSONB);
+  IF public.enqueue_auto_transcriptions('20000000-0000-4000-8000-0000000000c1', ARRAY['auto-active-job']) <> 0
+     OR EXISTS (SELECT 1 FROM public.transcriptions t WHERE t.video_id = '71000000-0000-4000-8000-000000000008') THEN
+    RAISE EXCEPTION 'nessun accodamento se esiste già un job attivo';
+  END IF;
+  -- Video di un altro canale ignorato.
+  IF public.enqueue_auto_transcriptions('20000000-0000-4000-8000-0000000000c1', ARRAY['yt-new', 'yt-existing']) <> 0 THEN
+    RAISE EXCEPTION 'solo i video del canale indicato';
+  END IF;
+END;
+$$;
+RESET ROLE;
+
+-- ---- Rotazione delle chiavi: follower con chiave valida, round-robin per canale e provider ----
+INSERT INTO public.channels (id, youtube_channel_id, title) VALUES
+  ('20000000-0000-4000-8000-0000000000d1', 'UC-rot-one', 'Rotation one'),
+  ('20000000-0000-4000-8000-0000000000d2', 'UC-rot-two', 'Rotation two'),
+  ('20000000-0000-4000-8000-0000000000d3', 'UC-rot-wait', 'Rotation waiting');
+INSERT INTO public.user_provider_credentials (id, user_id, provider, encrypted_key, is_configured, is_valid) VALUES
+  ('10000000-0000-4000-8000-0000000000b1', '00000000-0000-4000-8000-0000000000b1', 'gemini', 'cipher-g1', TRUE, TRUE),
+  ('10000000-0000-4000-8000-0000000000b2', '00000000-0000-4000-8000-0000000000b2', 'gemini', 'cipher-g2', TRUE, NULL),
+  ('10000000-0000-4000-8000-0000000000b3', '00000000-0000-4000-8000-0000000000b3', 'gemini', 'cipher-g3', TRUE, TRUE),
+  ('10000000-0000-4000-8000-0000000000b4', '00000000-0000-4000-8000-0000000000b4', 'gemini', 'cipher-out', TRUE, TRUE),
+  ('10000000-0000-4000-8000-0000000000b5', '00000000-0000-4000-8000-0000000000b5', 'gemini', 'cipher-inv', TRUE, FALSE),
+  ('10000000-0000-4000-8000-0000000000b6', '00000000-0000-4000-8000-0000000000b6', 'gemini', 'cipher-left', TRUE, TRUE),
+  ('10000000-0000-4000-8000-0000000000b8', '00000000-0000-4000-8000-0000000000b1', 'youtube', 'cipher-yt-g1', TRUE, TRUE);
+-- Canale 1: g1, g2, g3 con chiave valida; g5 con chiave non valida; g6 ha smesso di seguire; g7 senza chiave; outsider non segue.
+INSERT INTO public.user_channels (user_id, channel_id, is_active, added_at) VALUES
+  ('00000000-0000-4000-8000-0000000000b1', '20000000-0000-4000-8000-0000000000d1', TRUE, '2020-01-01T00:00:00Z'),
+  ('00000000-0000-4000-8000-0000000000b2', '20000000-0000-4000-8000-0000000000d1', TRUE, '2021-01-01T00:00:00Z'),
+  ('00000000-0000-4000-8000-0000000000b3', '20000000-0000-4000-8000-0000000000d1', TRUE, '2022-01-01T00:00:00Z'),
+  ('00000000-0000-4000-8000-0000000000b5', '20000000-0000-4000-8000-0000000000d1', TRUE, '2022-06-01T00:00:00Z'),
+  ('00000000-0000-4000-8000-0000000000b6', '20000000-0000-4000-8000-0000000000d1', FALSE, '2022-07-01T00:00:00Z'),
+  ('00000000-0000-4000-8000-0000000000b7', '20000000-0000-4000-8000-0000000000d1', TRUE, '2022-08-01T00:00:00Z'),
+-- Canale 2: solo g2 e g3. Canale 3: solo una chiave non valida.
+  ('00000000-0000-4000-8000-0000000000b2', '20000000-0000-4000-8000-0000000000d2', TRUE, '2021-01-01T00:00:00Z'),
+  ('00000000-0000-4000-8000-0000000000b3', '20000000-0000-4000-8000-0000000000d2', TRUE, '2022-01-01T00:00:00Z'),
+  ('00000000-0000-4000-8000-0000000000b5', '20000000-0000-4000-8000-0000000000d3', TRUE, '2022-06-01T00:00:00Z');
+UPDATE public.user_provider_credential_retry_limits SET retry_limit = 3
+WHERE credential_id = '10000000-0000-4000-8000-0000000000b1';
+
+-- Crea un job di trascrizione running con lease valida (lease = id del job) per il canale indicato.
+CREATE FUNCTION public.test_rot_job(p_n INTEGER, p_channel UUID) RETURNS UUID
+LANGUAGE plpgsql AS $$
+DECLARE v_id UUID := ('74000000-0000-4000-8000-' || lpad(p_n::TEXT, 12, '0'))::UUID;
+BEGIN
+  INSERT INTO public.jobs (id, job_type, status, payload, lease_id, lease_expires_at)
+  VALUES (v_id, 'transcribe_video', 'running',
+          jsonb_build_object('videoId', 'rot-video-' || p_n, 'channelId', p_channel),
+          v_id, clock_timestamp() + INTERVAL '10 minutes');
+  RETURN v_id;
+END $$;
+-- Utente (come testo) a cui il job è assegnato per il canale.
+CREATE FUNCTION public.test_rot_claim(p_job UUID, p_channel UUID) RETURNS TEXT
+LANGUAGE sql AS $$
+  SELECT CASE WHEN c.status = 'assigned' THEN right(c.user_id::TEXT, 2) ELSE c.status END
+  FROM public.claim_transcription_job_credential(p_job, p_job, p_channel) AS c
+$$;
+GRANT EXECUTE ON FUNCTION public.test_rot_job(INTEGER, UUID), public.test_rot_claim(UUID, UUID) TO service_role;
+
+SELECT public.test_assert_true(
+  (SELECT array_agg(right(e.user_id::TEXT, 2) ORDER BY e.ord) FROM public.transcription_eligible_credentials('20000000-0000-4000-8000-0000000000d1') e)
+    = ARRAY['b1', 'b2', 'b3'],
+  'eleggibili: follower attivi con chiave Gemini valida; non follower, chiave non valida, ex follower e senza chiave esclusi'
+);
+SELECT public.test_assert_true(
+  public.has_eligible_transcription_credential('20000000-0000-4000-8000-0000000000d1')
+  AND NOT public.has_eligible_transcription_credential('20000000-0000-4000-8000-0000000000d3'),
+  'has_eligible riflette l eleggibilità del canale'
+);
+
+SET ROLE service_role;
+DO $$
+DECLARE
+  c1 CONSTANT UUID := '20000000-0000-4000-8000-0000000000d1';
+  c2 CONSTANT UUID := '20000000-0000-4000-8000-0000000000d2';
+  c3 CONSTANT UUID := '20000000-0000-4000-8000-0000000000d3';
+  v_seq TEXT[] := ARRAY[]::TEXT[];
+  v_job UUID;
+  v_row RECORD;
+BEGIN
+  -- Lavori successivi del canale 1 alternano g1, g2, g3, g1; la chiave assegnata a un job è stabile per i retry.
+  FOR i IN 1..4 LOOP
+    v_job := public.test_rot_job(i, c1);
+    v_seq := v_seq || public.test_rot_claim(v_job, c1);
+    IF public.test_rot_claim(v_job, c1) <> v_seq[i] THEN RAISE EXCEPTION 'la chiave assegnata a un job deve restare la stessa'; END IF;
+  END LOOP;
+  IF v_seq <> ARRAY['b1', 'b2', 'b3', 'b1'] THEN RAISE EXCEPTION 'round-robin canale 1: %', v_seq; END IF;
+
+  -- Il canale 2 ha un cursore indipendente: parte dal primo follower anche se il canale 1 è andato avanti.
+  v_seq := ARRAY[]::TEXT[];
+  FOR i IN 11..13 LOOP
+    v_seq := v_seq || public.test_rot_claim(public.test_rot_job(i, c2), c2);
+  END LOOP;
+  IF v_seq <> ARRAY['b2', 'b3', 'b2'] THEN RAISE EXCEPTION 'round-robin canale 2 indipendente: %', v_seq; END IF;
+
+  -- Alternanza intrecciata: il canale 1 prosegue da dove era (dopo b1 viene b2), senza essere influenzato dal canale 2.
+  IF public.test_rot_claim(public.test_rot_job(21, c1), c1) <> 'b2'
+     OR public.test_rot_claim(public.test_rot_job(22, c2), c2) <> 'b3'
+     OR public.test_rot_claim(public.test_rot_job(23, c1), c1) <> 'b3' THEN
+    RAISE EXCEPTION 'cursori per canale non indipendenti';
+  END IF;
+
+  -- Mai chiavi di non follower, ex follower, chiavi non valide o utenti senza chiave; il provider è sempre gemini.
+  IF EXISTS (
+    SELECT 1 FROM public.transcription_job_credentials jk
+    JOIN public.user_provider_credentials c ON c.id = jk.credential_id
+    WHERE c.provider <> 'gemini' OR right(c.user_id::TEXT, 2) NOT IN ('b1', 'b2', 'b3')
+  ) THEN RAISE EXCEPTION 'assegnata una chiave non eleggibile'; END IF;
+  IF (SELECT count(*) FROM public.transcription_key_rotation_cursors WHERE provider = 'gemini') <> 2 THEN
+    RAISE EXCEPTION 'un cursore per canale e provider';
+  END IF;
+
+END;
+$$;
+RESET ROLE;
+
+-- Chiave singola di un canale: il limite retry individuale viaggia con l'assegnazione e conta solo il provider gemini.
+INSERT INTO public.channels (id, youtube_channel_id, title) VALUES ('20000000-0000-4000-8000-0000000000d4', 'UC-rot-single', 'Rotation single');
+INSERT INTO public.user_channels (user_id, channel_id, is_active, added_at) VALUES
+  ('00000000-0000-4000-8000-0000000000b1', '20000000-0000-4000-8000-0000000000d4', TRUE, '2020-01-01T00:00:00Z');
+SET ROLE service_role;
+DO $$
+DECLARE
+  c4 CONSTANT UUID := '20000000-0000-4000-8000-0000000000d4';
+  v_job UUID := public.test_rot_job(61, c4);
+  v_first RECORD;
+  v_second RECORD;
+BEGIN
+  SELECT * INTO v_first FROM public.claim_transcription_job_credential(v_job, v_job, c4);
+  IF v_first.status <> 'assigned' OR v_first.credential_id <> '10000000-0000-4000-8000-0000000000b1' OR v_first.retry_limit <> 3 THEN
+    RAISE EXCEPTION 'chiave singola gemini con retry 3: %', v_first;
+  END IF;
+  -- Sostituzione della chiave (nuova key_version): l'assegnazione precedente decade e si assegna la nuova versione.
+  UPDATE public.user_provider_credential_retry_limits SET key_version = public.uuid_generate_v4(), retry_limit = 1
+  WHERE credential_id = '10000000-0000-4000-8000-0000000000b1';
+  SELECT * INTO v_second FROM public.claim_transcription_job_credential(v_job, v_job, c4);
+  IF v_second.status <> 'assigned' OR v_second.key_version = v_first.key_version OR v_second.retry_limit <> 1
+     OR (SELECT status FROM public.transcription_job_credentials WHERE job_id = v_job AND key_version = v_first.key_version) <> 'ineligible' THEN
+    RAISE EXCEPTION 'la nuova versione della chiave sostituisce la precedente: %', v_second;
+  END IF;
+  UPDATE public.user_provider_credential_retry_limits SET retry_limit = 3 WHERE credential_id = '10000000-0000-4000-8000-0000000000b1';
+END;
+$$;
+RESET ROLE;
+
+-- Esaurimento: il job passa alla chiave successiva, le parti pending ripartono da zero tentativi, nessun ritorno su una chiave esaurita.
+INSERT INTO public.videos (id, channel_id, youtube_video_id, title, published_at, duration_seconds, video_url)
+VALUES ('71000000-0000-4000-8000-000000000041', '20000000-0000-4000-8000-0000000000d1', 'rot-exhaust', 'Video rotazione', NOW(), 480,
+        'https://youtube.invalid/watch?v=rot-exhaust');
+INSERT INTO public.transcriptions (id, video_id, status, model, thinking_level)
+VALUES ('62000000-0000-4000-8000-000000000041', '71000000-0000-4000-8000-000000000041', 'running', 'gemini-3.1-flash-lite', 'minimal');
+INSERT INTO public.transcription_parts (transcription_id, position, start_seconds, end_seconds, status, attempts, last_error) VALUES
+  ('62000000-0000-4000-8000-000000000041', 0, 0, 120, 'done', 1, NULL),
+  ('62000000-0000-4000-8000-000000000041', 1, 120, 240, 'pending', 1, NULL),
+  ('62000000-0000-4000-8000-000000000041', 2, 240, 360, 'pending', 1, NULL),
+  ('62000000-0000-4000-8000-000000000041', 3, 360, 480, 'missing', 3, 'provider_http_500');
+SET ROLE service_role;
+DO $$
+DECLARE
+  c1 CONSTANT UUID := '20000000-0000-4000-8000-0000000000d1';
+  v_tr CONSTANT UUID := '62000000-0000-4000-8000-000000000041';
+  v_job UUID := public.test_rot_job(41, c1);
+  v_row RECORD;
+  v_seen TEXT[] := ARRAY[]::TEXT[];
+BEGIN
+  FOR i IN 1..3 LOOP
+    SELECT * INTO v_row FROM public.claim_transcription_job_credential(v_job, v_job, c1);
+    IF v_row.status <> 'assigned' THEN RAISE EXCEPTION 'attesa assegnazione al passo %, ottenuto %', i, v_row.status; END IF;
+    v_seen := v_seen || right(v_row.user_id::TEXT, 2);
+    IF NOT public.release_transcription_job_credential(v_job, v_job, v_row.credential_id, v_row.key_version,
+                                                      'exhausted', v_tr, 1, 'provider_http_503') THEN
+      RAISE EXCEPTION 'rilascio chiave fallito';
+    END IF;
+  END LOOP;
+  IF v_seen <> ARRAY['b1', 'b2', 'b3'] THEN RAISE EXCEPTION 'ordine di passaggio fra le chiavi: %', v_seen; END IF;
+  IF public.test_rot_claim(v_job, c1) <> 'exhausted' OR public.test_rot_claim(v_job, c1) <> 'exhausted' THEN
+    RAISE EXCEPTION 'tutte le chiavi usate: nessun ritorno su una chiave esaurita';
+  END IF;
+  IF (SELECT count(*) FROM public.transcription_job_credentials WHERE job_id = v_job AND status = 'exhausted') <> 3
+     OR EXISTS (SELECT 1 FROM public.transcription_job_credentials WHERE job_id = v_job AND status = 'active') THEN
+    RAISE EXCEPTION 'tre chiavi esaurite e nessuna attiva';
+  END IF;
+  IF (SELECT array_agg(attempts ORDER BY position) FROM public.transcription_parts WHERE transcription_id = v_tr) <> ARRAY[1, 0, 0, 3]
+     OR (SELECT last_error FROM public.transcription_parts WHERE transcription_id = v_tr AND position = 1) <> 'provider_http_503'
+     OR (SELECT status FROM public.transcription_parts WHERE transcription_id = v_tr AND position = 0) <> 'done'
+     OR (SELECT status FROM public.transcription_parts WHERE transcription_id = v_tr AND position = 3) <> 'missing' THEN
+    RAISE EXCEPTION 'solo le parti pending ripartono da zero tentativi';
+  END IF;
+  -- Stato incoerente richiesto dal chiamante: stato chiave non ammesso.
+  BEGIN
+    PERFORM public.release_transcription_job_credential(v_job, v_job, gen_random_uuid(), gen_random_uuid(), 'active', v_tr, NULL, NULL);
+    RAISE EXCEPTION 'uno stato non ammesso deve essere respinto';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'invalid_transcription_credential_status' THEN RAISE; END IF;
+  END;
+END;
+$$;
+RESET ROLE;
+
+-- Chiave rimossa, invalidata o follower che smette di seguire durante il lavoro: esclusa dalle assegnazioni successive.
+SET ROLE service_role;
+DO $$
+DECLARE
+  c1 CONSTANT UUID := '20000000-0000-4000-8000-0000000000d1';
+  v_job UUID := public.test_rot_job(51, c1);
+  v_step TEXT;
+BEGIN
+  v_step := public.test_rot_claim(v_job, c1);
+  IF v_step <> 'b1' THEN RAISE EXCEPTION 'primo follower atteso b1, ottenuto %', v_step; END IF;
+  UPDATE public.user_provider_credentials SET is_valid = FALSE WHERE id = '10000000-0000-4000-8000-0000000000b1';
+  v_step := public.test_rot_claim(v_job, c1);
+  IF v_step <> 'b2' THEN RAISE EXCEPTION 'chiave invalidata esclusa, atteso b2, ottenuto %', v_step; END IF;
+  UPDATE public.user_channels SET is_active = FALSE
+  WHERE user_id = '00000000-0000-4000-8000-0000000000b2' AND channel_id = c1;
+  v_step := public.test_rot_claim(v_job, c1);
+  IF v_step <> 'b3' THEN RAISE EXCEPTION 'ex follower escluso, atteso b3, ottenuto %', v_step; END IF;
+  UPDATE public.user_provider_credentials SET is_configured = FALSE WHERE id = '10000000-0000-4000-8000-0000000000b3';
+  v_step := public.test_rot_claim(v_job, c1);
+  IF v_step <> 'waiting' THEN RAISE EXCEPTION 'nessuna chiave eleggibile: attesa, ottenuto %', v_step; END IF;
+  IF (SELECT array_agg(right(c.user_id::TEXT, 2) || ':' || jk.status ORDER BY right(c.user_id::TEXT, 2))
+      FROM public.transcription_job_credentials jk JOIN public.user_provider_credentials c ON c.id = jk.credential_id
+      WHERE jk.job_id = v_job) <> ARRAY['b1:ineligible', 'b2:ineligible', 'b3:ineligible'] THEN
+    RAISE EXCEPTION 'le chiavi non più eleggibili risultano ineligible';
+  END IF;
+  -- Ripristino per gli altri controlli.
+  UPDATE public.user_provider_credentials SET is_valid = TRUE WHERE id = '10000000-0000-4000-8000-0000000000b1';
+  UPDATE public.user_provider_credentials SET is_configured = TRUE WHERE id = '10000000-0000-4000-8000-0000000000b3';
+  UPDATE public.user_channels SET is_active = TRUE
+  WHERE user_id = '00000000-0000-4000-8000-0000000000b2' AND channel_id = c1;
+END;
+$$;
+RESET ROLE;
+
+-- Nessuna chiave eleggibile: attesa senza assegnare nulla; lease persa o canale diverso dal payload: nessuna scrittura.
+SET ROLE service_role;
+DO $$
+DECLARE
+  c1 CONSTANT UUID := '20000000-0000-4000-8000-0000000000d1';
+  c3 CONSTANT UUID := '20000000-0000-4000-8000-0000000000d3';
+  v_wait UUID := public.test_rot_job(71, c3);
+  v_expired UUID := public.test_rot_job(72, c1);
+  v_other UUID := public.test_rot_job(73, c1);
+BEGIN
+  IF public.test_rot_claim(v_wait, c3) <> 'waiting'
+     OR EXISTS (SELECT 1 FROM public.transcription_job_credentials WHERE job_id = v_wait)
+     OR EXISTS (SELECT 1 FROM public.transcription_key_rotation_cursors WHERE channel_id = c3 AND last_credential_id IS NOT NULL) THEN
+    RAISE EXCEPTION 'canale senza chiavi eleggibili: il job attende senza assegnazioni né avanzamento del cursore';
+  END IF;
+  UPDATE public.jobs SET lease_expires_at = clock_timestamp() - INTERVAL '1 second' WHERE id = v_expired;
+  IF public.test_rot_claim(v_expired, c1) <> 'lease_lost' THEN RAISE EXCEPTION 'lease scaduta'; END IF;
+  IF (SELECT status FROM public.claim_transcription_job_credential(v_other, gen_random_uuid(), c1)) <> 'lease_lost' THEN
+    RAISE EXCEPTION 'lease diversa';
+  END IF;
+  IF (SELECT status FROM public.claim_transcription_job_credential(v_other, v_other, '20000000-0000-4000-8000-0000000000d2')) <> 'lease_lost' THEN
+    RAISE EXCEPTION 'canale diverso dal payload';
+  END IF;
+  IF public.release_transcription_job_credential(v_expired, v_expired, '10000000-0000-4000-8000-0000000000b1', public.uuid_generate_v4(),
+                                                'exhausted', '62000000-0000-4000-8000-000000000041', NULL, NULL) THEN
+    RAISE EXCEPTION 'rilascio con lease scaduta deve restituire false';
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.transcription_job_credentials WHERE job_id IN (v_expired, v_other)) THEN
+    RAISE EXCEPTION 'nessuna assegnazione con lease persa';
+  END IF;
+END;
+$$;
+RESET ROLE;
+
+DROP FUNCTION public.test_rot_claim(UUID, UUID);
+DROP FUNCTION public.test_rot_job(INTEGER, UUID);
 DROP FUNCTION public.test_assert_true(BOOLEAN, TEXT);
 SELECT 'POSTGRES REAL MIGRATION/RPC TESTS PASS' AS result;

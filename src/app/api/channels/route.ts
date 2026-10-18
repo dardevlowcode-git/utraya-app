@@ -4,6 +4,7 @@
  * Flusso: La route viene richiamata dal client (o da altre parti server), usa servizi/utilita` in `src/lib` e poi ritorna JSON/HTTP status.
  */
 
+import { after } from 'next/server'
 import { getCurrentSession } from '@/lib/auth/provider'
 import {
   addChannelForUser,
@@ -11,8 +12,12 @@ import {
   removeChannelForUser,
   requestScanNowForUser,
 } from '@/lib/services/channels'
+import { runAutoTranscriptionsForChannel } from '@/lib/services/transcription-auto'
 import { AppError, errorResponse } from '@/lib/utils/errors'
 import { ensureJsonRequest, ensureSameOrigin, getRequestId } from '@/lib/security/http'
+
+/** Lo scan gira nella richiesta e il worker di trascrizione in after(): serve la durata massima dei job lunghi. */
+export const maxDuration = 300
 
 interface ChannelPostBody {
   action?: 'add' | 'scan_now'
@@ -77,6 +82,9 @@ export async function POST(request: Request) {
 
       // Scansione manuale: crea un job asincrono senza bloccare la richiesta HTTP.
       const scanResult = await requestScanNowForUser({ userId, channelId: body.channelId })
+      const scannedChannelId = body.channelId
+      // after() riceve la Promise del worker (ADR-014): trascrizione automatica dei video appena importati.
+      after(() => runAutoTranscriptionsForChannel(scannedChannelId))
       return Response.json({
         data: { message: 'Scansione avviata', ...scanResult },
         error: null,
@@ -97,6 +105,9 @@ export async function POST(request: Request) {
       channelUrl,
       markExistingVideosAsSeen: body?.markExistingVideosAsSeen ?? true,
     })
+
+    // after() riceve la Promise del worker (ADR-014): trascrizione automatica dei video appena importati.
+    after(() => runAutoTranscriptionsForChannel(result.channelId))
 
     const warningCode = result.scanBlockedReason === 'missing_youtube_api_key'
       ? 'missing_youtube_api_key'

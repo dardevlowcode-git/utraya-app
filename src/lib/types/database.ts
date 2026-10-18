@@ -1386,6 +1386,37 @@ export type Database = {
         }
         Returns: string | null
       }
+      claim_transcription_job_credential: {
+        Args: { p_job_id: string; p_lease_id: string; p_channel_id: string }
+        Returns: {
+          status: 'assigned' | 'waiting' | 'exhausted' | 'lease_lost'
+          credential_id: string | null
+          user_id: string | null
+          key_version: string | null
+          retry_limit: number | null
+        }[]
+      }
+      release_transcription_job_credential: {
+        Args: {
+          p_job_id: string
+          p_lease_id: string
+          p_credential_id: string
+          p_key_version: string
+          p_status: 'exhausted' | 'ineligible'
+          p_transcription_id: string
+          p_part_position: number | null
+          p_last_error: string | null
+        }
+        Returns: boolean
+      }
+      has_eligible_transcription_credential: {
+        Args: { p_channel_id: string }
+        Returns: boolean
+      }
+      enqueue_auto_transcriptions: {
+        Args: { p_channel_id: string; p_youtube_video_ids: string[] }
+        Returns: number
+      }
       get_my_api_usage_summary: {
         Args: { p_since: string }
         // The DB type generator omits nullable SUM results; preserve their SQL NULL semantics here.
