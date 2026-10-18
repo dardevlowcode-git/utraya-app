@@ -4,10 +4,12 @@
  * Flusso: valida origin/body Zod, autentica, chiama il servizio e restituisce apiOk/apiErr con request ID.
  */
 
+import { after } from 'next/server'
 import { getCurrentSession } from '@/lib/auth/provider'
 import {
   getCredentialStatusesForUser,
   removeApiKey,
+  runCredentialValidationJob,
   saveApiKey,
   validateApiKey,
 } from '@/lib/services/integrations'
@@ -18,7 +20,7 @@ import { ensureJsonRequest, ensureSameOrigin, getRequestId } from '@/lib/securit
 import { INTEGRATION_PROVIDERS } from '@/lib/types/domain'
 import { z } from 'zod'
 
-export const maxDuration = 30
+export const maxDuration = 60
 
 const providerSchema = z.enum(INTEGRATION_PROVIDERS)
 const integrationPostSchema = z.object({
@@ -45,6 +47,12 @@ function integrationErrorResponse(error: unknown, requestId: string): Response {
     return apiErr(mapAppErrorTypeToCode(error.type), error.message, error.statusCode ?? 500, requestId)
   }
   return apiErr('INTERNAL_ERROR', 'Errore interno', 500, requestId)
+}
+
+/** Lavora il job nello stesso lifecycle: after() riceve la Promise del worker (ADR-014). */
+function scheduleValidation(result: { jobId: string | null; validationStatus: string }): void {
+  const jobId = result.jobId
+  if (jobId && result.validationStatus === 'pending') after(() => runCredentialValidationJob(jobId))
 }
 
 /**
@@ -84,10 +92,11 @@ export async function POST(request: Request) {
       // Validazione esplicita: utile quando la chiave e gia salvata e si vuole ricontrollare.
       const result = await validateApiKey({ userId, provider })
       if (!result.jobId) throw new AppError('Job di validazione non accodato', 'structural', 500)
+      scheduleValidation(result)
       return apiOk(result, requestId, 202)
     }
 
-    // Salvataggio e accodamento della verifica persistente senza trattenere la request.
+    // Salvataggio e accodamento della verifica persistente e lavoro immediato via after().
     const result = await saveApiKey({
       userId,
       provider,
@@ -96,6 +105,7 @@ export async function POST(request: Request) {
     })
 
     if (!result.jobId) throw new AppError('Job di validazione non accodato', 'structural', 500)
+    scheduleValidation(result)
     return apiOk(result, requestId, 202)
   } catch (error) {
     return integrationErrorResponse(error, requestId)

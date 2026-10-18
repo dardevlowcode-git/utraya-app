@@ -4,9 +4,10 @@
  * Flusso: Bearer user + RLS delimitano la riga; il service cifra, accoda la verifica e maschera la chiave.
  */
 
+import { after } from 'next/server'
 import { apiOk } from '@/lib/http/apiResponse'
 import { apiV1Error, apiV1Validation, getApiRequestId, readApiJson, requireApiJson, requireApiRateLimit, requireApiUser } from '@/lib/http/apiV1'
-import { getCredentialStatusesForUser, removeApiKey, saveApiKey, validateApiKey } from '@/lib/services/integrations'
+import { getCredentialStatusesForUser, removeApiKey, runCredentialValidationJob, saveApiKey, validateApiKey } from '@/lib/services/integrations'
 import { AppError } from '@/lib/utils/errors'
 import { toIntegrationApiView } from '@/lib/view-models/integrationApi'
 import { INTEGRATION_PROVIDERS, type IntegrationProvider } from '@/lib/types/domain'
@@ -20,6 +21,8 @@ const integrationSchema = z.object({
 const integrationDeleteSchema = z.object({
   provider: z.enum(INTEGRATION_PROVIDERS),
 }).strict()
+export const maxDuration = 60
+
 type IntegrationBody = z.infer<typeof integrationSchema>
 type IntegrationDeleteBody = z.infer<typeof integrationDeleteSchema>
 
@@ -29,6 +32,11 @@ type AsyncIntegrationResult = {
   maskedKey?: string
   isValid: boolean | null
   validationStatus: 'idle' | 'pending' | 'running' | 'completed'
+}
+
+/** Lavora il job nello stesso lifecycle: after() riceve la Promise del worker (ADR-014). */
+function scheduleValidation(jobId: string | null, validationStatus: string): void {
+  if (jobId && validationStatus === 'pending') after(() => runCredentialValidationJob(jobId))
 }
 
 /** Proietta l'esito asincrono nel contratto v1, mantenendo solo la chiave già mascherata. */
@@ -71,6 +79,7 @@ export async function POST(request: Request) {
     if (limited) return limited
     if (body.action === 'validate') {
       const result = await validateApiKey({ userId: current.user.id, provider: body.provider, supabase: current.supabase })
+      scheduleValidation(result.jobId, result.validationStatus)
       const validationError = result.validationStatus === 'pending' || result.validationStatus === 'running'
         ? null
         : result.isValid ? null : 'provider_validation_failed'
@@ -79,6 +88,7 @@ export async function POST(request: Request) {
     const result = await saveApiKey({ userId: current.user.id, provider: body.provider, apiKey: body.apiKey ?? '', validateNow: true, supabase: current.supabase })
     const jobId = result.jobId
     if (!jobId) throw new AppError('Job di validazione non accodato', 'structural', 500)
+    scheduleValidation(jobId, result.validationStatus)
     const validationError = result.validationStatus === 'pending' || result.validationStatus === 'running'
       ? null
       : result.isValid === false ? 'provider_validation_failed' : null

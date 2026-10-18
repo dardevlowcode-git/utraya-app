@@ -1,5 +1,5 @@
 /* Commento didattico:
- * Scopo del file: cron protetto che avanza job persistenti di verifica credenziali senza loop lunghi.
+ * Scopo del file: endpoint manuale protetto (non schedulato in vercel.json) che avanza job persistenti di verifica credenziali; il recovery automatico è nel daily-sync.
  * Moduli richiamati: timingSafeEqual, service job validation e attempt provider same-key.
  * Flusso: valida CRON_SECRET e processa un batch tecnico di lease, una richiesta provider per lease.
  */

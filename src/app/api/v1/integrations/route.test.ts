@@ -15,7 +15,11 @@ const {
   removeApiKeyMock,
   saveApiKeyMock,
   validateApiKeyMock,
+  runValidationJobMock,
+  afterMock,
 } = vi.hoisted(() => ({
+  runValidationJobMock: vi.fn(),
+  afterMock: vi.fn(),
   requireApiUserMock: vi.fn(),
   requireApiRateLimitMock: vi.fn(() => null),
   getStatusesMock: vi.fn(),
@@ -38,7 +42,9 @@ vi.mock('@/lib/services/integrations', () => ({
   removeApiKey: removeApiKeyMock,
   saveApiKey: saveApiKeyMock,
   validateApiKey: validateApiKeyMock,
+  runCredentialValidationJob: runValidationJobMock,
 }))
+vi.mock('next/server', async (importOriginal) => ({ ...(await importOriginal<typeof import('next/server')>()), after: afterMock }))
 
 import { DELETE, GET, POST } from '@/app/api/v1/integrations/route'
 import { AppError } from '@/lib/utils/errors'
@@ -58,6 +64,26 @@ describe('POST /api/v1/integrations', () => {
     })
     removeApiKeyMock.mockResolvedValue(undefined)
     getStatusesMock.mockResolvedValue([{ provider: 'firecrawl', isConfigured: false, isValid: null, validationStatus: 'idle', lastValidatedAt: null, lastUsedAt: null, lastError: null, maskedKey: null }])
+  })
+
+  it('lavora il job di salvataggio e validazione con after() restituendo la Promise del worker', async () => {
+    const workerPromise = Promise.resolve('worker-done')
+    runValidationJobMock.mockReturnValue(workerPromise)
+    validateApiKeyMock.mockResolvedValue({ provider: 'firecrawl', jobId: 'validation-job-2', isValid: null, message: null, validationStatus: 'pending' })
+    const post = (body: unknown) => POST(new Request('http://localhost/api/v1/integrations', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }))
+
+    expect((await post({ provider: 'firecrawl', action: 'save', apiKey: 'test-firecrawl-api-key-secret' })).status).toBe(202)
+    expect((await post({ provider: 'firecrawl', action: 'validate' })).status).toBe(202)
+
+    expect(afterMock).toHaveBeenCalledTimes(2)
+    expect((afterMock.mock.calls[0]?.[0] as () => unknown)()).toBe(workerPromise)
+    expect(runValidationJobMock).toHaveBeenNthCalledWith(1, 'validation-job-1')
+    ;(afterMock.mock.calls[1]?.[0] as () => unknown)()
+    expect(runValidationJobMock).toHaveBeenNthCalledWith(2, 'validation-job-2')
   })
 
   it('accetta Firecrawl, accoda la verifica e non restituisce il segreto', async () => {

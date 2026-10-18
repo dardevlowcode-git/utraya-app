@@ -12,6 +12,7 @@ import { AppError, classifyError } from '@/lib/utils/errors'
 import {
   enqueueCredentialValidation,
   getCredentialValidationStatusesForUser,
+  runCredentialValidationJobInline,
   type CredentialValidationAttemptResult,
   type CredentialValidationJobPayload,
 } from '@/lib/services/credential-validation-jobs'
@@ -257,7 +258,7 @@ export async function getCredentialStatusesForUser(userId: string, client?: AppS
 
 /**
  * Salva o aggiorna la chiave API di un provider.
- * Opzionalmente accoda la verifica persistente e restituisce lo stato pending alla UI.
+ * Opzionalmente accoda la verifica persistente (lavorata dalla route via `after()`) e restituisce lo stato pending alla UI.
  */
 export async function saveApiKey(params: {
   userId: string
@@ -367,7 +368,7 @@ function safelyDecryptSecret(cipherText: string): string | null {
   }
 }
 
-/** Accoda la verifica same-key: il provider verrà chiamato da una lease e non nella request utente. */
+/** Accoda la verifica same-key: la route la lavora via `after()` e il cron giornaliero recupera i residui. */
 export async function validateApiKey(params: {
   userId: string
   provider: Provider
@@ -404,6 +405,11 @@ export async function validateApiKey(params: {
     validationStatus: job.status,
     jobId: job.jobId,
   }
+}
+
+/** Lavora subito il job appena accodato; da restituire a `after()` perché il runtime attenda la Promise. */
+export function runCredentialValidationJob(jobId: string): Promise<unknown> {
+  return runCredentialValidationJobInline({ jobId, attemptProvider: performCredentialValidationAttempt })
 }
 
 /** Esegue un solo tentativo read-only per la versione esatta della credenziale inclusa nel job. */

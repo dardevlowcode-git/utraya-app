@@ -16,7 +16,11 @@ const {
   getCurrentSessionMock,
   enqueueCredentialValidationMock,
   getCredentialValidationStatusesForUserMock,
+  runCredentialValidationJobInlineMock,
+  afterMock,
 } = vi.hoisted(() => ({
+  runCredentialValidationJobInlineMock: vi.fn(),
+  afterMock: vi.fn(),
   createAdminClientMock: vi.fn(),
   createClientMock: vi.fn(),
   fromMock: vi.fn(),
@@ -33,10 +37,12 @@ vi.mock('@/lib/auth/provider', () => ({ getCurrentSession: getCurrentSessionMock
 vi.mock('@/lib/services/credential-validation-jobs', () => ({
   enqueueCredentialValidation: enqueueCredentialValidationMock,
   getCredentialValidationStatusesForUser: getCredentialValidationStatusesForUserMock,
+  runCredentialValidationJobInline: runCredentialValidationJobInlineMock,
 }))
+vi.mock('next/server', async (importOriginal) => ({ ...(await importOriginal<typeof import('next/server')>()), after: afterMock }))
 
 import { DELETE as deleteIntegrations, maxDuration as integrationsMaxDuration, POST as postIntegrations } from '@/app/api/integrations/route'
-import { getCredentialStatusesForUser, removeApiKey, saveApiKey, writeCredentialCheckAudit } from '@/lib/services/integrations'
+import { getCredentialStatusesForUser, removeApiKey, runCredentialValidationJob, saveApiKey, writeCredentialCheckAudit } from '@/lib/services/integrations'
 
 let activeCredentialState: {
   credentialId: string
@@ -222,7 +228,18 @@ describe('credential save and validation enqueue', () => {
   })
 
   it('keeps the HTTP function timeout independent from persisted retries', () => {
-    expect(integrationsMaxDuration).toBe(30)
+    expect(integrationsMaxDuration).toBe(60)
+  })
+
+  it('lavora il job accodato con il solo attempt provider same-key e restituisce la Promise', async () => {
+    const workerPromise = Promise.resolve({ attempts: 1, status: 'completed' })
+    runCredentialValidationJobInlineMock.mockReturnValue(workerPromise)
+
+    expect(runCredentialValidationJob('job-immediate')).toBe(workerPromise)
+    expect(runCredentialValidationJobInlineMock).toHaveBeenCalledWith({
+      jobId: 'job-immediate',
+      attemptProvider: expect.any(Function),
+    })
   })
 
   it('scrive lo storico con il client privilegiato e il payload minimo', async () => {
@@ -275,6 +292,7 @@ describe('credential save and validation enqueue', () => {
 
       expect(response.status).toBe(202)
       expect(payload.data).toMatchObject({ isValid: null, validationStatus: 'pending', jobId: 'validation-job-1' })
+      expect(afterMock).toHaveBeenCalledTimes(1)
       expect(enqueueCredentialValidationMock).toHaveBeenCalledWith(expect.objectContaining({
         userId,
         credentialId: 'credential-pending',

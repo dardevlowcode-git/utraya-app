@@ -13,6 +13,11 @@ import type { AppSupabaseClient } from '@/lib/supabase/types'
 export const CREDENTIAL_VALIDATION_JOB_TYPE = 'validate_provider_credential'
 export const CREDENTIAL_VALIDATION_WORKER_BATCH_LIMIT = 3
 export const CREDENTIAL_VALIDATION_LEASE_MS = 60_000
+/** Budget totale dell'esecuzione inline nel request lifecycle (maxDuration route = 60 s). */
+export const CREDENTIAL_VALIDATION_INLINE_BUDGET_MS = 45_000
+/** Margine che deve restare dopo un'attesa di backoff per eseguire un altro tentativo (timeout provider <= 10 s). */
+export const CREDENTIAL_VALIDATION_INLINE_ATTEMPT_RESERVE_MS = 12_000
+const CREDENTIAL_VALIDATION_INLINE_CLAIM_MARGIN_MS = 250
 
 
 type AdminClient = ReturnType<typeof createAdminClient>
@@ -156,7 +161,7 @@ export async function processCredentialValidationJob(params: {
   now?: Date
   clock?: () => Date
   leaseId?: string
-}): Promise<{ claimed: boolean; status: CredentialValidationStatus | 'superseded'; attemptNumber?: number }> {
+}): Promise<{ claimed: boolean; status: CredentialValidationStatus | 'superseded'; attemptNumber?: number; nextAttemptAt?: string }> {
   const admin = params.adminClient ?? createAdminClient()
   const clock = params.clock ?? (params.now ? () => params.now as Date : () => new Date())
   const startedAt = clock()
@@ -204,7 +209,48 @@ export async function processCredentialValidationJob(params: {
 
   if (finishError) throw new AppError('Impossibile salvare esito job di validazione', 'unknown', 500, { cause: finishError.message })
   if (!finished) return { claimed: true, status: 'superseded', attemptNumber }
-  return { claimed: true, status, attemptNumber }
+  return nextAttemptAt
+    ? { claimed: true, status, attemptNumber, nextAttemptAt }
+    : { claimed: true, status, attemptNumber }
+}
+
+/**
+ * Lavora un job subito dopo salvataggio/validazione, dentro il request lifecycle.
+ * Un retry con backoff persistente viene atteso solo se scade entro il budget; altrimenti il job
+ * resta `pending` con `next_attempt_at` e lo riprende il recovery giornaliero. Il limite retry
+ * resta quello persistito del job (applicato da processCredentialValidationJob).
+ */
+export async function runCredentialValidationJobInline(params: {
+  jobId: string
+  attemptProvider: (payload: CredentialValidationJobPayload) => Promise<CredentialValidationAttemptResult>
+  adminClient?: AdminClient
+  clock?: () => Date
+  sleep?: (ms: number) => Promise<void>
+  budgetMs?: number
+}): Promise<{ attempts: number; status: CredentialValidationStatus | 'superseded' }> {
+  const admin = params.adminClient ?? createAdminClient()
+  const clock = params.clock ?? (() => new Date())
+  const sleep = params.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
+  const deadline = clock().getTime() + (params.budgetMs ?? CREDENTIAL_VALIDATION_INLINE_BUDGET_MS)
+  let attempts = 0
+
+  for (;;) {
+    const result = await processCredentialValidationJob({
+      jobId: params.jobId,
+      attemptProvider: params.attemptProvider,
+      adminClient: admin,
+      clock,
+    })
+    if (!result.claimed) return { attempts, status: result.status }
+    attempts += 1
+    if (result.status !== 'pending' || !result.nextAttemptAt) return { attempts, status: result.status }
+
+    const waitMs = Math.max(0, Date.parse(result.nextAttemptAt) - clock().getTime()) + CREDENTIAL_VALIDATION_INLINE_CLAIM_MARGIN_MS
+    if (clock().getTime() + waitMs + CREDENTIAL_VALIDATION_INLINE_ATTEMPT_RESERVE_MS > deadline) {
+      return { attempts, status: 'pending' }
+    }
+    await sleep(waitMs)
+  }
 }
 
 /** Lavora un numero tecnico limitato di job per tick; ogni job fa al massimo una richiesta provider. */

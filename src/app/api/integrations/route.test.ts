@@ -6,7 +6,9 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { getCurrentSessionMock, getStatusesMock, saveApiKeyMock, validateApiKeyMock, removeApiKeyMock } = vi.hoisted(() => ({
+const { getCurrentSessionMock, getStatusesMock, saveApiKeyMock, validateApiKeyMock, removeApiKeyMock, runValidationJobMock, afterMock } = vi.hoisted(() => ({
+  runValidationJobMock: vi.fn(),
+  afterMock: vi.fn(),
   getCurrentSessionMock: vi.fn(),
   getStatusesMock: vi.fn(),
   saveApiKeyMock: vi.fn(),
@@ -20,7 +22,9 @@ vi.mock('@/lib/services/integrations', () => ({
   saveApiKey: saveApiKeyMock,
   validateApiKey: validateApiKeyMock,
   removeApiKey: removeApiKeyMock,
+  runCredentialValidationJob: runValidationJobMock,
 }))
+vi.mock('next/server', () => ({ after: afterMock }))
 
 import { AppError } from '@/lib/utils/errors'
 import { DELETE, GET, POST } from './route'
@@ -74,6 +78,31 @@ describe('/api/integrations HTTP envelope', () => {
       data: { message: 'Chiave rimossa correttamente' },
       requestId: REQUEST_ID,
     })
+  })
+
+  it('lavora il job subito con after() restituendo la Promise del worker (ADR-014)', async () => {
+    const workerPromise = Promise.resolve('worker-done')
+    runValidationJobMock.mockReturnValue(workerPromise)
+
+    const saveResponse = await POST(makeRequest('POST', { provider: 'youtube', apiKey: 'success-case-test-marker', action: 'save' }))
+    expect(saveResponse.status).toBe(202)
+    expect(afterMock).toHaveBeenCalledTimes(1)
+    const callback = afterMock.mock.calls[0]?.[0] as () => unknown
+    expect(callback()).toBe(workerPromise)
+    expect(runValidationJobMock).toHaveBeenCalledWith('validation-job-save')
+
+    const validateResponse = await POST(makeRequest('POST', { provider: 'youtube', action: 'validate' }))
+    expect(validateResponse.status).toBe(202)
+    expect(afterMock).toHaveBeenCalledTimes(2)
+    ;(afterMock.mock.calls[1]?.[0] as () => unknown)()
+    expect(runValidationJobMock).toHaveBeenLastCalledWith('validation-job-validate')
+  })
+
+  it('non schedula il worker se il job è già running presso un altro worker', async () => {
+    validateApiKeyMock.mockResolvedValueOnce({ provider: 'youtube', jobId: 'job-running', isValid: null, message: null, validationStatus: 'running' })
+    const response = await POST(makeRequest('POST', { provider: 'youtube', action: 'validate' }))
+    expect(response.status).toBe(202)
+    expect(afterMock).not.toHaveBeenCalled()
   })
 
   it('restituisce 202 e jobId per una validazione asincrona', async () => {

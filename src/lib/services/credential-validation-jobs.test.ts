@@ -11,6 +11,7 @@ import {
   getCredentialValidationStatusesForUser,
   processCredentialValidationJob,
   processPendingCredentialValidationJobs,
+  runCredentialValidationJobInline,
   type CredentialValidationJobPayload,
   type CredentialValidationAttemptResult,
 } from '@/lib/services/credential-validation-jobs'
@@ -360,5 +361,66 @@ describe('credential validation job lifecycle', () => {
     ]))
 
     expect(statuses).toEqual(new Map([[payload.credentialId, 'pending']]))
+  })
+})
+
+describe('esecuzione inline dopo salvataggio (senza cron al minuto)', () => {
+  /** Simula claim/finish con retryLimit e orologio controllabile; sleep avanza l'orologio. */
+  function setup(retryLimit: number, retryable: boolean) {
+    let nowMs = Date.parse('2026-10-11T12:00:00.000Z')
+    let attemptNumber = 0
+    const finishes: Record<string, unknown>[] = []
+    const rpc = vi.fn(async (name: string, args: Record<string, unknown> = {}) => {
+      if (name === 'claim_credential_validation_job_with_attempt') {
+        attemptNumber += 1
+        return { data: [{ job_id: 'job-inline', lease_id: args.p_lease_id, attempt_id: `a-${attemptNumber}`, attempt_number: attemptNumber, payload: { ...payload, retryLimit } }], error: null }
+      }
+      finishes.push(args)
+      return { data: true, error: null }
+    })
+    const attemptProvider = vi.fn<(jobPayload: CredentialValidationJobPayload) => Promise<CredentialValidationAttemptResult>>().mockResolvedValue({
+      isValid: false, retryable, message: 'Temporary provider error', errorType: 'temporary', credentialChanged: false,
+    })
+    const sleep = vi.fn(async (ms: number) => { nowMs += ms })
+    return { rpc, finishes, attemptProvider, sleep, clock: () => new Date(nowMs), adminClient: { rpc } as unknown as ReturnType<typeof createAdminClient> }
+  }
+
+  it('attende il backoff persistente entro il budget e si ferma al limite retry della chiave', async () => {
+    const ctx = setup(2, true)
+    const result = await runCredentialValidationJobInline({ jobId: 'job-inline', attemptProvider: ctx.attemptProvider, adminClient: ctx.adminClient, clock: ctx.clock, sleep: ctx.sleep })
+
+    expect(ctx.attemptProvider).toHaveBeenCalledTimes(3)
+    expect(ctx.finishes.map((finish) => finish.p_status)).toEqual(['pending', 'pending', 'failed'])
+    expect(ctx.finishes.map((finish) => finish.p_attempt_number)).toEqual([1, 2, 3])
+    expect(ctx.sleep).toHaveBeenCalledTimes(2)
+    expect(result).toEqual({ attempts: 3, status: 'failed' })
+  })
+
+  it('lascia pending con next_attempt_at un retry che non entra nel budget (ripreso dal cron giornaliero)', async () => {
+    const ctx = setup(100_000, true)
+    const result = await runCredentialValidationJobInline({ jobId: 'job-inline', attemptProvider: ctx.attemptProvider, adminClient: ctx.adminClient, clock: ctx.clock, sleep: ctx.sleep, budgetMs: 5_000 })
+
+    expect(ctx.attemptProvider).toHaveBeenCalledOnce()
+    expect(ctx.sleep).not.toHaveBeenCalled()
+    expect(ctx.finishes[0]).toMatchObject({ p_status: 'pending', p_next_attempt_at: '2026-10-11T12:00:01.000Z' })
+    expect(result).toEqual({ attempts: 1, status: 'pending' })
+  })
+
+  it('con limite retry 0 esegue un solo tentativo e non attende', async () => {
+    const ctx = setup(0, true)
+    const result = await runCredentialValidationJobInline({ jobId: 'job-inline', attemptProvider: ctx.attemptProvider, adminClient: ctx.adminClient, clock: ctx.clock, sleep: ctx.sleep })
+
+    expect(ctx.attemptProvider).toHaveBeenCalledOnce()
+    expect(ctx.sleep).not.toHaveBeenCalled()
+    expect(result).toEqual({ attempts: 1, status: 'failed' })
+  })
+
+  it('non esegue il provider se un altro worker ha già la lease', async () => {
+    const rpc = vi.fn(async () => ({ data: [], error: null }))
+    const attemptProvider = vi.fn<(jobPayload: CredentialValidationJobPayload) => Promise<CredentialValidationAttemptResult>>()
+    const result = await runCredentialValidationJobInline({ jobId: 'job-inline', attemptProvider, adminClient: { rpc } as unknown as ReturnType<typeof createAdminClient> })
+
+    expect(result).toEqual({ attempts: 0, status: 'pending' })
+    expect(attemptProvider).not.toHaveBeenCalled()
   })
 })
