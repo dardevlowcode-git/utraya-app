@@ -2,7 +2,7 @@
  * Scopo del file: verifica il comportamento del worker sui job automatici con chiavi in rotazione per canale.
  * Moduli richiamati: `vitest`, servizio di trascrizione, registratore uso (client admin finto che raccoglie gli eventi).
  * Flusso: uno store in memoria assegna le chiavi in ordine come l'RPC (la rotazione reale per canale è provata su PostgreSQL);
- * qui si controllano retry sulla stessa chiave, passaggio alla successiva, esaurimento, attesa e attribuzione dell'uso.
+ * qui si controllano retry sulla stessa chiave, passaggio alla successiva per sola parte, esaurimento, attesa e attribuzione dell'uso.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -25,6 +25,7 @@ import {
   runTranscriptionJob,
   type ChannelCredentialAcquisition,
   type GeminiCredential,
+  type PartCredentialAcquisition,
   type TranscriptionContext,
   type TranscriptionStore,
   type TranscriptionWorkerDeps,
@@ -40,7 +41,7 @@ function key(owner: string, retryLimit = 0): GeminiCredential {
  * Store in memoria di un job automatico: `eligible` è la lista ordinata delle chiavi del canale; ogni chiave
  * viene assegnata una sola volta per job (come `transcription_job_credentials`) e quella attiva resta fissa.
  */
-function createAutoStore(options: { durationSeconds?: number; eligible: GeminiCredential[]; removeAfterRelease?: boolean }) {
+function createAutoStore(options: { durationSeconds?: number; eligible: GeminiCredential[] }) {
   const parts = buildTranscriptionParts(options.durationSeconds ?? 360).map((part) => ({
     ...part, status: 'pending' as 'pending' | 'done' | 'missing', attempts: 0, lastError: null as string | null,
   }))
@@ -48,10 +49,11 @@ function createAutoStore(options: { durationSeconds?: number; eligible: GeminiCr
     transcriptionId: 'tr-1', status: 'pending', youtubeVideoId: 'abcdefghijk',
     model: 'gemini-3.1-flash-lite', thinkingLevel: 'minimal', inputPricePerMillion: 0.25, outputPricePerMillion: 1.5, parts,
   }
-  const used: Array<{ owner: string; status: 'active' | 'exhausted' }> = []
-  const released: Array<{ owner: string; partPosition: number | null; lastError: string | null }> = []
-  let eligible = [...options.eligible]
-  const state = { jobStatus: 'pending', jobError: null as string | null, finalStatus: null as string | null, closedPending: false, acquires: 0 }
+  const recorded: Array<{ owner: string; partPosition: number; lastError: string | null }> = []
+  const state = { jobStatus: 'pending', jobError: null as string | null, finalStatus: null as string | null, closedPending: false }
+  const exhausted = new Map<number, Set<string>>()
+  const eligible = [...options.eligible]
+  const keyId = (credential: GeminiCredential) => `${credential.credentialId}:${credential.keyVersion}`
 
   const store: TranscriptionStore = {
     async claimJob() {
@@ -62,30 +64,25 @@ function createAutoStore(options: { durationSeconds?: number; eligible: GeminiCr
       }
     },
     async loadContext() {
-      return { ...context, parts: parts.map((part) => ({ ...part })) }
+      return { ...context, parts: parts.map((part) => ({ ...part, exhaustedKeys: [...(exhausted.get(part.position) ?? [])] })) }
     },
     async loadCredential() {
       throw new Error('i job automatici non usano la chiave di un richiedente')
     },
     async acquireChannelCredential(): Promise<ChannelCredentialAcquisition> {
-      state.acquires += 1
-      const active = used.find((item) => item.status === 'active')
-      if (active) {
-        const still = eligible.find((candidate) => candidate.ownerUserId === active.owner)
-        if (still) return { status: 'assigned', credential: still }
-        active.status = 'exhausted'
-      }
-      const next = eligible.find((candidate) => !used.some((item) => item.owner === candidate.ownerUserId))
-      if (!next) return { status: eligible.length === 0 ? 'waiting' : 'exhausted' }
-      used.push({ owner: next.ownerUserId, status: 'active' })
-      return { status: 'assigned', credential: next }
+      return eligible[0] ? { status: 'assigned', credential: eligible[0] } : { status: 'waiting' }
     },
-    async releaseChannelCredential(input) {
-      const entry = used.find((item) => item.owner === input.credential.ownerUserId && item.status === 'active')
-      if (entry) entry.status = 'exhausted'
-      released.push({ owner: input.credential.ownerUserId, partPosition: input.partPosition, lastError: input.lastError })
-      for (const part of parts) if (part.status === 'pending') part.attempts = 0
-      if (options.removeAfterRelease) eligible = []
+    async claimPartCredential(input): Promise<PartCredentialAcquisition> {
+      const done = exhausted.get(input.partPosition) ?? new Set<string>()
+      const next = eligible.find((candidate) => !done.has(keyId(candidate)))
+      return next ? { status: 'assigned', credential: next } : { status: 'none' }
+    },
+    async recordPartKeyExhausted(input) {
+      const set = exhausted.get(input.partPosition) ?? new Set<string>()
+      set.add(keyId(input.credential))
+      exhausted.set(input.partPosition, set)
+      recorded.push({ owner: input.credential.ownerUserId, partPosition: input.partPosition, lastError: input.lastError })
+      parts.find((part) => part.position === input.partPosition)!.attempts = 0
       return true
     },
     async savePart(input) {
@@ -110,7 +107,7 @@ function createAutoStore(options: { durationSeconds?: number; eligible: GeminiCr
       return true
     },
   }
-  return { store, state, parts, used, released }
+  return { store, state, parts, recorded }
 }
 
 function ok() {
@@ -159,35 +156,65 @@ describe('job automatici con chiavi in rotazione', () => {
     expect(usageRows.map((row) => [row.user_id, row.outcome])).toEqual([['anna', 'http_error'], ['anna', 'http_error'], ['anna', 'success']])
   })
 
-  it('con la chiave esaurita passa alla successiva per le parti pending e non torna indietro', async () => {
-    const { store, parts, released, used } = createAutoStore({ eligible: [key('anna'), key('bruno')] })
+  it('un 503 su una parte con limite 0 passa alla chiave successiva solo per quella parte', async () => {
+    const { store, parts, recorded, state } = createAutoStore({ eligible: [key('anna'), key('bruno')] })
     const fetcher = vi.fn()
       .mockResolvedValueOnce(ok()) // parte 0 con anna
-      .mockResolvedValueOnce(new Response('x', { status: 500 })) // parte 1 con anna: limite 0, chiave esaurita
-      .mockImplementation(async () => ok())
+      .mockResolvedValueOnce(new Response('x', { status: 503 })) // parte 1 con anna: esaurita solo per questa parte
+      .mockImplementation(async () => ok()) // parte 1 con bruno, parte 2 di nuovo con la chiave del job
 
     const result = await run(store, fetcher)
 
     expect(result.outcome).toBe('complete')
-    expect(fetcher.mock.calls.map(keyOf)).toEqual(['key-anna', 'key-anna', 'key-bruno', 'key-bruno'])
-    expect(released).toEqual([{ owner: 'anna', partPosition: 1, lastError: 'provider_http_500' }])
+    expect(fetcher.mock.calls.map(keyOf)).toEqual(['key-anna', 'key-anna', 'key-bruno', 'key-anna'])
+    expect(recorded).toEqual([{ owner: 'anna', partPosition: 1, lastError: 'provider_http_503' }])
     expect(parts.map((part) => part.status)).toEqual(['done', 'done', 'done'])
-    expect(used.map((item) => [item.owner, item.status])).toEqual([['anna', 'exhausted'], ['bruno', 'active']])
-    expect(usageRows.map((row) => row.user_id)).toEqual(['anna', 'anna', 'bruno', 'bruno'])
+    expect(usageRows.map((row) => row.user_id)).toEqual(['anna', 'anna', 'bruno', 'anna'])
+    expect(state.closedPending).toBe(false)
   })
 
-  it('esaurite tutte le chiavi le parti restanti diventano mancanti e la trascrizione da rivedere', async () => {
-    const { store, state, parts } = createAutoStore({ durationSeconds: 240, eligible: [key('anna'), key('bruno')] })
-    const fetcher = vi.fn(async () => new Response('x', { status: 429 }))
+  it('con una sola chiave un 503 rende mancante soltanto la parte fallita, le altre restano done', async () => {
+    const { store, parts, state } = createAutoStore({ eligible: [key('anna')] })
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(ok())
+      .mockResolvedValueOnce(new Response('x', { status: 503 }))
+      .mockImplementation(async () => ok())
 
     const result = await run(store, fetcher)
 
     expect(result.outcome).toBe('needs_review')
-    expect(fetcher.mock.calls.map(keyOf)).toEqual(['key-anna', 'key-bruno'])
-    expect(parts.map((part) => part.status)).toEqual(['missing', 'missing'])
-    expect(state.closedPending).toBe(true)
-    expect(state.finalStatus).toBe('needs_review')
+    expect(parts.map((part) => [part.status, part.lastError])).toEqual([['done', null], ['missing', 'provider_http_503'], ['done', null]])
+    expect(fetcher).toHaveBeenCalledTimes(3)
+    expect(state.closedPending).toBe(false)
     expect(state.jobStatus).toBe('completed')
+  })
+
+  it('una parte non torna mai su una chiave già esaurita per lei e le altre parti proseguono', async () => {
+    const { store, parts } = createAutoStore({ durationSeconds: 240, eligible: [key('anna'), key('bruno')] })
+    // La parte 0 fallisce con entrambe le chiavi, la parte 1 riesce con la chiave del job.
+    const fetcher = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      const start = JSON.parse(init!.body as string).contents[0].parts[0].videoMetadata.startOffset
+      return start === '0s' ? new Response('x', { status: 429 }) : ok()
+    })
+
+    const result = await run(store, fetcher)
+
+    expect(result.outcome).toBe('needs_review')
+    expect(fetcher.mock.calls.map(keyOf)).toEqual(['key-anna', 'key-bruno', 'key-anna'])
+    expect(parts.map((part) => part.status)).toEqual(['missing', 'done'])
+  })
+
+  it('riprende una parte già esaurita su una chiave senza ripetere i tentativi su quella chiave', async () => {
+    const { store } = createAutoStore({ durationSeconds: 120, eligible: [key('anna'), key('bruno')] })
+    await store.recordPartKeyExhausted({
+      jobId: 'job-1', leaseId: 'lease', transcriptionId: 'tr-1', partPosition: 0, credential: key('anna'), lastError: 'provider_http_503',
+    })
+    const fetcher = vi.fn(async () => ok())
+
+    const result = await run(store, fetcher)
+
+    expect(result.outcome).toBe('complete')
+    expect(fetcher.mock.calls.map(keyOf)).toEqual(['key-bruno'])
   })
 
   it('senza chiave eleggibile il job resta pending senza chiamare il provider', async () => {
@@ -201,19 +228,5 @@ describe('job automatici con chiavi in rotazione', () => {
     expect(state.jobStatus).toBe('pending')
     expect(parts.every((part) => part.status === 'pending')).toBe(true)
     expect(usageRows).toHaveLength(0)
-  })
-
-  it('se la chiave sparisce durante il lavoro il job attende e conserva le parti già fatte', async () => {
-    const { store, state, parts } = createAutoStore({ eligible: [key('anna')], removeAfterRelease: true })
-    const fetcher = vi.fn()
-      .mockResolvedValueOnce(ok())
-      .mockResolvedValueOnce(new Response('x', { status: 500 }))
-
-    const result = await run(store, fetcher)
-
-    expect(result.outcome).toBe('waiting')
-    expect(parts.map((part) => part.status)).toEqual(['done', 'pending', 'pending'])
-    expect(state.jobStatus).toBe('pending')
-    expect(state.finalStatus).toBeNull()
   })
 })

@@ -59,6 +59,28 @@ async function releaseCredential(admin: AdminClient, input: {
   return data === true
 }
 
+async function recordPartExhausted(admin: AdminClient, input: {
+  jobId: string
+  leaseId: string
+  transcriptionId: string
+  partPosition: number
+  credential: { credentialId?: string; keyVersion?: string }
+  lastError: string | null
+}): Promise<boolean> {
+  if (!input.credential.credentialId || !input.credential.keyVersion) return false
+  const { data, error } = await admin.rpc('record_transcription_part_key_exhausted', {
+    p_job_id: input.jobId,
+    p_lease_id: input.leaseId,
+    p_transcription_id: input.transcriptionId,
+    p_part_position: input.partPosition,
+    p_credential_id: input.credential.credentialId,
+    p_key_version: input.credential.keyVersion,
+    p_last_error: input.lastError,
+  })
+  if (error) throw dbError('Impossibile registrare la chiave esaurita', error.message)
+  return data === true
+}
+
 /** Store di produzione: tutte le scritture con il client service_role. */
 export function createSupabaseTranscriptionStore(admin = createAdminClient()): TranscriptionStore {
   return {
@@ -86,15 +108,18 @@ export function createSupabaseTranscriptionStore(admin = createAdminClient()): T
       if (error) throw dbError('Impossibile leggere la trascrizione', error.message)
       if (!transcription) return null
 
-      const [videoResult, partsResult, profileResult] = await Promise.all([
+      const [videoResult, partsResult, profileResult, exhaustedResult] = await Promise.all([
         admin.from('videos').select('youtube_video_id, video_url').eq('id', transcription.video_id).maybeSingle(),
         admin.from('transcription_parts')
           .select('position, start_seconds, end_seconds, status, attempts, last_error')
           .eq('transcription_id', transcription.id)
           .order('position', { ascending: true }),
         admin.from('transcription_profile').select('input_price_per_million, output_price_per_million').eq('id', true).maybeSingle(),
+        admin.from('transcription_part_exhausted_keys')
+          .select('part_position, credential_id, key_version')
+          .eq('transcription_id', transcription.id),
       ])
-      if (videoResult.error || partsResult.error || profileResult.error) {
+      if (videoResult.error || partsResult.error || profileResult.error || exhaustedResult.error) {
         throw dbError('Impossibile leggere il contesto di trascrizione')
       }
       const youtubeVideoId = extractYouTubeVideoId(videoResult.data?.youtube_video_id)
@@ -116,6 +141,9 @@ export function createSupabaseTranscriptionStore(admin = createAdminClient()): T
           status: part.status,
           attempts: part.attempts,
           lastError: part.last_error,
+          exhaustedKeys: (exhaustedResult.data ?? [])
+            .filter((key) => key.part_position === part.position)
+            .map((key) => `${key.credential_id}:${key.key_version}`),
         })),
       }
     },
@@ -178,14 +206,40 @@ export function createSupabaseTranscriptionStore(admin = createAdminClient()): T
       return { status: 'waiting' }
     },
 
-    async releaseChannelCredential(input) {
-      if (!input.credential.credentialId || !input.credential.keyVersion) return false
-      return releaseCredential(admin, {
-        jobId: input.jobId, leaseId: input.leaseId,
-        credentialId: input.credential.credentialId, keyVersion: input.credential.keyVersion,
-        status: input.status, transcriptionId: input.transcriptionId,
-        partPosition: input.partPosition, lastError: input.lastError,
-      })
+    async claimPartCredential(input) {
+      for (let attempt = 0; attempt < MAX_UNREADABLE_KEYS_PER_ACQUISITION; attempt += 1) {
+        const { data, error } = await admin.rpc('claim_transcription_part_credential', {
+          p_job_id: input.jobId,
+          p_lease_id: input.leaseId,
+          p_channel_id: input.channelId,
+          p_transcription_id: input.transcriptionId,
+          p_part_position: input.partPosition,
+        })
+        if (error) throw dbError('Impossibile assegnare la chiave alla parte', error.message)
+        const row = data?.[0]
+        if (!row) throw new AppError('Assegnazione chiave non valida', 'structural', 500)
+        if (row.status === 'lease_lost') return { status: 'lease_lost' }
+        if (row.status !== 'assigned') return { status: 'none' }
+        if (!row.credential_id || !row.user_id || !row.key_version) throw new AppError('Assegnazione chiave non valida', 'structural', 500)
+
+        const apiKey = await getProviderApiKeyForUserAsAdmin(row.user_id, 'gemini').catch(() => null)
+        const credential = {
+          ownerUserId: row.user_id,
+          apiKey: apiKey ?? '',
+          retryLimit: row.retry_limit ?? 0,
+          credentialId: row.credential_id,
+          keyVersion: row.key_version,
+        }
+        if (apiKey) return { status: 'assigned', credential }
+        // Chiave non decifrabile: esclusa per questa parte e si prova la successiva.
+        const recorded = await recordPartExhausted(admin, { ...input, credential, lastError: 'key_unreadable' })
+        if (!recorded) return { status: 'lease_lost' }
+      }
+      return { status: 'none' }
+    },
+
+    async recordPartKeyExhausted(input) {
+      return recordPartExhausted(admin, input)
     },
 
     async savePart(input) {

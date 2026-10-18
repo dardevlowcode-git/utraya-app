@@ -100,7 +100,10 @@ function createFakeStore(options: {
     async acquireChannelCredential() {
       throw new Error('richieste manuali: nessuna rotazione')
     },
-    async releaseChannelCredential() {
+    async claimPartCredential() {
+      throw new Error('richieste manuali: nessuna rotazione')
+    },
+    async recordPartKeyExhausted() {
       throw new Error('richieste manuali: nessuna rotazione')
     },
     async savePart(input) {
@@ -253,6 +256,20 @@ describe('servizio di trascrizione', () => {
       ['missing', 1, 'provider_http_500'],
     ])
     expect(state.finalStatus).toBe('needs_review')
+  })
+
+  it('richiesta manuale: un errore su una parte non ferma le altre, solo quella parte resta mancante', async () => {
+    const { store, state } = createFakeStore({ durationSeconds: 360 })
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response('x', { status: 503 }))
+      .mockImplementation(async () => geminiResponse([{ start: '00:10', text: 'frase sintetica' }]))
+
+    const result = await runTranscriptionJob(JOB_ID, deps(store, fetcher as unknown as typeof fetch))
+
+    expect(result.outcome).toBe('needs_review')
+    expect(fetcher).toHaveBeenCalledTimes(3)
+    expect(state.context.parts.map((part) => part.status)).toEqual(['missing', 'done', 'done'])
+    expect(state.closedPending).toBe(false)
   })
 
   it('con limite retry 1 ritenta lo stesso blocco una volta e poi lo dichiara mancante', async () => {

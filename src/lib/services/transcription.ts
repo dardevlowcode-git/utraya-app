@@ -55,6 +55,8 @@ export interface TranscriptionPartState {
   status: TranscriptionPartStatus
   attempts: number
   lastError: string | null
+  /** Chiavi già esaurite per questa parte (`credentialId:keyVersion`): la parte non vi torna. */
+  exhaustedKeys?: string[]
 }
 
 export interface TranscriptionContext {
@@ -76,6 +78,17 @@ export interface GeminiCredential {
   /** Presenti solo per le chiavi assegnate in rotazione ai job automatici. */
   credentialId?: string
   keyVersion?: string
+}
+
+/** Esito della richiesta di una chiave per una parte. */
+export type PartCredentialAcquisition =
+  | { status: 'assigned'; credential: GeminiCredential }
+  | { status: 'none' }
+  | { status: 'lease_lost' }
+
+/** Identifica una chiave (versione inclusa) nell'elenco delle chiavi esaurite di una parte. */
+export function credentialKeyId(credential: GeminiCredential): string {
+  return `${credential.credentialId}:${credential.keyVersion}`
 }
 
 /** Esito della richiesta di una chiave in rotazione per un job automatico. */
@@ -112,14 +125,21 @@ export interface TranscriptionStore {
   loadCredential(ownerUserId: string | null): Promise<GeminiCredential | null>
   /** Job automatici: chiave del job (stessa per i retry) o la successiva eleggibile in round-robin per canale. */
   acquireChannelCredential(input: { jobId: string; leaseId: string; channelId: string }): Promise<ChannelCredentialAcquisition>
-  /** Rilascia la chiave del job (esaurita o non utilizzabile) e azzera i tentativi delle parti pending. False se lease persa. */
-  releaseChannelCredential(input: {
+  /** Chiave per una singola parte di un job automatico (la chiave del job, poi le altre eleggibili non esaurite per la parte). */
+  claimPartCredential(input: {
     jobId: string
     leaseId: string
-    credential: GeminiCredential
-    status: 'exhausted' | 'ineligible'
+    channelId: string
     transcriptionId: string
-    partPosition: number | null
+    partPosition: number
+  }): Promise<PartCredentialAcquisition>
+  /** Registra la chiave esaurita per la parte e azzera i suoi tentativi. False se lease persa. */
+  recordPartKeyExhausted(input: {
+    jobId: string
+    leaseId: string
+    transcriptionId: string
+    partPosition: number
+    credential: GeminiCredential
     lastError: string | null
   }): Promise<boolean>
   /** False se la lease è stata persa (nessuna scrittura avvenuta). */
@@ -452,10 +472,9 @@ export async function runTranscriptionJob(jobId: string, deps: TranscriptionWork
 
     // Job automatico: chiave in rotazione fra i follower del canale; richiesta manuale: chiave di chi richiede.
     const rotatingChannelId = claim.payload.credentialOwnerUserId === null ? claim.payload.channelId : null
-    let activeContext: TranscriptionContext = context
-    let pending = context.parts.filter((part) => part.status === 'pending')
-    while (pending.length > 0) {
-      let credential: GeminiCredential | null
+    const pending = context.parts.filter((part) => part.status === 'pending')
+    if (pending.length > 0) {
+      let jobCredential: GeminiCredential | null
       if (rotatingChannelId) {
         const acquired = await store.acquireChannelCredential({ jobId, leaseId, channelId: rotatingChannelId })
         if (acquired.status === 'lease_lost') return { outcome: 'lease_lost', partsSaved }
@@ -465,89 +484,100 @@ export async function runTranscriptionJob(jobId: string, deps: TranscriptionWork
           return { outcome: released ? 'waiting' : 'lease_lost', partsSaved }
         }
         if (acquired.status === 'exhausted') {
-          // Tutte le chiavi eleggibili hanno esaurito i tentativi: le parti restanti diventano mancanti.
+          // Tutte le chiavi eleggibili sono già state escluse per questo job: le parti restanti diventano mancanti.
           const exhaustedStatus = await store.finalize({
-            jobId, leaseId, transcriptionId: activeContext.transcriptionId, closePending: true,
+            jobId, leaseId, transcriptionId: context.transcriptionId, closePending: true,
           })
           if (exhaustedStatus === null) return { outcome: 'lease_lost', partsSaved }
           await finish('completed', null, { status: exhaustedStatus, keysExhausted: true })
           return { outcome: 'needs_review', partsSaved }
         }
-        credential = acquired.credential
+        jobCredential = acquired.credential
       } else {
-        credential = await store.loadCredential(claim.payload.credentialOwnerUserId)
+        jobCredential = await store.loadCredential(claim.payload.credentialOwnerUserId)
       }
-      if (!credential) {
+      if (!jobCredential) {
         // Senza chiave utilizzabile le parti restano rilanciabili come mancanti.
-        await store.finalize({ jobId, leaseId, transcriptionId: activeContext.transcriptionId, closePending: true })
+        await store.finalize({ jobId, leaseId, transcriptionId: context.transcriptionId, closePending: true })
         await finish('failed', 'credential_unavailable', null)
         return { outcome: 'failed', partsSaved }
       }
-      const activeCredential = credential
-      const partsToRun = pending
-      const ctx = activeContext
+      const startCredential = jobCredential
 
       let nextIndex = 0
       let leaseLost = false
-      let keyReleased = false
       let fatal: unknown = null
-      let unfinished = partsToRun.length
+      let unfinished = pending.length
 
-      const processPart = async (part: TranscriptionPartState): Promise<'saved' | 'deferred' | 'lease_lost'> => {
-        const maxAttempts = 1 + activeCredential.retryLimit
-        let attempts = part.attempts
-        let lastError = part.lastError
-        while (attempts < maxAttempts) {
-          if (keyReleased) return 'deferred'
-          if (now() - startedMs + callTimeoutMs > hardBudgetMs) {
-            if (attempts > part.attempts) {
-              const persisted = await store.savePart({
-                jobId, leaseId, transcriptionId: ctx.transcriptionId, partPosition: part.position,
-                status: 'pending', attempts, lastError, languageCode: null, phrases: null,
-              })
-              if (!persisted) return 'lease_lost'
-            }
-            return 'deferred'
-          }
-          attempts += 1
-          const result = await attemptBlock({ credential: activeCredential, context: ctx, part, fetcher, timeoutMs: callTimeoutMs })
-          if (result.ok) {
-            const saved = await store.savePart({
-              jobId, leaseId, transcriptionId: ctx.transcriptionId, partPosition: part.position,
-              status: 'done', attempts, lastError: null, languageCode: result.languageCode, phrases: result.phrases,
-            })
-            return saved ? 'saved' : 'lease_lost'
-          }
-          lastError = result.error
-          // Un'altra corsia ha già rilasciato questa chiave: il tentativo fallito non va salvato (i contatori sono stati azzerati).
-          if (keyReleased) return 'deferred'
-          if (attempts < maxAttempts) await sleep(Math.min(500 * 2 ** (attempts - 1), 8_000))
-        }
-        if (rotatingChannelId) {
-          // Chiave esaurita su questa parte: passa alla successiva eleggibile per le parti ancora pending.
-          if (keyReleased) return 'deferred'
-          keyReleased = true
-          const released = await store.releaseChannelCredential({
-            jobId, leaseId, credential: activeCredential, status: 'exhausted',
-            transcriptionId: ctx.transcriptionId, partPosition: part.position, lastError: lastError ?? 'retry_budget_exhausted',
-          })
-          return released ? 'deferred' : 'lease_lost'
-        }
-        const saved = await store.savePart({
-          jobId, leaseId, transcriptionId: ctx.transcriptionId, partPosition: part.position,
+      const saveMissing = (part: TranscriptionPartState, attempts: number, lastError: string | null) =>
+        store.savePart({
+          jobId, leaseId, transcriptionId: context.transcriptionId, partPosition: part.position,
           status: 'missing', attempts, lastError: lastError ?? 'retry_budget_exhausted', languageCode: null, phrases: null,
         })
-        return saved ? 'saved' : 'lease_lost'
+
+      /** Una parte: tentativi sulla chiave del job; a chiave esaurita passa alla successiva solo per questa parte. */
+      const processPart = async (part: TranscriptionPartState): Promise<'saved' | 'deferred' | 'lease_lost'> => {
+        let credential = startCredential
+        const exhaustedKeys = new Set(part.exhaustedKeys ?? [])
+        let attempts = part.attempts
+        let lastError = part.lastError
+        for (;;) {
+          if (rotatingChannelId && exhaustedKeys.has(credentialKeyId(credential))) {
+            const next = await store.claimPartCredential({
+              jobId, leaseId, channelId: rotatingChannelId, transcriptionId: context.transcriptionId, partPosition: part.position,
+            })
+            if (next.status === 'lease_lost') return 'lease_lost'
+            if (next.status === 'none' || exhaustedKeys.has(credentialKeyId(next.credential))) {
+              // Nessuna altra chiave per questa parte: solo questa parte è mancante, le altre proseguono.
+              return (await saveMissing(part, attempts, lastError)) ? 'saved' : 'lease_lost'
+            }
+            credential = next.credential
+            attempts = 0
+          }
+          const maxAttempts = 1 + credential.retryLimit
+          while (attempts < maxAttempts) {
+            if (now() - startedMs + callTimeoutMs > hardBudgetMs) {
+              if (attempts > part.attempts) {
+                const persisted = await store.savePart({
+                  jobId, leaseId, transcriptionId: context.transcriptionId, partPosition: part.position,
+                  status: 'pending', attempts, lastError, languageCode: null, phrases: null,
+                })
+                if (!persisted) return 'lease_lost'
+              }
+              return 'deferred'
+            }
+            attempts += 1
+            const result = await attemptBlock({ credential, context, part, fetcher, timeoutMs: callTimeoutMs })
+            if (result.ok) {
+              const saved = await store.savePart({
+                jobId, leaseId, transcriptionId: context.transcriptionId, partPosition: part.position,
+                status: 'done', attempts, lastError: null, languageCode: result.languageCode, phrases: result.phrases,
+              })
+              return saved ? 'saved' : 'lease_lost'
+            }
+            lastError = result.error
+            if (attempts < maxAttempts) await sleep(Math.min(500 * 2 ** (attempts - 1), 8_000))
+          }
+          if (!rotatingChannelId) {
+            return (await saveMissing(part, attempts, lastError)) ? 'saved' : 'lease_lost'
+          }
+          const recorded = await store.recordPartKeyExhausted({
+            jobId, leaseId, transcriptionId: context.transcriptionId, partPosition: part.position,
+            credential, lastError: lastError ?? 'retry_budget_exhausted',
+          })
+          if (!recorded) return 'lease_lost'
+          exhaustedKeys.add(credentialKeyId(credential))
+        }
       }
 
       const runLane = async () => {
-        while (!leaseLost && !keyReleased && fatal === null) {
+        while (!leaseLost && fatal === null) {
           if (now() - startedMs >= softBudgetMs) return
           const index = nextIndex
           nextIndex += 1
-          if (index >= partsToRun.length) return
+          if (index >= pending.length) return
           try {
-            const outcome = await processPart(partsToRun[index])
+            const outcome = await processPart(pending[index])
             if (outcome === 'saved') { partsSaved += 1; unfinished -= 1 }
             else if (outcome === 'lease_lost') leaseLost = true
             else return
@@ -556,32 +586,20 @@ export async function runTranscriptionJob(jobId: string, deps: TranscriptionWork
           }
         }
       }
-      await Promise.all(Array.from({ length: Math.min(concurrency, partsToRun.length) }, runLane))
+      await Promise.all(Array.from({ length: Math.min(concurrency, pending.length) }, runLane))
 
       if (leaseLost) return { outcome: 'lease_lost', partsSaved }
       if (fatal !== null) throw fatal
-      if (keyReleased) {
-        // Ricarica lo stato salvato e riparte con la chiave successiva (o chiude se non ce ne sono).
-        const reloaded = await store.loadContext(claim.payload)
-        if (!reloaded) {
-          await finish('failed', 'transcription_not_found', null)
-          return { outcome: 'failed', partsSaved }
-        }
-        activeContext = reloaded
-        pending = reloaded.parts.filter((part) => part.status === 'pending')
-        continue
-      }
       if (unfinished > 0) {
         const released = await finish('pending', null, { yielded: true, remainingParts: unfinished })
         if (!released) return { outcome: 'lease_lost', partsSaved }
         if (deps.requestContinuation) await deps.requestContinuation(jobId).catch(() => undefined)
         return { outcome: 'yielded', partsSaved }
       }
-      break
     }
 
     const finalStatus = await store.finalize({
-      jobId, leaseId, transcriptionId: activeContext.transcriptionId, closePending: false,
+      jobId, leaseId, transcriptionId: context.transcriptionId, closePending: false,
     })
     if (finalStatus === null) return { outcome: 'lease_lost', partsSaved }
     await finish('completed', null, { status: finalStatus })

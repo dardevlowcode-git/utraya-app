@@ -610,6 +610,26 @@ export type Database = {
         }
         Relationships: []
       }
+      transcription_part_exhausted_keys: {
+        Row: {
+          transcription_id: string
+          part_position: number
+          credential_id: string
+          key_version: string
+          created_at: string
+        }
+        Insert: {
+          transcription_id: string
+          part_position: number
+          credential_id: string
+          key_version: string
+          created_at?: string
+        }
+        Update: {
+          created_at?: string
+        }
+        Relationships: []
+      }
       transcription_parts: {
         Row: {
           id: string
@@ -1408,6 +1428,34 @@ export type Database = {
           p_last_error: string | null
         }
         Returns: boolean
+      }
+      record_transcription_part_key_exhausted: {
+        Args: {
+          p_job_id: string
+          p_lease_id: string
+          p_transcription_id: string
+          p_part_position: number
+          p_credential_id: string
+          p_key_version: string
+          p_last_error: string | null
+        }
+        Returns: boolean
+      }
+      claim_transcription_part_credential: {
+        Args: {
+          p_job_id: string
+          p_lease_id: string
+          p_channel_id: string
+          p_transcription_id: string
+          p_part_position: number
+        }
+        Returns: {
+          status: 'assigned' | 'none' | 'lease_lost'
+          credential_id: string | null
+          user_id: string | null
+          key_version: string | null
+          retry_limit: number | null
+        }[]
       }
       has_eligible_transcription_credential: {
         Args: { p_channel_id: string }

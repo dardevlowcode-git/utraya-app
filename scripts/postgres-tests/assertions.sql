@@ -1494,6 +1494,100 @@ END;
 $$;
 RESET ROLE;
 
+-- Esaurimento PER PARTE: la parte passa alla chiave successiva, le altre restano sulla chiave del job; mai ritorni.
+SELECT public.test_assert_true(
+  (SELECT bool_and(c.relrowsecurity) FROM pg_catalog.pg_class c WHERE c.oid = 'public.transcription_part_exhausted_keys'::regclass)
+  AND NOT has_table_privilege('authenticated', 'public.transcription_part_exhausted_keys', 'SELECT')
+  AND NOT has_table_privilege('anon', 'public.transcription_part_exhausted_keys', 'SELECT')
+  AND has_table_privilege('service_role', 'public.transcription_part_exhausted_keys', 'INSERT')
+  AND has_function_privilege('service_role', 'public.claim_transcription_part_credential(uuid,uuid,uuid,uuid,integer)', 'EXECUTE')
+  AND has_function_privilege('service_role', 'public.record_transcription_part_key_exhausted(uuid,uuid,uuid,integer,uuid,uuid,text)', 'EXECUTE')
+  AND NOT has_function_privilege('authenticated', 'public.claim_transcription_part_credential(uuid,uuid,uuid,uuid,integer)', 'EXECUTE')
+  AND NOT has_function_privilege('authenticated', 'public.record_transcription_part_key_exhausted(uuid,uuid,uuid,integer,uuid,uuid,text)', 'EXECUTE')
+  AND NOT has_function_privilege('anon', 'public.claim_transcription_part_credential(uuid,uuid,uuid,uuid,integer)', 'EXECUTE'),
+  'ACL e RLS della tabella e delle RPC di esaurimento per parte'
+);
+SET ROLE service_role;
+DO $$
+DECLARE
+  c1 CONSTANT UUID := '20000000-0000-4000-8000-0000000000d1';
+  v_tr CONSTANT UUID := '62000000-0000-4000-8000-000000000041';
+  v_job UUID := public.test_rot_job(81, c1);
+  v_key RECORD;
+  v_k1 RECORD;
+  v_k2 RECORD;
+  v_k3 RECORD;
+  v_other RECORD;
+  v_ok BOOLEAN;
+  v_ok2 BOOLEAN;
+BEGIN
+  SELECT * INTO v_key FROM public.claim_transcription_job_credential(v_job, v_job, c1);
+  SELECT * INTO v_k1 FROM public.claim_transcription_part_credential(v_job, v_job, c1, v_tr, 1);
+  IF v_k1.status <> 'assigned' OR v_k1.credential_id <> v_key.credential_id THEN
+    RAISE EXCEPTION 'la parte parte dalla chiave del job';
+  END IF;
+  UPDATE public.transcription_parts SET attempts = 2 WHERE transcription_id = v_tr AND position = 1;
+
+  -- Chiave del job esaurita sulla sola parte 1: tentativi azzerati, errore registrato, parte ancora pending.
+  v_ok := public.record_transcription_part_key_exhausted(v_job, v_job, v_tr, 1, v_k1.credential_id, v_k1.key_version, 'provider_http_503');
+  IF NOT v_ok
+     OR (SELECT attempts FROM public.transcription_parts WHERE transcription_id = v_tr AND position = 1) <> 0
+     OR (SELECT last_error FROM public.transcription_parts WHERE transcription_id = v_tr AND position = 1) <> 'provider_http_503'
+     OR (SELECT status FROM public.transcription_parts WHERE transcription_id = v_tr AND position = 1) <> 'pending' THEN
+    RAISE EXCEPTION 'registrazione chiave esaurita per parte: %', (SELECT row(attempts, last_error, status) FROM public.transcription_parts WHERE transcription_id = v_tr AND position = 1);
+  END IF;
+  -- Idempotente.
+  PERFORM public.record_transcription_part_key_exhausted(v_job, v_job, v_tr, 1, v_k1.credential_id, v_k1.key_version, 'provider_http_503');
+
+  SELECT * INTO v_k2 FROM public.claim_transcription_part_credential(v_job, v_job, c1, v_tr, 1);
+  IF v_k2.status <> 'assigned' OR v_k2.credential_id = v_k1.credential_id THEN
+    RAISE EXCEPTION 'la parte 1 passa a un altra chiave';
+  END IF;
+  -- Le altre parti restano sulla chiave del job e il job non cambia chiave.
+  SELECT * INTO v_other FROM public.claim_transcription_part_credential(v_job, v_job, c1, v_tr, 2);
+  IF v_other.credential_id <> v_key.credential_id
+     OR (SELECT credential_id FROM public.transcription_job_credentials WHERE job_id = v_job AND status = 'active') <> v_key.credential_id
+     OR EXISTS (SELECT 1 FROM public.transcription_job_credentials WHERE job_id = v_job AND status <> 'active') THEN
+    RAISE EXCEPTION 'le altre parti continuano con la chiave del job';
+  END IF;
+
+  -- Una chiave diventata ineleggibile è esclusa anche per le parti: invalidata la seconda, la parte 1 usa la terza.
+  PERFORM public.record_transcription_part_key_exhausted(v_job, v_job, v_tr, 1, v_k2.credential_id, v_k2.key_version, 'provider_http_503');
+  SELECT * INTO v_k3 FROM public.claim_transcription_part_credential(v_job, v_job, c1, v_tr, 1);
+  IF v_k3.status <> 'assigned' OR v_k3.credential_id IN (v_k1.credential_id, v_k2.credential_id) THEN
+    RAISE EXCEPTION 'terza chiave distinta per la parte 1';
+  END IF;
+  UPDATE public.user_provider_credentials SET is_valid = FALSE WHERE id = v_k3.credential_id;
+  IF (SELECT status FROM public.claim_transcription_part_credential(v_job, v_job, c1, v_tr, 1)) <> 'none' THEN
+    RAISE EXCEPTION 'chiave invalidata esclusa per la parte: nessuna rimasta';
+  END IF;
+  UPDATE public.user_provider_credentials SET is_valid = TRUE WHERE id = v_k3.credential_id;
+
+  -- Tutte esaurite per la parte 1: nessuna chiave, mai ritorni; la parte 2 resta servita.
+  PERFORM public.record_transcription_part_key_exhausted(v_job, v_job, v_tr, 1, v_k3.credential_id, v_k3.key_version, 'provider_http_503');
+  IF (SELECT status FROM public.claim_transcription_part_credential(v_job, v_job, c1, v_tr, 1)) <> 'none'
+     OR (SELECT status FROM public.claim_transcription_part_credential(v_job, v_job, c1, v_tr, 2)) <> 'assigned'
+     OR (SELECT count(*) FROM public.transcription_part_exhausted_keys WHERE transcription_id = v_tr AND part_position = 1) <> 3
+     OR EXISTS (SELECT 1 FROM public.transcription_part_exhausted_keys WHERE transcription_id = v_tr AND part_position = 2) THEN
+    RAISE EXCEPTION 'tutte le chiavi esaurite per la sola parte 1';
+  END IF;
+
+  -- Lease persa: nessuna assegnazione e nessuna scrittura.
+  v_ok2 := public.record_transcription_part_key_exhausted(v_job, gen_random_uuid(), v_tr, 2, v_k1.credential_id, v_k1.key_version, 'x');
+  IF (SELECT status FROM public.claim_transcription_part_credential(v_job, gen_random_uuid(), c1, v_tr, 2)) <> 'lease_lost'
+     OR v_ok2 THEN
+    RAISE EXCEPTION 'lease diversa';
+  END IF;
+
+  -- Eliminare la parte elimina a cascata le chiavi esaurite.
+  DELETE FROM public.transcription_parts WHERE transcription_id = v_tr AND position = 1;
+  IF EXISTS (SELECT 1 FROM public.transcription_part_exhausted_keys WHERE transcription_id = v_tr) THEN
+    RAISE EXCEPTION 'cascata sulle chiavi esaurite';
+  END IF;
+END;
+$$;
+RESET ROLE;
+
 -- Nessuna chiave eleggibile: attesa senza assegnare nulla; lease persa o canale diverso dal payload: nessuna scrittura.
 SET ROLE service_role;
 DO $$
