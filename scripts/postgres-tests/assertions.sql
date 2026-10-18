@@ -1666,6 +1666,258 @@ BEGIN
 END;
 $$;
 
+-- ===== Revisione admin (ticket 06): rilancio atomico delle sole parti mancanti, audit, ACL e statistiche =====
+SELECT public.test_assert_true(
+  NOT has_function_privilege('authenticated', 'public.relaunch_missing_transcription_parts(uuid,integer,text)', 'EXECUTE')
+  AND NOT has_function_privilege('anon', 'public.relaunch_missing_transcription_parts(uuid,integer,text)', 'EXECUTE')
+  AND has_function_privilege('service_role', 'public.relaunch_missing_transcription_parts(uuid,integer,text)', 'EXECUTE')
+  AND NOT has_function_privilege('authenticated', 'public.transcription_review_stats(integer)', 'EXECUTE')
+  AND NOT has_function_privilege('anon', 'public.transcription_review_stats(integer)', 'EXECUTE')
+  AND has_function_privilege('service_role', 'public.transcription_review_stats(integer)', 'EXECUTE')
+  AND NOT has_table_privilege('authenticated', 'public.transcription_relaunch_audit', 'SELECT')
+  AND NOT has_table_privilege('anon', 'public.transcription_relaunch_audit', 'SELECT')
+  AND has_table_privilege('service_role', 'public.transcription_relaunch_audit', 'INSERT')
+  AND NOT has_table_privilege('service_role', 'public.transcription_relaunch_audit', 'UPDATE')
+  AND NOT has_table_privilege('service_role', 'public.transcription_relaunch_audit', 'DELETE'),
+  'ACL rilancio e statistiche trascrizioni: solo service_role, audit append-only'
+);
+
+-- Trascrizione A (richiedente b1 con chiave valida): parte 0 done con frase dubbia, parti 1 e 2 mancanti, 3 done.
+INSERT INTO public.videos (id, channel_id, youtube_video_id, title, published_at, duration_seconds, video_url) VALUES
+  ('65100000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-0000000000d1', 'relaunch-a', 'Rilancio A', NOW(), 480, 'https://www.youtube.com/watch?v=relaunch-a'),
+  ('65100000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-0000000000d1', 'relaunch-b', 'Rilancio B', NOW(), 240, 'https://www.youtube.com/watch?v=relaunch-b'),
+  ('65100000-0000-4000-8000-000000000003', '20000000-0000-4000-8000-0000000000d1', 'relaunch-c', 'Rilancio C', NOW(), 240, 'https://www.youtube.com/watch?v=relaunch-c'),
+  ('65100000-0000-4000-8000-000000000004', '20000000-0000-4000-8000-0000000000d1', 'relaunch-d', 'Rilancio D', NOW(), 240, 'https://www.youtube.com/watch?v=relaunch-d');
+INSERT INTO public.transcriptions (id, video_id, status, model, thinking_level, requested_by_user_id, doubtful_phrase_count, missing_part_count, completed_at) VALUES
+  ('65200000-0000-4000-8000-000000000001', '65100000-0000-4000-8000-000000000001', 'needs_review', 'gemini-3.1-flash-lite', 'minimal', '00000000-0000-4000-8000-0000000000b1', 1, 2, NOW()),
+  ('65200000-0000-4000-8000-000000000002', '65100000-0000-4000-8000-000000000002', 'needs_review', 'gemini-3.1-flash-lite', 'minimal', NULL, 0, 1, NOW()),
+  ('65200000-0000-4000-8000-000000000003', '65100000-0000-4000-8000-000000000003', 'needs_review', 'gemini-3.1-flash-lite', 'minimal', '00000000-0000-4000-8000-0000000000b5', 0, 1, NOW()),
+  ('65200000-0000-4000-8000-000000000004', '65100000-0000-4000-8000-000000000004', 'complete', 'gemini-3.1-flash-lite', 'minimal', NULL, 0, 0, NOW());
+INSERT INTO public.transcription_parts (transcription_id, position, start_seconds, end_seconds, status, attempts, last_error) VALUES
+  ('65200000-0000-4000-8000-000000000001', 0, 0, 120, 'done', 1, NULL),
+  ('65200000-0000-4000-8000-000000000001', 1, 120, 240, 'missing', 3, 'provider_http_503'),
+  ('65200000-0000-4000-8000-000000000001', 2, 240, 360, 'missing', 3, 'timeout'),
+  ('65200000-0000-4000-8000-000000000001', 3, 360, 480, 'done', 1, NULL),
+  ('65200000-0000-4000-8000-000000000002', 0, 0, 120, 'done', 1, NULL),
+  ('65200000-0000-4000-8000-000000000002', 1, 120, 240, 'missing', 1, 'provider_http_503'),
+  ('65200000-0000-4000-8000-000000000003', 0, 0, 120, 'done', 1, NULL),
+  ('65200000-0000-4000-8000-000000000003', 1, 120, 240, 'missing', 1, 'provider_http_503'),
+  ('65200000-0000-4000-8000-000000000004', 0, 0, 120, 'done', 1, NULL),
+  ('65200000-0000-4000-8000-000000000004', 1, 120, 240, 'done', 1, NULL);
+INSERT INTO public.transcription_phrases (transcription_id, position, start_seconds, text, doubtful_time) VALUES
+  ('65200000-0000-4000-8000-000000000001', 0, 5, 'frase sintetica dubbia', TRUE),
+  ('65200000-0000-4000-8000-000000000001', 30000, 365, 'frase sintetica ok', FALSE),
+  ('65200000-0000-4000-8000-000000000002', 0, 5, 'frase sintetica B', FALSE);
+INSERT INTO public.transcription_part_exhausted_keys (transcription_id, part_position, credential_id, key_version) VALUES
+  ('65200000-0000-4000-8000-000000000001', 0, '10000000-0000-4000-8000-0000000000b1', '65300000-0000-4000-8000-000000000001'),
+  ('65200000-0000-4000-8000-000000000001', 1, '10000000-0000-4000-8000-0000000000b1', '65300000-0000-4000-8000-000000000001'),
+  ('65200000-0000-4000-8000-000000000001', 1, '10000000-0000-4000-8000-0000000000b2', '65300000-0000-4000-8000-000000000002'),
+  ('65200000-0000-4000-8000-000000000001', 2, '10000000-0000-4000-8000-0000000000b1', '65300000-0000-4000-8000-000000000001');
+
+SET ROLE service_role;
+DO $$
+DECLARE
+  a CONSTANT UUID := '65200000-0000-4000-8000-000000000001';
+  v_r RECORD;
+  v_job UUID;
+BEGIN
+  -- Trascrizione inesistente.
+  SELECT * INTO v_r FROM public.relaunch_missing_transcription_parts('65200000-0000-4000-8000-0000000000ff', NULL, 'admin-test');
+  IF v_r.status <> 'not_found' THEN RAISE EXCEPTION 'not_found atteso: %', v_r.status; END IF;
+  -- Parte che non è mancante (done): nessun effetto.
+  SELECT * INTO v_r FROM public.relaunch_missing_transcription_parts(a, 0, 'admin-test');
+  IF v_r.status <> 'no_missing' OR EXISTS (SELECT 1 FROM public.jobs WHERE payload->>'videoId' = '65100000-0000-4000-8000-000000000001') THEN
+    RAISE EXCEPTION 'una parte done non va rilanciata né creare job';
+  END IF;
+  -- Username audit obbligatorio.
+  BEGIN
+    PERFORM public.relaunch_missing_transcription_parts(a, 1, '');
+    RAISE EXCEPTION 'username vuoto accettato';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'invalid_admin_username' THEN RAISE; END IF;
+  END;
+
+  -- Rilancio della singola parte 1.
+  SELECT * INTO v_r FROM public.relaunch_missing_transcription_parts(a, 1, 'admin-test');
+  IF v_r.status <> 'relaunched' OR v_r.parts_reset <> 1 OR v_r.credential_mode <> 'requester' OR v_r.job_id IS NULL THEN
+    RAISE EXCEPTION 'rilancio parte 1 non riuscito: %', v_r;
+  END IF;
+  v_job := v_r.job_id;
+  IF (SELECT status || attempts::TEXT || COALESCE(last_error, '-') FROM public.transcription_parts WHERE transcription_id = a AND position = 1) <> 'pending0-'
+     OR (SELECT status || attempts::TEXT || last_error FROM public.transcription_parts WHERE transcription_id = a AND position = 2) <> 'missing3timeout'
+     OR (SELECT status FROM public.transcription_parts WHERE transcription_id = a AND position = 0) <> 'done'
+     OR (SELECT status FROM public.transcription_parts WHERE transcription_id = a AND position = 3) <> 'done' THEN
+    RAISE EXCEPTION 'solo la parte 1 deve tornare pending, le altre restano invariate';
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.transcription_part_exhausted_keys WHERE transcription_id = a AND part_position = 1)
+     OR (SELECT count(*) FROM public.transcription_part_exhausted_keys WHERE transcription_id = a AND part_position = 2) <> 1
+     OR (SELECT count(*) FROM public.transcription_part_exhausted_keys WHERE transcription_id = a AND part_position = 0) <> 1 THEN
+    RAISE EXCEPTION 'si svuotano solo le chiavi esaurite della parte rilanciata';
+  END IF;
+  IF (SELECT count(*) FROM public.transcription_phrases WHERE transcription_id = a) <> 2 THEN
+    RAISE EXCEPTION 'le frasi delle parti done restano';
+  END IF;
+  IF (SELECT status || missing_part_count::TEXT || (completed_at IS NULL)::TEXT FROM public.transcriptions WHERE id = a) <> 'running1true' THEN
+    RAISE EXCEPTION 'trascrizione non rimessa in running con conteggio aggiornato';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.jobs
+    WHERE id = v_job AND job_type = 'transcribe_video' AND status = 'pending' AND created_by_user_id IS NULL
+      AND payload->>'videoId' = '65100000-0000-4000-8000-000000000001'
+      AND payload->>'transcriptionId' = a::TEXT
+      AND payload->>'credentialOwnerUserId' = '00000000-0000-4000-8000-0000000000b1'
+      AND payload->>'channelId' = '20000000-0000-4000-8000-0000000000d1'
+  ) THEN
+    RAISE EXCEPTION 'job di rilancio non coerente (chiave del richiedente)';
+  END IF;
+
+  -- Idempotenza: la parte 1 è già pending, nulla da rilanciare e nessun secondo job.
+  SELECT * INTO v_r FROM public.relaunch_missing_transcription_parts(a, 1, 'admin-test');
+  IF v_r.status <> 'no_missing' THEN RAISE EXCEPTION 'secondo rilancio della stessa parte: %', v_r.status; END IF;
+
+  -- Rilancio di tutte le mancanti: stesso job riattivato, nessun doppio job attivo.
+  SELECT * INTO v_r FROM public.relaunch_missing_transcription_parts(a, NULL, 'admin-test');
+  IF v_r.status <> 'relaunched' OR v_r.parts_reset <> 1 OR v_r.job_id <> v_job THEN
+    RAISE EXCEPTION 'rilancio di tutte le mancanti deve riusare il job: %', v_r;
+  END IF;
+  IF (SELECT count(*) FROM public.jobs WHERE job_type = 'transcribe_video' AND status IN ('pending', 'running')
+        AND payload->>'videoId' = '65100000-0000-4000-8000-000000000001') <> 1 THEN
+    RAISE EXCEPTION 'doppio job attivo per lo stesso video';
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.transcription_part_exhausted_keys WHERE transcription_id = a AND part_position IN (1, 2))
+     OR (SELECT count(*) FROM public.transcription_part_exhausted_keys WHERE transcription_id = a AND part_position = 0) <> 1 THEN
+    RAISE EXCEPTION 'chiavi esaurite: svuotate solo per le parti rilanciate';
+  END IF;
+
+  -- Audit: due righe, nessun segreto, username e parte corretti.
+  IF (SELECT count(*) FROM public.transcription_relaunch_audit WHERE transcription_id = a) <> 2
+     OR NOT EXISTS (SELECT 1 FROM public.transcription_relaunch_audit WHERE transcription_id = a AND part_position = 1 AND parts_reset = 1
+                      AND admin_username = 'admin-test' AND credential_mode = 'requester' AND job_id = v_job)
+     OR NOT EXISTS (SELECT 1 FROM public.transcription_relaunch_audit WHERE transcription_id = a AND part_position IS NULL AND parts_reset = 1) THEN
+    RAISE EXCEPTION 'audit del rilancio non coerente';
+  END IF;
+END;
+$$;
+RESET ROLE;
+
+-- Job con lease viva: nessuna modifica (busy). Con lease scaduta: lo stesso job viene riattivato.
+UPDATE public.transcription_parts SET status = 'missing', attempts = 3, last_error = 'timeout'
+WHERE transcription_id = '65200000-0000-4000-8000-000000000001' AND position = 2;
+UPDATE public.jobs SET status = 'running', lease_id = '65400000-0000-4000-8000-000000000001', lease_expires_at = clock_timestamp() + INTERVAL '5 minutes'
+WHERE payload->>'videoId' = '65100000-0000-4000-8000-000000000001';
+SET ROLE service_role;
+DO $$
+DECLARE
+  a CONSTANT UUID := '65200000-0000-4000-8000-000000000001';
+  v_r RECORD;
+  v_job UUID := (SELECT id FROM public.jobs WHERE payload->>'videoId' = '65100000-0000-4000-8000-000000000001');
+  v_audit INTEGER := (SELECT count(*) FROM public.transcription_relaunch_audit);
+BEGIN
+  SELECT * INTO v_r FROM public.relaunch_missing_transcription_parts(a, NULL, 'admin-test');
+  IF v_r.status <> 'busy' OR v_r.job_id <> v_job
+     OR (SELECT status FROM public.transcription_parts WHERE transcription_id = a AND position = 2) <> 'missing'
+     OR (SELECT count(*) FROM public.transcription_relaunch_audit) <> v_audit THEN
+    RAISE EXCEPTION 'con lease viva il rilancio non deve modificare nulla: %', v_r.status;
+  END IF;
+  UPDATE public.jobs SET lease_expires_at = clock_timestamp() - INTERVAL '1 second' WHERE id = v_job;
+  SELECT * INTO v_r FROM public.relaunch_missing_transcription_parts(a, NULL, 'admin-test');
+  IF v_r.status <> 'relaunched' OR v_r.job_id <> v_job
+     OR (SELECT count(*) FROM public.jobs WHERE payload->>'videoId' = '65100000-0000-4000-8000-000000000001' AND status IN ('pending', 'running')) <> 1 THEN
+    RAISE EXCEPTION 'con lease scaduta il job va riattivato senza duplicati: %', v_r.status;
+  END IF;
+END;
+$$;
+
+-- Il worker esistente riprende il job: claim, salvataggio della parte rilanciata, finalize.
+-- A ha una frase dubbia in una parte done, quindi chiude in needs_review; i tentativi sono ripartiti da zero.
+DO $$
+DECLARE
+  a CONSTANT UUID := '65200000-0000-4000-8000-000000000001';
+  v_job UUID := (SELECT id FROM public.jobs WHERE payload->>'videoId' = '65100000-0000-4000-8000-000000000001');
+  v_lease CONSTANT UUID := '65400000-0000-4000-8000-0000000000aa';
+  v_claim RECORD;
+  v_final TEXT;
+BEGIN
+  SELECT * INTO v_claim FROM public.claim_transcription_job_with_attempt(v_job, clock_timestamp(), v_lease, clock_timestamp() + INTERVAL '5 minutes');
+  IF v_claim.job_id IS NULL THEN RAISE EXCEPTION 'il job rilanciato deve essere reclamabile'; END IF;
+  IF NOT public.save_transcription_part(v_job, v_lease, a, 1, 'done', 1, NULL, 'it', '[{"idx":0,"start_seconds":130,"text":"frase rilanciata","doubtful_time":false}]'::JSONB)
+     OR NOT public.save_transcription_part(v_job, v_lease, a, 2, 'done', 1, NULL, 'it', '[{"idx":0,"start_seconds":250,"text":"altra frase","doubtful_time":false}]'::JSONB) THEN
+    RAISE EXCEPTION 'salvataggio parti rilanciate';
+  END IF;
+  v_final := public.finalize_transcription(v_job, v_lease, a, FALSE);
+  IF v_final <> 'needs_review' OR (SELECT doubtful_phrase_count FROM public.transcriptions WHERE id = a) <> 1
+     OR (SELECT missing_part_count FROM public.transcriptions WHERE id = a) <> 0 THEN
+    RAISE EXCEPTION 'con frase dubbia residua il finale è needs_review: %', v_final;
+  END IF;
+  IF (SELECT count(*) FROM public.transcription_phrases WHERE transcription_id = a AND text IN ('frase sintetica dubbia', 'frase sintetica ok')) <> 2 THEN
+    RAISE EXCEPTION 'le frasi delle parti done non sono state toccate';
+  END IF;
+END;
+$$;
+
+-- Trascrizione B (nessuna frase dubbia, richiedente assente): rotazione per canale, poi complete.
+DO $$
+DECLARE
+  b CONSTANT UUID := '65200000-0000-4000-8000-000000000002';
+  v_r RECORD;
+  v_lease CONSTANT UUID := '65400000-0000-4000-8000-0000000000bb';
+  v_final TEXT;
+BEGIN
+  SELECT * INTO v_r FROM public.relaunch_missing_transcription_parts(b, NULL, 'admin-test');
+  IF v_r.status <> 'relaunched' OR v_r.credential_mode <> 'channel_rotation' THEN
+    RAISE EXCEPTION 'senza richiedente si usa la rotazione per canale: %', v_r;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.jobs
+    WHERE id = v_r.job_id AND payload->>'credentialOwnerUserId' IS NULL
+      AND payload->>'channelId' = '20000000-0000-4000-8000-0000000000d1' AND payload->>'requestedByUserId' IS NULL
+  ) THEN
+    RAISE EXCEPTION 'payload rotazione per canale non coerente';
+  END IF;
+  PERFORM public.claim_transcription_job_with_attempt(v_r.job_id, clock_timestamp(), v_lease, clock_timestamp() + INTERVAL '5 minutes');
+  PERFORM public.save_transcription_part(v_r.job_id, v_lease, b, 1, 'done', 1, NULL, 'it', '[{"idx":0,"start_seconds":130,"text":"frase B","doubtful_time":false}]'::JSONB);
+  v_final := public.finalize_transcription(v_r.job_id, v_lease, b, FALSE);
+  IF v_final <> 'complete' OR (SELECT completed_at IS NULL FROM public.transcriptions WHERE id = b) THEN
+    RAISE EXCEPTION 'tutte le parti done e nessuna frase dubbia: complete atteso, trovato %', v_final;
+  END IF;
+END;
+$$;
+
+-- Trascrizione C: la chiave del richiedente (b5) è invalida, quindi rotazione per canale.
+DO $$
+DECLARE
+  v_r RECORD;
+BEGIN
+  SELECT * INTO v_r FROM public.relaunch_missing_transcription_parts('65200000-0000-4000-8000-000000000003', 1, 'admin-test');
+  IF v_r.status <> 'relaunched' OR v_r.credential_mode <> 'channel_rotation' THEN
+    RAISE EXCEPTION 'chiave del richiedente invalida: rotazione attesa, trovato %', v_r;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.transcription_relaunch_audit WHERE transcription_id = '65200000-0000-4000-8000-000000000003'
+                 AND credential_mode = 'channel_rotation' AND NOT (to_jsonb(transcription_relaunch_audit)::TEXT ~* 'key|secret')) THEN
+    RAISE EXCEPTION 'audit rotazione assente o con campi sensibili';
+  END IF;
+END;
+$$;
+
+-- Statistiche per finestra: A e B concluse oggi, D complete, C in corso; una vecchia fuori finestra.
+UPDATE public.transcriptions SET completed_at = NOW() - INTERVAL '20 days', updated_at = NOW() - INTERVAL '20 days'
+WHERE id = '65200000-0000-4000-8000-000000000004';
+DO $$
+DECLARE
+  v_total BIGINT;
+BEGIN
+  SELECT sum(total) INTO v_total FROM public.transcription_review_stats(7) WHERE status IN ('needs_review', 'complete');
+  IF NOT EXISTS (SELECT 1 FROM public.transcription_review_stats(7) WHERE status = 'needs_review' AND total >= 1 AND doubtful_phrases >= 1)
+     OR EXISTS (SELECT 1 FROM public.transcription_review_stats(7) WHERE status = 'complete' AND total < 1)
+     OR (SELECT total FROM public.transcription_review_stats(30) WHERE status = 'complete')
+        <= (SELECT coalesce(total, 0) FROM public.transcription_review_stats(7) WHERE status = 'complete')
+     OR v_total IS NULL THEN
+    RAISE EXCEPTION 'statistiche per finestra non coerenti';
+  END IF;
+END;
+$$;
+RESET ROLE;
+
 DROP FUNCTION public.test_rot_claim(UUID, UUID);
 DROP FUNCTION public.test_rot_job(INTEGER, UUID);
 DROP FUNCTION public.test_assert_true(BOOLEAN, TEXT);

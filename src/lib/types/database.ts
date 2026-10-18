@@ -534,6 +534,32 @@ export type Database = {
         Update: Record<string, never>
         Relationships: []
       }
+      transcription_relaunch_audit: {
+        Row: {
+          id: string
+          admin_username: string
+          transcription_id: string | null
+          video_id: string
+          part_position: number | null
+          parts_reset: number
+          job_id: string | null
+          credential_mode: 'requester' | 'channel_rotation'
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          admin_username: string
+          transcription_id?: string | null
+          video_id: string
+          part_position?: number | null
+          parts_reset: number
+          job_id?: string | null
+          credential_mode: 'requester' | 'channel_rotation'
+          created_at?: string
+        }
+        Update: Record<string, never>
+        Relationships: []
+      }
       transcription_profile: {
         Row: {
           id: boolean
@@ -1205,6 +1231,19 @@ export type Database = {
     }
     Views: Record<string, never>
     Functions: {
+      relaunch_missing_transcription_parts: {
+        Args: { p_transcription_id: string; p_part_position: number | null; p_admin_username: string }
+        Returns: {
+          status: 'relaunched' | 'not_found' | 'no_missing' | 'busy'
+          job_id: string | null
+          parts_reset: number
+          credential_mode: 'requester' | 'channel_rotation' | null
+        }[]
+      }
+      transcription_review_stats: {
+        Args: { p_days: number }
+        Returns: { status: string; total: number; doubtful_phrases: number }[]
+      }
       update_transcription_profile: {
         Args: {
           p_model: string
