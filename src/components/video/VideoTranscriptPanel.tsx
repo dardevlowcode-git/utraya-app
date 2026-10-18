@@ -152,7 +152,7 @@ export default function VideoTranscriptPanel({ videoId, initial, labels }: Video
           {labels.title}
           {view.languageCode ? <span className="ml-2 text-xs font-semibold uppercase text-on-surface-variant">{view.languageCode}</span> : null}
         </h2>
-        {view.state === 'absent' ? (
+        {view.state === 'absent' && view.canRequest ? (
           <button
             type="button"
             onClick={requestTranscription}

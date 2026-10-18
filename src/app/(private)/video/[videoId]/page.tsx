@@ -306,14 +306,7 @@ export default async function VideoDetailPage({ params }: Props) {
                 </div>
               </div>
             </div>
-          ) : (
-            <div className="bg-surface-container-low rounded-2xl p-6">
-              <p className="text-on-surface-variant text-sm">
-                {t('video.analysisNotAvailableDetail')}{' '}
-                <a href="/integrations" className="text-primary hover:underline">{t('nav.integrations')}</a>.
-              </p>
-            </div>
-          )}
+          ) : null}
 
           <VideoTranscriptPanel videoId={video.id} initial={transcription} labels={transcriptLabels} />
         </div>

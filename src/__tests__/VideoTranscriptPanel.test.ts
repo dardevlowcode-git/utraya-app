@@ -1,5 +1,5 @@
 /* Commento didattico:
- * Scopo del file: verifica la pagina video lato trascrizione: elenco frasi, link `&t=`, tempo dubbio, pulsante disattivato, salto nel lettore.
+ * Scopo del file: verifica la pagina video lato trascrizione: elenco frasi, link `&t=`, tempo dubbio, avviso chiave, salto nel lettore.
  * Moduli richiamati: `VideoTranscriptPanel`, `VideoEmbedPlayer`, React SSR/hydration, view model sintetico.
  * Flusso: renderizza ogni stato visibile e simula il clic su una frase controllando il comando postMessage.
  */
@@ -57,20 +57,26 @@ describe('VideoTranscriptPanel', () => {
     expect(markup).not.toContain('Trascrivi</button>')
   })
 
-  it('senza chiave Gemini il pulsante è disattivato e il motivo è visibile', () => {
+  it('senza chiave Gemini mostra una sola volta l’invito e nasconde il pulsante', () => {
     const markup = renderToStaticMarkup(createElement(VideoTranscriptPanel, {
       videoId: 'v-1', initial: view({ hasGeminiKey: false }), labels,
     }))
-    expect(markup).toMatch(/<button[^>]*disabled=""[^>]*>Trascrivi<\/button>/)
-    expect(markup).toContain('Serve una chiave Gemini: aggiungila in')
+    expect(markup).not.toContain('>Trascrivi</button>')
+    expect(markup.match(/Serve una chiave Gemini: aggiungila in/g)).toHaveLength(1)
+    expect(markup.match(/href="\/integrations"/g)).toHaveLength(1)
     expect(markup).toContain('href="/integrations"')
   })
 
-  it('con chiave il pulsante è attivo; in corso mostra l’avanzamento; non disponibile il suo stato', () => {
+  it('con chiave il pulsante è attivo senza avviso; trascrizioni esistenti non mostrano né pulsante né avviso', () => {
     const active = renderToStaticMarkup(createElement(VideoTranscriptPanel, { videoId: 'v-1', initial: view(), labels }))
     expect(active).toContain('>Trascrivi</button>')
     expect(active).not.toContain('disabled=""')
     expect(active).toContain('Nessuna trascrizione.')
+    expect(active).not.toContain('Serve una chiave Gemini')
+
+    const existing = renderToStaticMarkup(createElement(VideoTranscriptPanel, { videoId: 'v-1', initial: reviewed, labels }))
+    expect(existing).not.toContain('>Trascrivi<')
+    expect(existing).not.toContain('Serve una chiave Gemini')
 
     const running = renderToStaticMarkup(createElement(VideoTranscriptPanel, {
       videoId: 'v-1',
