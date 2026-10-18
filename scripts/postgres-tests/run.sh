@@ -35,7 +35,8 @@ tar -C "$repo_root" -cf - \
       20261018100000_remove_firecrawl_import_enqueue.sql \
       20261018120000_gemini_transcriptions.sql \
       20261018130000_gemini_auto_transcription.sql \
-      20261018140000_gemini_part_key_exhaustion.sql; do
+      20261018140000_gemini_part_key_exhaustion.sql \
+      20261018150000_transcription_profile_admin.sql; do
       psql -X -v ON_ERROR_STOP=1 -f "supabase/migrations/$migration"
     done
     psql -X -v ON_ERROR_STOP=1 -f scripts/postgres-tests/assertions.sql

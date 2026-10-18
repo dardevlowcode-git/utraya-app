@@ -516,6 +516,24 @@ export type Database = {
         }
         Relationships: []
       }
+      transcription_profile_audit: {
+        Row: {
+          id: string
+          admin_username: string
+          previous_values: Json
+          new_values: Json
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          admin_username: string
+          previous_values: Json
+          new_values: Json
+          created_at?: string
+        }
+        Update: Record<string, never>
+        Relationships: []
+      }
       transcription_profile: {
         Row: {
           id: boolean
@@ -1187,6 +1205,22 @@ export type Database = {
     }
     Views: Record<string, never>
     Functions: {
+      update_transcription_profile: {
+        Args: {
+          p_model: string
+          p_thinking_level: string
+          p_input_price: number
+          p_output_price: number
+          p_admin_username: string
+        }
+        Returns: {
+          model: string
+          thinking_level: 'minimal' | 'low' | 'medium' | 'high'
+          input_price_per_million: number
+          output_price_per_million: number
+          updated_at: string
+        }[]
+      }
       is_current_user_allowlisted: {
         Args: Record<string, never>
         Returns: boolean

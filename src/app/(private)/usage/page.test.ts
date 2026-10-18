@@ -400,4 +400,35 @@ describe('pagina utilizzo API', () => {
     expect(html).toContain('alexandria.find-tools')
     expect(html).not.toContain('firecrawl-discovery-1')
   })
+  it('mostra modello, token e costo salvato per un evento di trascrizione', async () => {
+    mockFormatter('en')
+    getApiUsageDashboardMock.mockResolvedValue({
+      ...emptyDashboard,
+      totalEvents: 1,
+      events: [{
+        id: 'event-1',
+        provider: 'gemini',
+        operation: 'generateContent.transcribe',
+        occurredAt: '2026-10-18T10:00:00.000Z',
+        outcome: 'success',
+        httpStatus: 200,
+        errorCategory: null,
+        model: 'gemini-3.1-flash-lite',
+        inputTokens: 11_000,
+        outputTokens: 200,
+        totalTokens: 11_200,
+        estimatedCostUsd: 0.00305,
+        quotaUnits: null,
+        quotaBucket: null,
+      }],
+    })
+
+    const page = await ApiUsagePage({ searchParams: Promise.resolve({}) })
+    const html = renderToStaticMarkup(page!)
+
+    expect(html).toContain('generateContent.transcribe · gemini-3.1-flash-lite')
+    expect(html).toContain('11,000')
+    expect(html).toContain('11,200')
+    expect(html).toContain('$0.003050')
+  })
 })

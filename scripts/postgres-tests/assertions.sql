@@ -1622,6 +1622,50 @@ END;
 $$;
 RESET ROLE;
 
+-- ===== Profilo di trascrizione admin (ticket 05): RPC atomica con audit e ACL =====
+SELECT public.test_assert_true(
+  NOT has_function_privilege('authenticated', 'public.update_transcription_profile(text,text,numeric,numeric,text)', 'EXECUTE')
+  AND NOT has_function_privilege('anon', 'public.update_transcription_profile(text,text,numeric,numeric,text)', 'EXECUTE')
+  AND has_function_privilege('service_role', 'public.update_transcription_profile(text,text,numeric,numeric,text)', 'EXECUTE')
+  AND NOT has_table_privilege('authenticated', 'public.transcription_profile_audit', 'SELECT')
+  AND NOT has_table_privilege('anon', 'public.transcription_profile_audit', 'SELECT')
+  AND has_table_privilege('service_role', 'public.transcription_profile_audit', 'INSERT')
+  AND NOT has_table_privilege('service_role', 'public.transcription_profile_audit', 'UPDATE')
+  AND NOT has_table_privilege('service_role', 'public.transcription_profile_audit', 'DELETE'),
+  'ACL profilo di trascrizione admin: solo service_role'
+);
+DO $$
+DECLARE
+  v_saved RECORD;
+  v_audit RECORD;
+  v_failures INTEGER := 0;
+BEGIN
+  SELECT * INTO v_saved FROM public.update_transcription_profile('gemini-2.5-flash', 'low', 0.3, 2.5, 'admin-test');
+  IF v_saved.model <> 'gemini-2.5-flash' OR v_saved.thinking_level <> 'low'
+     OR v_saved.input_price_per_million <> 0.3 OR v_saved.output_price_per_million <> 2.5 THEN
+    RAISE EXCEPTION 'profilo non aggiornato';
+  END IF;
+  SELECT * INTO v_audit FROM public.transcription_profile_audit ORDER BY created_at DESC LIMIT 1;
+  IF v_audit.admin_username <> 'admin-test'
+     OR v_audit.previous_values->>'model' <> 'gemini-3.1-flash-lite'
+     OR v_audit.new_values->>'model' <> 'gemini-2.5-flash'
+     OR v_audit.new_values ? 'api_key' THEN
+    RAISE EXCEPTION 'audit profilo non coerente';
+  END IF;
+  BEGIN
+    PERFORM public.update_transcription_profile('gemini-2.5-flash', 'extreme', 0.3, 2.5, 'admin-test');
+  EXCEPTION WHEN check_violation THEN v_failures := v_failures + 1; END;
+  BEGIN
+    PERFORM public.update_transcription_profile('gemini-2.5-flash', 'low', -1, 2.5, 'admin-test');
+  EXCEPTION WHEN check_violation THEN v_failures := v_failures + 1; END;
+  IF v_failures <> 2 THEN RAISE EXCEPTION 'vincoli profilo non rispettati: %', v_failures; END IF;
+  IF (SELECT count(*) FROM public.transcription_profile_audit) <> 1 THEN
+    RAISE EXCEPTION 'un aggiornamento fallito non deve lasciare audit';
+  END IF;
+  PERFORM public.update_transcription_profile('gemini-3.1-flash-lite', 'minimal', 0.25, 1.5, 'admin-test');
+END;
+$$;
+
 DROP FUNCTION public.test_rot_claim(UUID, UUID);
 DROP FUNCTION public.test_rot_job(INTEGER, UUID);
 DROP FUNCTION public.test_assert_true(BOOLEAN, TEXT);

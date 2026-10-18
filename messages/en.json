@@ -673,7 +673,7 @@
     "recent": "Recent requests",
     "empty": "No tracked requests in this period.",
     "emptyDetail": "Tracking starts when this feature is enabled; earlier requests cannot be reconstructed. Gemini usage will appear when the permanent summary generator is connected.",
-    "costNote": "Estimate at $0.30 per million input tokens and $2.50 per million output tokens; not an invoice.",
+    "costNote": "Estimate using the rates recorded for each call (transcriptions: profile prices; other Gemini calls: $0.30 per million input tokens and $2.50 per million output tokens); not an invoice.",
     "quotaNote": "Quota units are estimates based on the endpoint. YouTube API quota is not a per-call USD charge.",
     "privacyNote": "Only requests Utraya makes with your personal keys are shown, not calls made outside the app or with shared internal keys (for example transcript retrieval). Prompts, transcripts, API parameters and responses are not exposed. Check Google for final billing.",
     "manageKeys": "Manage API keys",
@@ -916,9 +916,30 @@
       "systemOperational": "The system is operational."
     },
     "aiProfile": {
-      "promptNote": "The prompt is applied to all new analyses. Existing summaries are not regenerated.",
-      "title": "AI Analysis Profile",
-      "subtitle": "Manage the global prompt template for video analysis."
+      "title": "Transcription profile",
+      "subtitle": "Choose the Gemini model, reasoning level and prices used for new transcriptions.",
+      "model": "Model",
+      "currentModel": "Current model",
+      "modelsRefreshNote": "List read from Google with an available Gemini key.",
+      "noKey": "No valid Gemini key is available: the model list cannot be read. You can still change the level and prices of the current model.",
+      "listError": "Could not read the model list from Google. You can still change the level and prices of the current model.",
+      "thinkingLevel": "Reasoning level",
+      "levelMinimal": "Minimal",
+      "levelLow": "Low",
+      "levelMedium": "Medium",
+      "levelHigh": "High",
+      "levelBudgetNote": "For 2.5 models the level maps to a reasoning token budget.",
+      "inputPrice": "Input price (USD per million tokens)",
+      "outputPrice": "Output price (USD per million tokens)",
+      "priceHint": "A number greater than or equal to zero, with at most 6 decimals.",
+      "priceReminder": "You changed the model: also update the prices from the official page.",
+      "pricingLink": "Official Gemini pricing page",
+      "effectNote": "The change applies to new transcriptions, without a release. Existing transcriptions keep the model they were created with.",
+      "save": "Save profile",
+      "saving": "Saving...",
+      "saved": "Profile saved.",
+      "saveError": "Could not save the transcription profile.",
+      "invalidPrice": "Invalid prices: use numbers greater than or equal to zero with at most 6 decimals."
     },
     "content": {
       "title": "Canonical content"
