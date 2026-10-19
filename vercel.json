@@ -12,10 +12,5 @@
       "path": "/api/cron/cleanup-api-usage",
       "schedule": "20 3 * * *"
     }
-  ],
-  "git": {
-    "deploymentEnabled": {
-      "dev-security-contract": false
-    }
-  }
+  ]
 }
