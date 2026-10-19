@@ -6,11 +6,14 @@
 
 import { getApiUser, type ApiUserContext } from '@/lib/auth/apiUser'
 import { apiErr } from '@/lib/http/apiResponse'
-import { mapAppErrorTypeToCode } from '@/lib/http/errorCodes'
+import { mapAppErrorTypeToCode, type ErrorCode } from '@/lib/http/errorCodes'
 import { checkRateLimit } from '@/lib/security/rate-limit'
 import { ensureJsonRequest, getRequestId } from '@/lib/security/http'
 import { AppError } from '@/lib/utils/errors'
 import { z } from 'zod'
+
+/** Codici errore che la API v1 restituisce letteralmente al client, oltre al mapping per tipo. */
+const STABLE_V1_ERROR_CODES = new Set<ErrorCode>(['TOS_ACCEPTANCE_REQUIRED'])
 
 export function getApiRequestId(request: Request): string {
   return getRequestId(request)
@@ -41,11 +44,14 @@ export async function readApiJson<T>(request: Request, schema?: z.ZodType<T>): P
 export function apiV1Error(error: unknown, requestId: string): Response {
   if (error instanceof AppError) {
     const status = error.statusCode ?? 500
+    const code = error.context?.code as ErrorCode | undefined
     const message = error.type === 'temporary'
       ? 'Operazione temporaneamente non disponibile'
       : status >= 500
         ? 'Errore interno'
         : error.message
+    // Codici stabili esposti al client (es. consenso TOS mancante) restano quelli dichiarati dal service.
+    if (code && STABLE_V1_ERROR_CODES.has(code)) return apiErr(code, message, status, requestId)
     return apiErr(mapAppErrorTypeToCode(error.type, 'UPSTREAM_ERROR'), message, status, requestId)
   }
 

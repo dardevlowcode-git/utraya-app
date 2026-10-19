@@ -10,6 +10,7 @@ import { getProviderApiKeyForUserAsAdmin } from '@/lib/services/integrations'
 import {
   parseTranscriptionJobPayload,
   type ChannelCredentialAcquisition,
+  type RequesterCredentialResolution,
   type ThinkingLevel,
   type TranscriptionStatus,
   type TranscriptionStore,
@@ -148,24 +149,35 @@ export function createSupabaseTranscriptionStore(admin = createAdminClient()): T
       }
     },
 
-    async loadCredential(ownerUserId) {
-      if (!ownerUserId) return null
-      const { data: credential, error } = await admin
-        .from('user_provider_credentials')
-        .select('id, is_configured, is_valid')
-        .eq('user_id', ownerUserId)
-        .eq('provider', 'gemini')
-        .maybeSingle()
-      if (error) throw dbError('Impossibile leggere la credenziale Gemini', error.message)
-      if (!credential?.is_configured || credential.is_valid === false) return null
+    async loadCredential(input): Promise<RequesterCredentialResolution> {
+      const ownerUserId = input.ownerUserId
+      if (!ownerUserId) return { credential: null, channelId: input.channelId }
 
-      const [apiKey, retryResult] = await Promise.all([
-        getProviderApiKeyForUserAsAdmin(ownerUserId, 'gemini').catch(() => null),
-        admin.from('user_provider_credential_retry_limits').select('retry_limit').eq('credential_id', credential.id).maybeSingle(),
-      ])
-      if (retryResult.error) throw dbError('Impossibile leggere il limite retry', retryResult.error.message)
-      if (!apiKey) return null
-      return { ownerUserId, apiKey, retryLimit: retryResult.data?.retry_limit ?? 0 }
+      let channelId = input.channelId
+      if (!channelId) {
+        const { data: video, error: videoError } = await admin
+          .from('videos')
+          .select('channel_id')
+          .eq('id', input.videoId)
+          .maybeSingle()
+        if (videoError) throw dbError('Impossibile leggere il canale del video', videoError.message)
+        channelId = video?.channel_id ?? null
+      }
+      // Senza un canale non è possibile verificare il follow: la chiave privata non si usa.
+      if (!channelId) return { credential: null, channelId: null }
+
+      const { data, error } = await admin.rpc(
+        'transcription_eligible_credentials' as never,
+        { p_channel_id: channelId } as never,
+      )
+      if (error) throw dbError('Impossibile verificare l idoneità del richiedente', error.message)
+      const eligible = (data as Array<{ user_id: string; retry_limit: number | null }> | null)
+        ?.find((row) => row.user_id === ownerUserId)
+      if (!eligible) return { credential: null, channelId }
+
+      const apiKey = await getProviderApiKeyForUserAsAdmin(ownerUserId, 'gemini').catch(() => null)
+      if (!apiKey) return { credential: null, channelId }
+      return { channelId, credential: { ownerUserId, apiKey, retryLimit: eligible.retry_limit ?? 0 } }
     },
 
     async acquireChannelCredential(input) {

@@ -178,11 +178,20 @@ describe('admin canonical content service', () => {
     expect(traces[1].filters).toContainEqual(['language_code', 'it'])
   })
 
-  it('legge solo la trascrizione già persistita per il video e la lingua selezionati', async () => {
+  it('legge la trascrizione Gemini (canonica) del video, non la tabella legacy', async () => {
     getAdminSessionMock.mockResolvedValue({ username: 'admin' })
     const traces = useAdminDatabase({
       videos: { data: { id: 'video-1', title: 'Video scelto' }, error: null },
-      video_transcripts: { data: { transcript_text: 'Trascrizione salvata' }, error: null },
+      transcriptions: {
+        data: {
+          language_code: 'it',
+          transcription_phrases: [
+            { position: 1, start_seconds: 5, text: 'seconda frase' },
+            { position: 0, start_seconds: 1, text: 'prima frase' },
+          ],
+        },
+        error: null,
+      },
     })
 
     const result = await loadAdminCanonicalContentDetail({
@@ -194,13 +203,13 @@ describe('admin canonical content service', () => {
     expect(result).toMatchObject({
       status: 'ok',
       data: {
-        languageCode: 'en',
+        languageCode: 'it',
         kind: 'transcript',
-        fields: [{ label: 'Trascrizione', text: 'Trascrizione salvata' }],
+        fields: [{ label: 'Trascrizione', text: 'prima frase\nseconda frase' }],
       },
     })
-    expect(traces.map((trace) => trace.table)).toEqual(['videos', 'video_transcripts'])
-    expect(traces[1].filters).toContainEqual(['language_code', 'en'])
+    expect(traces.map((trace) => trace.table)).toEqual(['videos', 'transcriptions'])
+    expect(traces[1].filters).toContainEqual(['video_id', 'video-1'])
   })
 
   it('prepara link solo per campi presenti e non include i testi nella tabella admin', async () => {
@@ -224,8 +233,12 @@ describe('admin canonical content service', () => {
         }],
         error: null,
       },
-      video_transcripts: {
-        data: [{ video_id: 'video-1', language_code: 'en', transcript_text: 'Transcript EN saved' }],
+      transcriptions: {
+        data: [{
+          video_id: 'video-1',
+          language_code: 'en',
+          transcription_phrases: [{ position: 0, start_seconds: 1, text: 'Transcript EN saved' }],
+        }],
         error: null,
       },
     })
@@ -253,6 +266,6 @@ describe('admin canonical content service', () => {
     })
     expect(JSON.stringify(result)).not.toContain('Riassunto IT salvato')
     expect(JSON.stringify(result)).not.toContain('Transcript EN saved')
-    expect(traces.map((trace) => trace.table)).toEqual(['videos', 'video_transcripts'])
+    expect(traces.map((trace) => trace.table)).toEqual(['videos', 'transcriptions'])
   })
 })

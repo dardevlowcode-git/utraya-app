@@ -149,11 +149,18 @@ function configureRetryLimitClient(retryLimit: number, keyVersion = 'version-def
       error: null,
     })),
   }
+  // Consenso TOS corrente richiesto dal salvataggio chiave (K5): l'utente di test risulta aver accettato.
+  const tosQuery = {
+    eq: vi.fn(() => tosQuery),
+    limit: vi.fn(async () => ({ data: [{ document_kind: 'tos', document_version: '2026-10-11-1' }], error: null })),
+  }
   createAdminClientMock.mockReturnValue({
     rpc: rpcMock,
-    from: vi.fn((table: string) => table === 'user_provider_credential_retry_limits'
-      ? { select: vi.fn(() => retryQuery), upsert: retryLimitUpsert }
-      : fromMock(table)),
+    from: vi.fn((table: string) => {
+      if (table === 'user_provider_credential_retry_limits') return { select: vi.fn(() => retryQuery), upsert: retryLimitUpsert }
+      if (table === 'legal_acceptances') return { select: vi.fn(() => tosQuery) }
+      return fromMock(table)
+    }),
   })
   return { retryLimitUpsert, rpcMock }
 }

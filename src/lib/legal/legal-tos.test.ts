@@ -6,7 +6,7 @@
 
 import * as React from 'react'
 import { createElement } from 'react'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { NextIntlClientProvider } from 'next-intl'
 import { describe, expect, it } from 'vitest'
@@ -44,6 +44,24 @@ const APPROVED_ENGLISH_SECTION_9 =
   "Any usage, limits, and costs of external services are separate from those of Utraya and depend on the applicable provider's terms."
 
 describe('legal TOS document', () => {
+  it('allinea la versione TOS SQL più recente alla versione richiesta dall’app', () => {
+    const migrationFiles = readdirSync('supabase/migrations')
+      .filter((file) => file.endsWith('.sql'))
+      .sort()
+    const definitions: string[] = []
+    const definitionPattern = /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+public\.required_tos_version\s*\(\s*\)[\s\S]*?\bAS\s+\$\$([\s\S]*?)\$\$/gi
+
+    for (const file of migrationFiles) {
+      const sql = readFileSync(`supabase/migrations/${file}`, 'utf8')
+      for (const match of sql.matchAll(definitionPattern)) definitions.push(match[1])
+    }
+
+    const latestDefinition = definitions.at(-1)
+    expect(latestDefinition).toBeDefined()
+    const returnedVersion = latestDefinition?.match(/\bSELECT\s+'([^']+)'(?:\s*::\s*TEXT)?\s*;?\s*$/i)?.[1]
+    expect(returnedVersion).toBe(TOS_REQUIRED_VERSION)
+  })
+
   it('serves the required version with a hash matching the document', async () => {
     const document = await loadLegalDocument('tos')
 
@@ -82,9 +100,9 @@ describe('legal TOS document', () => {
     const document = await loadLegalDocument('tos')
 
     expect(renderLegalDocument('it', document)).toContain('Versione 2026-10-11-1')
-    expect(renderLegalDocument('it', document)).toContain('Hash documento: f34813c31b1ac4a4… (SHA-256)')
+    expect(renderLegalDocument('it', document)).toContain('Hash documento: cef6def57b114fb1… (SHA-256)')
     expect(renderLegalDocument('en', document)).toContain('Version 2026-10-11-1')
-    expect(renderLegalDocument('en', document)).toContain('Document hash: f34813c31b1ac4a4… (SHA-256)')
+    expect(renderLegalDocument('en', document)).toContain('Document hash: cef6def57b114fb1… (SHA-256)')
   })
 
   it('mantiene le note §0 nella fonte ma le esclude dal documento pubblico renderizzato', async () => {
@@ -127,7 +145,7 @@ describe('legal TOS document', () => {
 
     expect(document.markdown).toContain(APPROVED_ITALIAN_SECTION_8)
     expect(document.markdown).toContain(APPROVED_ITALIAN_SECTION_9)
-    expect(document.markdown).toContain('| Firecrawl | Recupero delle trascrizioni dei video YouTube | URL dei video YouTube |')
+    expect(document.markdown).toContain('| Firecrawl | Conservazione e verifica della chiave personale Firecrawl | Chiave API (nessuna trascrizione recuperata) |')
   })
 
   it('includes faithful English translations of the approved wording', async () => {
@@ -138,7 +156,7 @@ describe('legal TOS document', () => {
     expect(document.markdown).toContain('| Google Identity (OAuth) | User authentication | See §12-bis |')
     expect(document.markdown).toContain('| YouTube Data API v3 | Reading public video metadata | No user data transmitted |')
     expect(document.markdown).toContain("| Google Gemini (or user's equivalent AI provider) | Summary generation | Video URL/transcript, not user data |")
-    expect(document.markdown).toContain('| Firecrawl | Retrieval of YouTube video transcripts | YouTube video URLs |')
+    expect(document.markdown).toContain('| Firecrawl | Storage and verification of the personal Firecrawl key | API key (no transcript retrieved) |')
     expect(document.markdown).toContain('| Supabase (EU-hosted DB) | DB storage and backend auth | All user account data encrypted at rest |')
     expect(document.markdown).toContain('| Vercel (hosting) | Application delivery | Technical access logs (IP, user agent) |')
   })

@@ -215,6 +215,9 @@ export async function requestTranscriptionForUser(params: {
         transcriptionId,
         requestedByUserId: params.userId,
         credentialOwnerUserId: params.userId,
+        // Canale del video: se la chiave di chi richiede non e' piu' eleggibile, il worker
+        // ricade sulla rotazione fra le chiavi eleggibili del canale (ADR-018).
+        channelId: video.channel_id,
       },
       created_by_user_id: params.userId,
     })

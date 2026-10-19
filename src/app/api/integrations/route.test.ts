@@ -134,6 +134,23 @@ describe('/api/integrations HTTP envelope', () => {
     expect(payload).toMatchObject({ ok: false, error: { code: 'INTERNAL_ERROR', message: 'Errore interno' } })
   })
 
+  it('propaga TOS_ACCEPTANCE_REQUIRED dal salvataggio senza esporre dettagli interni', async () => {
+    const { AppError } = await import('@/lib/utils/errors')
+    saveApiKeyMock.mockRejectedValueOnce(new AppError(
+      'Accetta i termini correnti prima di salvare una chiave API',
+      'forbidden',
+      403,
+      { code: 'TOS_ACCEPTANCE_REQUIRED', cause: 'dettaglio interno' }
+    ))
+
+    const response = await POST(makeRequest('POST', { provider: 'gemini', apiKey: 'test-key-marker', action: 'save' }))
+    const payload = await response.json()
+
+    expect(response.status).toBe(403)
+    expect(payload.error.code).toBe('TOS_ACCEPTANCE_REQUIRED')
+    expect(JSON.stringify(payload)).not.toContain('dettaglio interno')
+  })
+
   it('valida shape e provider prima dell’autenticazione senza esporre il segreto ricevuto', async () => {
     const secret = 'local-test-fixture-marker'
     const response = await POST(makeRequest('POST', { provider: 'unknown', apiKey: secret, action: 'save' }))

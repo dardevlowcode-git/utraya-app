@@ -176,7 +176,7 @@ describe('richiesta di trascrizione', () => {
       job_type: 'transcribe_video',
       status: 'pending',
       created_by_user_id: USER,
-      payload: { videoId: VIDEO, transcriptionId: ctx.db.transcriptions[0].id, requestedByUserId: USER, credentialOwnerUserId: USER },
+      payload: { videoId: VIDEO, transcriptionId: ctx.db.transcriptions[0].id, requestedByUserId: USER, credentialOwnerUserId: USER, channelId: 'channel-1' },
     })])
   })
 

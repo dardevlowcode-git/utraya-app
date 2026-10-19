@@ -75,11 +75,17 @@ function configureAdminClient(getCredentialRow: () => Record<string, unknown> | 
     eq: vi.fn(() => policyQuery),
     maybeSingle: vi.fn(async () => ({ data: { retry_limit: 0, key_version: keyVersion }, error: null })),
   }
+  // Consenso TOS corrente richiesto dal salvataggio chiave (K5): l'utente di test ha accettato.
+  const tosQuery = {
+    eq: vi.fn(() => tosQuery),
+    limit: vi.fn(async () => ({ data: [{ document_kind: 'tos', document_version: '2026-10-11-1' }], error: null })),
+  }
   createAdminClientMock.mockReturnValue({
     rpc: saveRpc,
     from: vi.fn((table: string) => {
       if (table === 'user_provider_credentials') return { select: vi.fn(() => credentialQuery) }
       if (table === 'user_provider_credential_retry_limits') return { select: vi.fn(() => policyQuery) }
+      if (table === 'legal_acceptances') return { select: vi.fn(() => tosQuery) }
       return { insert: usageInsertMock }
     }),
   })
@@ -166,6 +172,11 @@ describe('performCredentialValidationAttempt', () => {
 
       expect(result).toMatchObject({ isValid: false, retryable: false, errorType: 'structural' })
       expect(fetchMock).toHaveBeenCalledOnce()
+      // K3: la chiave Gemini viaggia nell'header, mai nella query string.
+      const geminiUrl = new URL(String(fetchMock.mock.calls[0]?.[0]))
+      expect(geminiUrl.searchParams.get('key')).toBeNull()
+      expect(geminiUrl.search).toBe('')
+      expect((fetchMock.mock.calls[0]?.[1]?.headers as Record<string, string>)['x-goog-api-key']).toBe('test-gemini-provider-key')
       expect(usageInsertMock).toHaveBeenCalledWith(expect.objectContaining({
         user_id: ownerId,
         provider: 'gemini',
@@ -317,6 +328,39 @@ describe('performCredentialValidationAttempt', () => {
       expect(JSON.stringify(usageInsertMock.mock.calls)).not.toContain(apiKey)
     } finally {
       vi.unstubAllGlobals()
+      if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY
+      else process.env.CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey
+    }
+  })
+
+  it('rifiuta il salvataggio di una chiave senza accettazione TOS corrente', async () => {
+    const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
+    const ownerId = 'no-tos-owner'
+    const credentialId = '00000000-0000-4000-8000-000000000060'
+    const keyVersion = '00000000-0000-4000-8000-000000000061'
+    const { client, getRow, saveRpc } = createCredentialClient(credentialId, keyVersion)
+    process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
+    configureAdminClient(getRow, keyVersion, saveRpc)
+    // Nessuna accettazione TOS corrente: il client admin non trova righe valide.
+    const noTosQuery = { eq: vi.fn(() => noTosQuery), limit: vi.fn(async () => ({ data: [], error: null })) }
+    createAdminClientMock.mockReturnValue({
+      rpc: saveRpc,
+      from: vi.fn((table: string) => {
+        if (table === 'legal_acceptances') return { select: vi.fn(() => noTosQuery) }
+        return { select: vi.fn(() => ({ eq: vi.fn(() => ({ maybeSingle: vi.fn(async () => ({ data: null, error: null })) })) })), insert: usageInsertMock }
+      }),
+    })
+
+    try {
+      await expect(saveApiKey({
+        userId: ownerId,
+        provider: 'gemini',
+        apiKey: 'test-gemini-no-tos-key',
+        validateNow: false,
+        supabase: client as unknown as AppSupabaseClient,
+      })).rejects.toMatchObject({ statusCode: 403, context: { code: 'TOS_ACCEPTANCE_REQUIRED' } })
+      expect(saveRpc).not.toHaveBeenCalled()
+    } finally {
       if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY
       else process.env.CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey
     }

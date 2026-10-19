@@ -46,8 +46,31 @@ interface VideoListRow {
 
 interface TranscriptListRow {
   video_id: string
-  language_code: string
+  language_code: string | null
   transcript_text: string | null
+}
+
+/** Riga di trascrizione Gemini con le frasi necessarie a ricostruire il testo. */
+interface GeminiTranscriptionRow {
+  video_id: string
+  language_code: string | null
+  status: string
+  transcription_phrases: Array<{ position: number; start_seconds: number; text: string }> | null
+}
+
+/** Lingua canonica per l'elenco admin: la trascrizione senza lingua nota usa `unknown` (stesso schema legacy). */
+const UNKNOWN_LANGUAGE_CODE = 'unknown'
+
+/**
+ * Ricostruisce il testo ordinato di una trascrizione Gemini dalle sue frasi temporizzate.
+ * Le frasi sono già salvate con `position` stabile; l'ordine è per posizione.
+ */
+function buildGeminiTranscriptText(phrases: Array<{ position: number; text: string }> | null): string {
+  if (!phrases || phrases.length === 0) return ''
+  return [...phrases]
+    .sort((a, b) => a.position - b.position)
+    .map((phrase) => phrase.text)
+    .join('\n')
 }
 
 /** Carica la tabella admin solo dopo aver verificato la sessione privilegiata. */
@@ -83,17 +106,22 @@ export async function loadAdminCanonicalVideos(): Promise<
   if (videos.length === 0) return { status: 'ok', data: [] }
 
   const { data: transcriptData, error: transcriptError } = await supabase
-    .from('video_transcripts')
-    .select('video_id, language_code, transcript_text')
+    .from('transcriptions')
+    .select('video_id, language_code, status, transcription_phrases(position, start_seconds, text)')
     .in('video_id', videos.map((video) => video.id))
+    .in('status', ['complete', 'needs_review'])
 
   if (transcriptError) return internalError()
 
   const transcriptsByVideo = new Map<string, TranscriptListRow[]>()
-  for (const transcript of (transcriptData ?? []) as TranscriptListRow[]) {
-    const transcripts = transcriptsByVideo.get(transcript.video_id) ?? []
-    transcripts.push(transcript)
-    transcriptsByVideo.set(transcript.video_id, transcripts)
+  for (const transcription of (transcriptData ?? []) as unknown as GeminiTranscriptionRow[]) {
+    const transcripts = transcriptsByVideo.get(transcription.video_id) ?? []
+    transcripts.push({
+      video_id: transcription.video_id,
+      language_code: transcription.language_code,
+      transcript_text: buildGeminiTranscriptText(transcription.transcription_phrases),
+    })
+    transcriptsByVideo.set(transcription.video_id, transcripts)
   }
 
   return {
@@ -115,7 +143,7 @@ export async function loadAdminCanonicalVideos(): Promise<
           isAdminEdited: item.is_admin_edited,
         })),
         transcripts: (transcriptsByVideo.get(video.id) ?? []).map((item) => ({
-          languageCode: item.language_code,
+          languageCode: item.language_code ?? UNKNOWN_LANGUAGE_CODE,
           transcriptText: item.transcript_text,
         })),
       })
@@ -146,22 +174,28 @@ export async function loadAdminCanonicalContentDetail(
   if (!videoData) return { status: 'not_found' }
 
   if (request.kind === 'transcript') {
+    // Le trascrizioni Gemini hanno una riga per video con la lingua originale; il parametro legacy
+    // `languageCode` resta accettato: `unknown` (o una lingua non corrispondente) seleziona la riga
+    // canonica del video, così i link della tabella admin continuano a funzionare.
     const { data, error } = await supabase
-      .from('video_transcripts')
-      .select('transcript_text')
+      .from('transcriptions')
+      .select('language_code, status, transcription_phrases(position, start_seconds, text)')
       .eq('video_id', request.videoId)
-      .eq('language_code', request.languageCode)
+      .in('status', ['complete', 'needs_review'])
       .maybeSingle()
 
     if (error) return internalError()
+    const transcriptText = data
+      ? buildGeminiTranscriptText((data as unknown as GeminiTranscriptionRow).transcription_phrases)
+      : null
     return {
       status: 'ok',
       data: toAdminCanonicalContentDetailViewModel({
         videoId: request.videoId,
         videoTitle: videoData.title,
-        languageCode: request.languageCode,
+        languageCode: data?.language_code ?? request.languageCode,
         kind: request.kind,
-        transcriptText: data?.transcript_text ?? null,
+        transcriptText,
       }),
     }
   }

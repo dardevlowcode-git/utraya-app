@@ -851,9 +851,13 @@ SELECT public.test_assert_true(
   'RLS attiva su tutte le tabelle di trascrizione'
 );
 SELECT public.test_assert_true(
-  has_table_privilege('authenticated', 'public.transcriptions', 'SELECT')
-  AND has_table_privilege('authenticated', 'public.transcription_phrases', 'SELECT')
-  AND has_table_privilege('authenticated', 'public.transcription_parts', 'SELECT')
+  has_column_privilege('authenticated', 'public.transcriptions', 'id', 'SELECT')
+  AND has_column_privilege('authenticated', 'public.transcriptions', 'status', 'SELECT')
+  AND NOT has_column_privilege('authenticated', 'public.transcriptions', 'requested_by_user_id', 'SELECT')
+  AND NOT has_table_privilege('authenticated', 'public.transcriptions', 'SELECT')
+  AND has_column_privilege('authenticated', 'public.transcription_parts', 'status', 'SELECT')
+  AND NOT has_column_privilege('authenticated', 'public.transcription_parts', 'last_error', 'SELECT')
+  AND NOT has_table_privilege('authenticated', 'public.transcription_parts', 'SELECT')
   AND NOT has_table_privilege('authenticated', 'public.transcriptions', 'INSERT')
   AND NOT has_table_privilege('authenticated', 'public.transcriptions', 'UPDATE')
   AND NOT has_table_privilege('authenticated', 'public.transcriptions', 'DELETE')
@@ -863,7 +867,7 @@ SELECT public.test_assert_true(
   AND NOT has_table_privilege('authenticated', 'public.transcription_parts', 'INSERT')
   AND NOT has_table_privilege('authenticated', 'public.transcription_parts', 'UPDATE')
   AND NOT has_table_privilege('authenticated', 'public.transcription_parts', 'DELETE'),
-  'authenticated legge soltanto le tabelle canoniche di trascrizione'
+  'authenticated legge solo le colonne canoniche di trascrizione, senza richiedente né errori'
 );
 SELECT public.test_assert_true(
   NOT has_table_privilege('anon', 'public.transcriptions', 'SELECT')
@@ -942,17 +946,41 @@ BEGIN
 END;
 $$;
 
--- RLS: authenticated legge, anon è respinto, authenticated non scrive.
+-- RLS: authenticated legge solo i video dei canali seguiti attivamente; senza JWT (auth.uid nullo) non legge nulla.
 INSERT INTO public.transcription_phrases (transcription_id, position, start_seconds, text)
 VALUES ('62000000-0000-4000-8000-000000000001', 5, 3, 'frase sintetica di prova');
+INSERT INTO public.user_channels (user_id, channel_id, is_active, added_at)
+VALUES ('00000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-0000000000a1', TRUE, '2020-01-01T00:00:00Z');
 SET ROLE authenticated;
+DO $$
+BEGIN
+  -- Nessun utente nel JWT: la policy di ownership non concede righe (prima era USING (TRUE)).
+  IF (SELECT count(*) FROM public.transcriptions) <> 0
+     OR (SELECT count(*) FROM public.transcription_phrases) <> 0
+     OR (SELECT count(*) FROM public.transcription_parts) <> 0 THEN
+    RAISE EXCEPTION 'senza utente autenticato non si legge il canonico';
+  END IF;
+END;
+$$;
+RESET ROLE;
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000001', FALSE);
 DO $$
 BEGIN
   IF (SELECT count(*) FROM public.transcriptions) <> 1
      OR (SELECT count(*) FROM public.transcription_phrases) <> 1
      OR (SELECT count(*) FROM public.transcription_parts) <> 3 THEN
-    RAISE EXCEPTION 'authenticated deve leggere il canonico';
+    RAISE EXCEPTION 'un follower attivo deve leggere il canonico del canale seguito';
   END IF;
+  -- Le colonne sensibili non sono leggibili nemmeno dal follower.
+  BEGIN
+    PERFORM requested_by_user_id FROM public.transcriptions;
+    RAISE EXCEPTION 'requested_by_user_id non deve essere leggibile da authenticated';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+  BEGIN
+    PERFORM last_error FROM public.transcription_parts;
+    RAISE EXCEPTION 'last_error non deve essere leggibile da authenticated';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
   BEGIN
     INSERT INTO public.transcription_phrases (transcription_id, position, start_seconds, text)
     VALUES ('62000000-0000-4000-8000-000000000001', 6, 3, 'non consentito');
@@ -965,6 +993,20 @@ BEGIN
 END;
 $$;
 RESET ROLE;
+-- Un utente che non segue il canale non vede quelle trascrizioni.
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000002', FALSE);
+DO $$
+BEGIN
+  IF (SELECT count(*) FROM public.transcriptions) <> 0
+     OR (SELECT count(*) FROM public.transcription_phrases) <> 0 THEN
+    RAISE EXCEPTION 'un non follower non deve leggere il canonico';
+  END IF;
+END;
+$$;
+RESET ROLE;
+DELETE FROM public.user_channels
+WHERE user_id = '00000000-0000-4000-8000-000000000001' AND channel_id = '20000000-0000-4000-8000-0000000000a1';
 SET ROLE anon;
 DO $$
 BEGIN
@@ -1143,6 +1185,24 @@ SELECT public.test_assert_true(
   'solo service_role esegue le RPC di rotazione e di accodamento automatico'
 );
 SELECT public.test_assert_true(
+  has_function_privilege('service_role', 'public.required_tos_version()', 'EXECUTE')
+  AND NOT has_function_privilege('authenticated', 'public.required_tos_version()', 'EXECUTE')
+  AND NOT has_function_privilege('anon', 'public.required_tos_version()', 'EXECUTE')
+  AND (SELECT l.lanname = 'sql' AND p.provolatile = 'i'
+          AND pg_catalog.array_to_string(p.proconfig, ',') = 'search_path=""'
+       FROM pg_catalog.pg_proc AS p JOIN pg_catalog.pg_language AS l ON l.oid = p.prolang
+       WHERE p.oid = 'public.required_tos_version()'::regprocedure)
+  AND public.required_tos_version() = '2026-10-11-1',
+  'required_tos_version è SQL immutabile, isolata, restituisce la versione attesa ed è eseguibile solo da service_role'
+);
+SELECT public.test_assert_true(
+  pg_catalog.strpos(pg_catalog.pg_get_functiondef('public.transcription_eligible_credentials(uuid)'::regprocedure),
+                    'public.required_tos_version()') > 0
+  AND pg_catalog.strpos(pg_catalog.pg_get_functiondef('public.relaunch_missing_transcription_parts(uuid,integer,text)'::regprocedure),
+                        'public.transcription_eligible_credentials(v_channel_id)') > 0,
+  'rotazione e rilancio condividono la stessa eleggibilità e la funzione della versione TOS'
+);
+SELECT public.test_assert_true(
   (SELECT p.prosecdef AND pg_catalog.array_to_string(p.proconfig, ',') = 'search_path=""'
    FROM pg_catalog.pg_proc p WHERE p.oid = 'public.enqueue_auto_transcriptions(uuid,text[])'::regprocedure)
   AND (SELECT p.prosecdef FROM pg_catalog.pg_proc p
@@ -1162,7 +1222,19 @@ INSERT INTO public.users (id, email) VALUES
   ('00000000-0000-4000-8000-0000000000b4', 'outsider@example.invalid'),
   ('00000000-0000-4000-8000-0000000000b5', 'invalid-key@example.invalid'),
   ('00000000-0000-4000-8000-0000000000b6', 'left-channel@example.invalid'),
-  ('00000000-0000-4000-8000-0000000000b7', 'no-key@example.invalid');
+  ('00000000-0000-4000-8000-0000000000b7', 'no-key@example.invalid'),
+  ('00000000-0000-4000-8000-0000000000b9', 'suspended@example.invalid'),
+  ('00000000-0000-4000-8000-0000000000ba', 'no-tos@example.invalid');
+-- K5: b9 è sospeso e ba non ha accettato i TOS correnti, quindi le loro chiavi non sono eleggibili.
+UPDATE public.users SET status = 'suspended' WHERE id = '00000000-0000-4000-8000-0000000000b9';
+INSERT INTO public.legal_acceptances (user_id, document_kind, document_version) VALUES
+  ('00000000-0000-4000-8000-0000000000b1', 'tos', '2026-10-11-1'),
+  ('00000000-0000-4000-8000-0000000000b2', 'tos', '2026-10-11-1'),
+  ('00000000-0000-4000-8000-0000000000b3', 'tos', '2026-10-11-1'),
+  ('00000000-0000-4000-8000-0000000000b9', 'tos', '2026-10-11-1');
+-- ba ha accettato solo una versione precedente: non vale per l'eleggibilità corrente.
+INSERT INTO public.legal_acceptances (user_id, document_kind, document_version)
+VALUES ('00000000-0000-4000-8000-0000000000ba', 'tos', '2026-05-16-1');
 INSERT INTO public.channels (id, youtube_channel_id, title) VALUES
   ('20000000-0000-4000-8000-0000000000c1', 'UC-auto-enqueue', 'Auto enqueue channel');
 INSERT INTO public.user_channels (user_id, channel_id, is_active, added_at) VALUES
@@ -1285,8 +1357,11 @@ INSERT INTO public.user_provider_credentials (id, user_id, provider, encrypted_k
   ('10000000-0000-4000-8000-0000000000b4', '00000000-0000-4000-8000-0000000000b4', 'gemini', 'cipher-out', TRUE, TRUE),
   ('10000000-0000-4000-8000-0000000000b5', '00000000-0000-4000-8000-0000000000b5', 'gemini', 'cipher-inv', TRUE, FALSE),
   ('10000000-0000-4000-8000-0000000000b6', '00000000-0000-4000-8000-0000000000b6', 'gemini', 'cipher-left', TRUE, TRUE),
+  ('10000000-0000-4000-8000-0000000000b9', '00000000-0000-4000-8000-0000000000b9', 'gemini', 'cipher-susp', TRUE, TRUE),
+  ('10000000-0000-4000-8000-0000000000ba', '00000000-0000-4000-8000-0000000000ba', 'gemini', 'cipher-notos', TRUE, TRUE),
   ('10000000-0000-4000-8000-0000000000b8', '00000000-0000-4000-8000-0000000000b1', 'youtube', 'cipher-yt-g1', TRUE, TRUE);
 -- Canale 1: g1, g2, g3 con chiave valida; g5 con chiave non valida; g6 ha smesso di seguire; g7 senza chiave; outsider non segue.
+-- K5: g9 è sospeso e ga non ha accettato i TOS correnti, quindi restano fuori dall'eleggibilità.
 INSERT INTO public.user_channels (user_id, channel_id, is_active, added_at) VALUES
   ('00000000-0000-4000-8000-0000000000b1', '20000000-0000-4000-8000-0000000000d1', TRUE, '2020-01-01T00:00:00Z'),
   ('00000000-0000-4000-8000-0000000000b2', '20000000-0000-4000-8000-0000000000d1', TRUE, '2021-01-01T00:00:00Z'),
@@ -1294,6 +1369,8 @@ INSERT INTO public.user_channels (user_id, channel_id, is_active, added_at) VALU
   ('00000000-0000-4000-8000-0000000000b5', '20000000-0000-4000-8000-0000000000d1', TRUE, '2022-06-01T00:00:00Z'),
   ('00000000-0000-4000-8000-0000000000b6', '20000000-0000-4000-8000-0000000000d1', FALSE, '2022-07-01T00:00:00Z'),
   ('00000000-0000-4000-8000-0000000000b7', '20000000-0000-4000-8000-0000000000d1', TRUE, '2022-08-01T00:00:00Z'),
+  ('00000000-0000-4000-8000-0000000000b9', '20000000-0000-4000-8000-0000000000d1', TRUE, '2022-09-01T00:00:00Z'),
+  ('00000000-0000-4000-8000-0000000000ba', '20000000-0000-4000-8000-0000000000d1', TRUE, '2022-10-01T00:00:00Z'),
 -- Canale 2: solo g2 e g3. Canale 3: solo una chiave non valida.
   ('00000000-0000-4000-8000-0000000000b2', '20000000-0000-4000-8000-0000000000d2', TRUE, '2021-01-01T00:00:00Z'),
   ('00000000-0000-4000-8000-0000000000b3', '20000000-0000-4000-8000-0000000000d2', TRUE, '2022-01-01T00:00:00Z'),
@@ -1323,7 +1400,12 @@ GRANT EXECUTE ON FUNCTION public.test_rot_job(INTEGER, UUID), public.test_rot_cl
 SELECT public.test_assert_true(
   (SELECT array_agg(right(e.user_id::TEXT, 2) ORDER BY e.ord) FROM public.transcription_eligible_credentials('20000000-0000-4000-8000-0000000000d1') e)
     = ARRAY['b1', 'b2', 'b3'],
-  'eleggibili: follower attivi con chiave Gemini valida; non follower, chiave non valida, ex follower e senza chiave esclusi'
+  'eleggibili: follower attivi con chiave Gemini valida; non follower, chiave non valida, ex follower, sospeso, TOS mancanti e senza chiave esclusi'
+);
+SELECT public.test_assert_true(
+  (SELECT count(*) FROM public.transcription_eligible_credentials('20000000-0000-4000-8000-0000000000d1') e
+   WHERE e.user_id IN ('00000000-0000-4000-8000-0000000000b9', '00000000-0000-4000-8000-0000000000ba')) = 0,
+  'K5: utente sospeso e utente senza TOS correnti non sono eleggibili'
 );
 SELECT public.test_assert_true(
   public.has_eligible_transcription_credential('20000000-0000-4000-8000-0000000000d1')
@@ -1898,6 +1980,60 @@ BEGIN
   END IF;
 END;
 $$;
+
+-- Trascrizione D: richiedente ancora idoneo (b1, ma la sua chiave è stata invalidata nel blocco 51): rotazione.
+-- P5: se il richiedente non segue PIU' il canale, la sua chiave non viene usata anche se valida.
+-- Si riattiva la parte mancante di D e si toglie il follow di b1 dal canale, poi si rilancia.
+UPDATE public.user_channels SET is_active = FALSE
+WHERE user_id = '00000000-0000-4000-8000-0000000000b1' AND channel_id = '20000000-0000-4000-8000-0000000000d1';
+UPDATE public.user_provider_credentials SET is_valid = TRUE WHERE id = '10000000-0000-4000-8000-0000000000b1';
+UPDATE public.transcription_parts SET status = 'missing', attempts = 1, last_error = 'provider_http_503'
+WHERE transcription_id = '65200000-0000-4000-8000-000000000004' AND position = 1;
+SET ROLE service_role;
+DO $$
+DECLARE
+  v_r RECORD;
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM public.transcription_eligible_credentials('20000000-0000-4000-8000-0000000000d1') AS e
+    WHERE e.user_id = '00000000-0000-4000-8000-0000000000b1'
+  ) THEN
+    RAISE EXCEPTION 'P5: il richiedente non più follower non è eleggibile';
+  END IF;
+  SELECT * INTO v_r FROM public.relaunch_missing_transcription_parts('65200000-0000-4000-8000-000000000004', 1, 'admin-test');
+  IF v_r.status <> 'relaunched' OR v_r.credential_mode <> 'channel_rotation' THEN
+    RAISE EXCEPTION 'P5: richiedente non più follower deve usare la rotazione del canale: %', v_r;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.jobs
+    WHERE id = v_r.job_id AND payload->>'credentialOwnerUserId' IS NULL
+      AND payload->>'requestedByUserId' IS NULL
+      AND payload->>'channelId' = '20000000-0000-4000-8000-0000000000d1'
+  ) THEN
+    RAISE EXCEPTION 'P5: il job deve essere senza owner e con il canale per la rotazione';
+  END IF;
+END;
+$$;
+RESET ROLE;
+-- Ripristino del follow per non alterare le verifiche successive.
+UPDATE public.user_channels SET is_active = TRUE
+WHERE user_id = '00000000-0000-4000-8000-0000000000b1' AND channel_id = '20000000-0000-4000-8000-0000000000d1';
+-- Ripristino dello stato di D (usato dalle statistiche per finestra): era `complete`, il rilancio l'ha messo running.
+UPDATE public.transcriptions SET status = 'complete', missing_part_count = 0, completed_at = NOW()
+WHERE id = '65200000-0000-4000-8000-000000000004';
+UPDATE public.transcription_parts SET status = 'done', attempts = 1, last_error = NULL
+WHERE transcription_id = '65200000-0000-4000-8000-000000000004';
+
+-- K6: la funzione trigger SECURITY DEFINER non è eseguibile dal pubblico.
+SELECT public.test_assert_true(
+  NOT has_function_privilege('public', 'public.initialize_user_provider_credential_retry_limit()', 'EXECUTE'),
+  'K6: initialize_user_provider_credential_retry_limit non è eseguibile da PUBLIC'
+);
+SELECT public.test_assert_true(
+  (SELECT p.prosecdef FROM pg_catalog.pg_proc p
+   WHERE p.oid = 'public.initialize_user_provider_credential_retry_limit()'::regprocedure),
+  'K6: la funzione trigger resta SECURITY DEFINER'
+);
 
 -- Statistiche per finestra: A e B concluse oggi, D complete, C in corso; una vecchia fuori finestra.
 UPDATE public.transcriptions SET completed_at = NOW() - INTERVAL '20 days', updated_at = NOW() - INTERVAL '20 days'

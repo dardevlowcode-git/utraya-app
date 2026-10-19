@@ -21,6 +21,7 @@ export type ErrorCode =
   | 'RATE_LIMITED'
   | 'GEMINI_KEY_REQUIRED'
   | 'TRANSCRIPTION_UNAVAILABLE'
+  | 'TOS_ACCEPTANCE_REQUIRED'
 
 /** Converte gli errori di dominio nel vocabolario API stabile. */
 export function mapAppErrorTypeToCode(

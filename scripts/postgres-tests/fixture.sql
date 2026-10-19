@@ -15,10 +15,50 @@ AS $$ BEGIN NEW.updated_at = NOW(); RETURN NEW; END $$;
 
 GRANT USAGE ON SCHEMA public, auth TO service_role;
 GRANT EXECUTE ON FUNCTION auth.uid() TO service_role;
+-- `auth.uid()` è usata nelle policy RLS valutate come `authenticated`.
+GRANT USAGE ON SCHEMA auth TO authenticated;
+GRANT EXECUTE ON FUNCTION auth.uid() TO authenticated;
 
 CREATE TABLE public.users (
   id UUID PRIMARY KEY,
-  email TEXT NOT NULL UNIQUE
+  email TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'deleted'))
+);
+
+-- Confini usati dalle policy RLS delle trascrizioni (hardening 20260924153504) e dalla nuova eleggibilità (K5).
+CREATE TABLE public.user_roles (
+  user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  role_id UUID NOT NULL
+);
+
+CREATE TABLE public.roles (
+  id UUID PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE
+);
+
+CREATE FUNCTION public.is_super_admin() RETURNS BOOLEAN
+LANGUAGE plpgsql STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public, auth
+AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1
+    FROM public.user_roles ur
+    JOIN public.roles r ON r.id = ur.role_id
+    WHERE ur.user_id = (SELECT auth.uid()) AND r.name = 'super_admin'
+  );
+END;
+$$;
+GRANT EXECUTE ON FUNCTION public.is_super_admin() TO service_role, authenticated;
+
+CREATE TABLE public.legal_acceptances (
+  id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),
+  user_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
+  document_kind TEXT NOT NULL CHECK (document_kind IN ('tos', 'tos_vexatorious')),
+  document_version TEXT NOT NULL,
+  document_hash TEXT,
+  accepted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE public.user_provider_credentials (
@@ -165,6 +205,10 @@ CREATE TABLE public.video_transcripts (
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO service_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO service_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO service_role;
+
+-- RLS delle trascrizioni (K2) valuta `videos` e `user_channels` nella USING: `authenticated`
+-- deve poterle leggere, come nel progetto reale dove le policy di lettura sono già attive.
+GRANT SELECT ON TABLE public.videos, public.user_channels TO authenticated;
 
 INSERT INTO public.users (id, email) VALUES
   ('00000000-0000-4000-8000-000000000001', 'owner-a@example.invalid'),

@@ -14,7 +14,7 @@ import {
   validateApiKey,
 } from '@/lib/services/integrations'
 import { apiErr, apiOk } from '@/lib/http/apiResponse'
-import { mapAppErrorTypeToCode } from '@/lib/http/errorCodes'
+import { mapAppErrorTypeToCode, type ErrorCode } from '@/lib/http/errorCodes'
 import { AppError } from '@/lib/utils/errors'
 import { ensureJsonRequest, ensureSameOrigin, getRequestId } from '@/lib/security/http'
 import { INTEGRATION_PROVIDERS } from '@/lib/types/domain'
@@ -44,6 +44,10 @@ function requireUserId(userId: string | null | undefined): string {
 /** Applica l'envelope e la sanitizzazione standard a tutti gli errori del BFF. */
 function integrationErrorResponse(error: unknown, requestId: string): Response {
   if (error instanceof AppError) {
+    const code = error.context?.code as ErrorCode | undefined
+    if (code === 'TOS_ACCEPTANCE_REQUIRED') {
+      return apiErr(code, error.message, error.statusCode ?? 403, requestId)
+    }
     return apiErr(mapAppErrorTypeToCode(error.type), error.message, error.statusCode ?? 500, requestId)
   }
   return apiErr('INTERNAL_ERROR', 'Errore interno', 500, requestId)

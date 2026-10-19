@@ -95,7 +95,7 @@ function createFakeStore(options: {
       return { ...state.context, parts: state.context.parts.map((part) => ({ ...part })) }
     },
     async loadCredential() {
-      return credential
+      return { credential, channelId: null }
     },
     async acquireChannelCredential() {
       throw new Error('richieste manuali: nessuna rotazione')
@@ -446,5 +446,66 @@ describe('servizio di trascrizione', () => {
       { position: 2, startSeconds: 240, endSeconds: 250 },
     ])
     expect(buildTranscriptionParts(90 * 60)).toHaveLength(45)
+  })
+})
+
+describe('P5: chiave del richiedente non più eleggibile', () => {
+  /** Con owner nel payload ma `loadCredential` null e canale noto, il job ricade sulla rotazione del canale. */
+  function createRequesterRerouteStore() {
+    const parts = buildTranscriptionParts(240).map((part) => ({
+      ...part, status: 'pending' as 'pending' | 'done' | 'missing', attempts: 0, lastError: null as string | null,
+    }))
+    const context: TranscriptionContext = {
+      transcriptionId: 'tr-1', status: 'pending', youtubeVideoId: 'abcdefghijk',
+      model: 'gemini-3.1-flash-lite', thinkingLevel: 'minimal',
+      inputPricePerMillion: 0.25, outputPricePerMillion: 1.5, parts,
+    }
+    const acquired: string[] = []
+    const state = { jobStatus: 'pending', jobError: null as string | null }
+    const store: TranscriptionStore = {
+      async claimJob() {
+        state.jobStatus = 'running'
+        return { attemptId: 'a', payload: { videoId: 'video-1', transcriptionId: 'tr-1', requestedByUserId: OWNER, credentialOwnerUserId: OWNER, channelId: null } }
+      },
+      async loadContext() { return { ...context, parts: parts.map((part) => ({ ...part })) } },
+      async loadCredential(input) {
+        expect(input).toEqual({ ownerUserId: OWNER, channelId: null, videoId: 'video-1' })
+        return { credential: null, channelId: 'channel-1' } as never
+      },
+      async acquireChannelCredential(input) {
+        acquired.push(input.channelId)
+        return { status: 'assigned', credential: { ownerUserId: 'follower', apiKey: 'key-follower', retryLimit: 0, credentialId: 'c-f', keyVersion: 'k-f' } }
+      },
+      async claimPartCredential() { throw new Error('non usato') },
+      async recordPartKeyExhausted() { throw new Error('non usato') },
+      async savePart(input) {
+        parts.find((part) => part.position === input.partPosition)!.status = input.status
+        return true
+      },
+      async finalize() { return parts.some((p) => p.status === 'missing') ? 'needs_review' : 'complete' },
+      async finishJob(input) { state.jobStatus = input.status; state.jobError = input.errorMessage; return true },
+    }
+    return { store, state, acquired }
+  }
+
+  it('un vecchio job senza channelId ricava il canale e ruota se il richiedente non è più follower', async () => {
+    const { store, state, acquired } = createRequesterRerouteStore()
+    const headers: Array<Record<string, string>> = []
+    const fetcher = vi.fn(async (_url: unknown, init: unknown) => {
+      headers.push((init as RequestInit).headers as Record<string, string>)
+      return Response.json({
+        candidates: [{ content: { parts: [{ text: JSON.stringify({ language: 'it', segments: [{ start: '00:01', text: 'frase' }] }) }] } }],
+        usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5, totalTokenCount: 15 },
+      })
+    })
+
+    const result = await runTranscriptionJob(JOB_ID, {
+      store, fetcher: fetcher as unknown as typeof fetch, sleep: async () => undefined, concurrency: 1,
+    })
+
+    expect(result.outcome).toBe('complete')
+    expect(acquired).toEqual(['channel-1'])
+    expect(headers.every((header) => header['x-goog-api-key'] === 'key-follower')).toBe(true)
+    expect(state.jobStatus).toBe('completed')
   })
 })

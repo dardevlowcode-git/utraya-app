@@ -8,6 +8,7 @@ import { createHash, createCipheriv, createDecipheriv, randomBytes } from 'node:
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchAndRecordProviderRequest } from '@/lib/services/api-usage'
+import { hasAcceptedCurrentTos } from '@/lib/services/legal-acceptance'
 import { AppError, classifyError } from '@/lib/utils/errors'
 import {
   enqueueCredentialValidation,
@@ -276,6 +277,17 @@ export async function saveApiKey(params: {
 }> {
   assertProvider(params.provider)
 
+  // Il consenso ai costi (versioni TOS correnti, come il gate della pagina privata) e` un
+  // prerequisito per salvare una chiave, che la rende eleggibile alla rotazione sui canali seguiti.
+  if (!(await hasAcceptedCurrentTos(params.userId))) {
+    throw new AppError(
+      'Accetta i termini correnti prima di salvare una chiave API',
+      'forbidden',
+      403,
+      { code: 'TOS_ACCEPTANCE_REQUIRED' }
+    )
+  }
+
   const normalized = params.apiKey.trim()
   if (normalized.length < 10) {
     throw new AppError('Chiave API non valida: lunghezza troppo corta', 'validation', 400)
@@ -510,13 +522,18 @@ export async function performCredentialValidationAttempt(
       ? new URL('https://www.googleapis.com/youtube/v3/search')
       : new URL('https://generativelanguage.googleapis.com/v1beta/models')
     const operation = payload.provider === 'youtube' ? 'search.list' : 'models.list'
+    // YouTube accetta la chiave solo in query (`key`); Gemini la riceve nell'header `x-goog-api-key`,
+    // come le altre chiamate Gemini, per non lasciarla in URL, log e history.
+    const headers: Record<string, string> = { Accept: 'application/json' }
     if (payload.provider === 'youtube') {
       url.searchParams.set('part', 'snippet')
       url.searchParams.set('q', 'youtube')
       url.searchParams.set('maxResults', '1')
       url.searchParams.set('type', 'video')
+      url.searchParams.set('key', apiKey)
+    } else {
+      headers['x-goog-api-key'] = apiKey
     }
-    url.searchParams.set('key', apiKey)
 
     const response = await fetchAndRecordProviderRequest({
       userId: payload.userId,
@@ -525,7 +542,7 @@ export async function performCredentialValidationAttempt(
       url: url.toString(),
       init: {
         method: 'GET',
-        headers: { Accept: 'application/json' },
+        headers,
         cache: 'no-store',
         signal: AbortSignal.timeout(payload.provider === 'youtube' ? YOUTUBE_VALIDATION_TIMEOUT_MS : GEMINI_VALIDATION_TIMEOUT_MS),
       },

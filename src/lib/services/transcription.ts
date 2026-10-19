@@ -80,6 +80,12 @@ export interface GeminiCredential {
   keyVersion?: string
 }
 
+/** Esito della verifica della chiave del richiedente e canale risolto per l'eventuale rotazione. */
+export interface RequesterCredentialResolution {
+  credential: GeminiCredential | null
+  channelId: string | null
+}
+
 /** Esito della richiesta di una chiave per una parte. */
 export type PartCredentialAcquisition =
   | { status: 'assigned'; credential: GeminiCredential }
@@ -122,7 +128,11 @@ export interface TranscriptionStore {
   claimJob(input: { jobId: string; leaseId: string; startedAt: string; leaseExpiresAt: string }):
     Promise<{ attemptId: string; payload: TranscriptionJobPayload } | null>
   loadContext(payload: TranscriptionJobPayload): Promise<TranscriptionContext | null>
-  loadCredential(ownerUserId: string | null): Promise<GeminiCredential | null>
+  /**
+   * Chiave del richiedente per un lavoro non automatico. Ritorna anche il canale risolto, così i vecchi
+   * job senza channelId possono ricadere sulla rotazione se il richiedente non è più eleggibile.
+   */
+  loadCredential(input: { ownerUserId: string | null; channelId: string | null; videoId: string }): Promise<RequesterCredentialResolution>
   /** Job automatici: chiave del job (stessa per i retry) o la successiva eleggibile in round-robin per canale. */
   acquireChannelCredential(input: { jobId: string; leaseId: string; channelId: string }): Promise<ChannelCredentialAcquisition>
   /** Chiave per una singola parte di un job automatico (la chiave del job, poi le altre eleggibili non esaurite per la parte). */
@@ -471,10 +481,25 @@ export async function runTranscriptionJob(jobId: string, deps: TranscriptionWork
     }
 
     // Job automatico: chiave in rotazione fra i follower del canale; richiesta manuale: chiave di chi richiede.
-    const rotatingChannelId = claim.payload.credentialOwnerUserId === null ? claim.payload.channelId : null
+    // Se il richiedente non è più idoneo, la risoluzione restituisce il canale per la rotazione anche sui vecchi job.
+    let rotatingChannelId = claim.payload.credentialOwnerUserId === null ? claim.payload.channelId : null
     const pending = context.parts.filter((part) => part.status === 'pending')
     if (pending.length > 0) {
       let jobCredential: GeminiCredential | null
+      if (!rotatingChannelId && claim.payload.credentialOwnerUserId !== null) {
+        const requesterCredential = await store.loadCredential({
+          ownerUserId: claim.payload.credentialOwnerUserId,
+          channelId: claim.payload.channelId,
+          videoId: claim.payload.videoId,
+        })
+        jobCredential = requesterCredential.credential
+        if (!jobCredential && requesterCredential.channelId) {
+          // Il richiedente non e' piu' eleggibile: si passa alla rotazione del canale.
+          rotatingChannelId = requesterCredential.channelId
+        }
+      } else {
+        jobCredential = null
+      }
       if (rotatingChannelId) {
         const acquired = await store.acquireChannelCredential({ jobId, leaseId, channelId: rotatingChannelId })
         if (acquired.status === 'lease_lost') return { outcome: 'lease_lost', partsSaved }
@@ -493,8 +518,6 @@ export async function runTranscriptionJob(jobId: string, deps: TranscriptionWork
           return { outcome: 'needs_review', partsSaved }
         }
         jobCredential = acquired.credential
-      } else {
-        jobCredential = await store.loadCredential(claim.payload.credentialOwnerUserId)
       }
       if (!jobCredential) {
         // Senza chiave utilizzabile le parti restano rilanciabili come mancanti.

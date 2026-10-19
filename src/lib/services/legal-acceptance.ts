@@ -58,6 +58,29 @@ export async function getLegalAcceptanceStatus(userId: string, locale: 'it' | 'e
   }
 }
 
+/**
+ * Vero se l'utente ha accettato la versione TOS correntemente richiesta.
+ * Riusa la stessa tabella e la stessa versione del gate in `(private)/layout.tsx`,
+ * senza duplicare il confronto: serve alle rotazioni delle chiavi, che richiedono
+ * il consenso ai costi dato dall'accettazione corrente.
+ */
+export async function hasAcceptedCurrentTos(userId: string): Promise<boolean> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('legal_acceptances')
+    .select('document_kind, document_version')
+    .eq('user_id', userId)
+    .eq('document_kind', 'tos')
+    .eq('document_version', TOS_REQUIRED_VERSION)
+    .limit(1)
+
+  if (error) {
+    throw new Error(`Errore lettura legal_acceptances: ${error.message}`)
+  }
+
+  return (data?.length ?? 0) > 0
+}
+
 export async function recordLegalAcceptance(params: {
   userId: string
   userEmail: string

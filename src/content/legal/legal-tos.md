@@ -91,7 +91,7 @@ Utraya utilizza servizi di terze parti per funzionare:
 | Google Identity (OAuth) | Autenticazione utente | Vedi §12-bis |
 | YouTube Data API v3 | Lettura metadati pubblici dei video | Nessun dato utente trasmesso |
 | Google Gemini (o equivalente AI dell'utente) | Generazione riassunti | URL/trascrizione video, non dati utente |
-| Firecrawl | Recupero delle trascrizioni dei video YouTube | URL dei video YouTube |
+| Firecrawl | Conservazione e verifica della chiave personale Firecrawl | Chiave API (nessuna trascrizione recuperata) |
 | Supabase (hosting DB UE) | Storage e auth backend | Tutti i dati account utente cifrati a riposo |
 | Vercel (hosting) | Erogazione applicazione | Log tecnici di accesso (IP, user agent) |
 
@@ -322,7 +322,7 @@ You can **revoke Utraya's access** to your Google account at any time at <https:
 | Google Identity (OAuth) | User authentication | See §12-bis |
 | YouTube Data API v3 | Reading public video metadata | No user data transmitted |
 | Google Gemini (or user's equivalent AI provider) | Summary generation | Video URL/transcript, not user data |
-| Firecrawl | Retrieval of YouTube video transcripts | YouTube video URLs |
+| Firecrawl | Storage and verification of the personal Firecrawl key | API key (no transcript retrieved) |
 | Supabase (EU-hosted DB) | DB storage and backend auth | All user account data encrypted at rest |
 | Vercel (hosting) | Application delivery | Technical access logs (IP, user agent) |
 
