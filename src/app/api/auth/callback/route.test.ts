@@ -70,9 +70,9 @@ describe('GET /api/auth/callback', () => {
   })
 
   it('ignora Host/X-Forwarded-Host e usa NEXT_PUBLIC_SITE_URL nel redirect', async () => {
-    const response = await GET(callbackRequest('https://app.utraya.test/api/auth/callback?code=abc', {
+    const response = await GET(callbackRequest('https://evil.test/api/auth/callback?code=abc', {
       host: 'evil.test',
-      'x-forwarded-host': 'evil.test',
+      'x-forwarded-host': 'attacker.example',
     }) as never)
     expect(response.headers.get('location')).toBe('https://app.utraya.test/dashboard')
   })

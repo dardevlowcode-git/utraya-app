@@ -45,7 +45,7 @@ describe('POST /api/v1/legal/accept', () => {
   it.each([
     ['versione non corrente', { kinds: ['tos'], version: 'obsolete-version' }],
     ['hash non corrente', { kinds: ['tos'], hash: 'sha256:obsolete' }],
-  ])('rifiuta la %s senza scrivere', async (_case, body) => {
+  ])('rifiuta campi extra con 400 (%s)', async (_case, body) => {
     expect((await request(body)).status).toBe(400)
     expect(recordLegalAcceptanceMock).not.toHaveBeenCalled()
   })

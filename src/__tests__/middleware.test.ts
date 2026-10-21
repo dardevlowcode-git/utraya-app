@@ -1,51 +1,23 @@
 /* Commento didattico:
  * Scopo del file: verifica il middleware reale (`src/middleware.ts`) su sessione admin, pagine private, rotte di bypass e security header.
- * Moduli richiamati: `vitest`, `next/server`, `@/middleware`, `@/lib/auth/admin` (firma del cookie admin), mock di `@supabase/ssr`.
+ * Moduli richiamati: `vitest`, `next/server`, `@/middleware`, `@/lib/auth/admin` (firma del cookie admin), fake condiviso `@supabase/ssr`.
  * Flusso: costruisce una `NextRequest` con cookie finti e osserva redirect, status, cookie azzerati e header di sicurezza.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NextRequest } from 'next/server'
-
-const adminUsername = 'admin'
-const adminSecret = 'test-secret-admin-session-0123456789'
-const adminSessionCookieName = 'cf_admin_session'
+import { adminSessionCookieName, adminUsername, setAdminEnv } from '@/__tests__/admin-route-helpers'
+import { createSupabaseSsrFake } from '@/__tests__/helpers/supabaseSsrFake'
 
 const getUserMock = vi.fn()
 const rpcMock = vi.fn()
 const maybeSingleMock = vi.fn()
 const fromMock = vi.fn()
 
-vi.mock('@supabase/ssr', () => ({
-  createServerClient: vi.fn(() => {
-    const from = (table: string) => {
-      fromMock(table)
-      const builder: Record<string, unknown> = {}
-      builder.select = () => builder
-      builder.eq = () => builder
-      builder.maybeSingle = maybeSingleMock
-      return builder
-    }
-    return {
-      auth: { getUser: getUserMock },
-      rpc: rpcMock,
-      from,
-    }
-  }),
-}))
-
-vi.mock('@/lib/auth/allowlist', () => ({
-  isEmailAllowlisted: vi.fn(async () => false),
-}))
+vi.mock('@supabase/ssr', () => ({ createServerClient: vi.fn(() => createSupabaseSsrFake({ getUserMock, rpcMock, maybeSingleMock, fromMock })) }))
 
 const { middleware, config } = await import('@/middleware')
 const { buildAdminSessionCookieValue } = await import('@/lib/auth/admin')
-
-function setAdminEnv() {
-  vi.stubEnv('SUPERADMIN_USERNAME', adminUsername)
-  vi.stubEnv('SUPERADMIN_SESSION_SECRET', adminSecret)
-  vi.stubEnv('SUPERADMIN_PASSWORD_HASH', 'scrypt$16384$8$1$64$c2FsdA==$aGFzaA==')
-}
 
 function request(path: string, init?: { cookies?: Record<string, string>; url?: string }) {
   const cookieHeader = Object.entries(init?.cookies ?? {})
@@ -71,7 +43,7 @@ function expectSecurityHeaders(response: { headers: Headers }) {
 describe('middleware', () => {
   beforeEach(() => {
     vi.resetAllMocks()
-    setAdminEnv()
+    setAdminEnv({ SUPERADMIN_PASSWORD_HASH: 'scrypt$16384$8$1$64$c2FsdA==$aGFzaA==' })
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://test.supabase.co')
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'test-anon-key')
     getUserMock.mockResolvedValue({ data: { user: null } })
@@ -80,6 +52,7 @@ describe('middleware', () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     vi.unstubAllEnvs()
   })
 
@@ -118,7 +91,6 @@ describe('middleware', () => {
       expect(response.status).toBe(307)
       expect(new URL(response.headers.get('location')!).pathname).toBe('/admin/login')
       expect(response.cookies.get(adminSessionCookieName)?.value).toBe('')
-      vi.useRealTimers()
     })
 
     it('lascia passare /admin/* con un cookie firmato valido', async () => {

@@ -38,6 +38,7 @@ vi.mock('@/lib/auth/provider', async (importOriginal) => {
 import { POST as postAdminScanNow } from '@/app/api/admin/channels/[channelId]/scan-now/route'
 import { DELETE as deleteAdminJob, POST as postAdminJob } from '@/app/api/admin/jobs/[jobId]/route'
 import { POST as postAdminLogsCleanup } from '@/app/api/admin/logs/cleanup/route'
+import { POST as postV1CancelDeletion } from '@/app/api/v1/account/cancel-deletion/route'
 import { DELETE as deleteIntegrations, GET as getIntegrations, POST as postIntegrations } from '@/app/api/integrations/route'
 import { GET as getV1LegalAcceptance } from '@/app/api/v1/legal/acceptance/route'
 import { GET as getV1Video } from '@/app/api/v1/videos/[videoId]/route'
@@ -72,6 +73,7 @@ const smokeCases: SmokeCase[] = [
   { routeFile: 'src/app/api/admin/jobs/[jobId]/route.ts', method: 'POST', expectedStatus: 401, run: () => postAdminJob(requestFor('POST', '/admin/jobs/not-a-real-id'), { params: Promise.resolve({ jobId: 'not-a-real-id' }) }) },
   { routeFile: 'src/app/api/admin/jobs/[jobId]/route.ts', method: 'DELETE', expectedStatus: 401, run: () => deleteAdminJob(requestFor('DELETE', '/admin/jobs/not-a-real-id'), { params: Promise.resolve({ jobId: 'not-a-real-id' }) }) },
   { routeFile: 'src/app/api/admin/logs/cleanup/route.ts', method: 'POST', expectedStatus: 401, run: () => postAdminLogsCleanup(requestFor('POST', '/admin/logs/cleanup')) },
+  { routeFile: 'src/app/api/v1/account/cancel-deletion/route.ts', method: 'POST', expectedStatus: 400, run: () => postV1CancelDeletion(requestFor('POST', '/v1/account/cancel-deletion')) },
   { routeFile: 'src/app/api/v1/legal/acceptance/route.ts', method: 'GET', expectedStatus: 401, run: () => getV1LegalAcceptance(requestFor('GET', '/v1/legal/acceptance')) },
   { routeFile: 'src/app/api/v1/videos/[videoId]/route.ts', method: 'GET', expectedStatus: 401, run: () => getV1Video(requestFor('GET', '/v1/videos/not-a-real-id'), { params: Promise.resolve({ videoId: 'not-a-real-id' }) }) },
   { routeFile: 'src/app/api/videos/route.ts', method: 'GET', expectedStatus: 401, run: () => getVideos(requestFor('GET', '/videos')) },

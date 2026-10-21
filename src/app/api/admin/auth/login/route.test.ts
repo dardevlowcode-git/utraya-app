@@ -144,13 +144,21 @@ describe('POST /api/admin/auth/login', () => {
   })
 
   it('risponde 429 con audit admin_login_rate_limited quando l\'IP ha già 5 fallimenti', async () => {
-    // Conta 5 solo per la query sull'IP (`ip_address`), 0 per quella sullo username: prova il limite per IP.
-    fake.setCountResolver(({ filters }) => (filters.ip_address !== undefined ? 5 : 0))
+    const requestIp = '203.0.113.9'
+    const sinceIso = '2026-06-09T23:45:00.000Z'
+    // Solo il filtro IP corretto dentro la finestra dei 15 minuti raggiunge la soglia.
+    fake.setCountResolver(({ filters }) => (
+      filters.ip_address === requestIp && filters['gte:created_at'] === sinceIso ? 5 : 0
+    ))
 
-    const response = await postLogin({ ip: '203.0.113.9' })
+    const response = await postLogin({ ip: requestIp })
 
     expect(response.status).toBe(429)
     expect(await response.json()).toMatchObject({ errorType: 'forbidden' })
+    expect(fake.reads).toContainEqual({
+      table: 'audit_logs',
+      filters: { action: 'admin_login_failed', ip_address: requestIp, 'gte:created_at': sinceIso },
+    })
     expect(fake.inserts.find((entry) => entry.values.action === 'admin_login_rate_limited')).toBeTruthy()
     expect(fake.inserts.find((entry) => entry.values.action === 'admin_login_success')).toBeUndefined()
   })

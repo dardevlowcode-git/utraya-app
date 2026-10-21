@@ -64,18 +64,18 @@ function createAdminClientFake(tableResults: {
     }
 
     if (table === 'users') {
-      const firstEq = vi.fn((column: string, value: unknown) => {
+      const firstUserFilter = vi.fn((column: string, value: unknown) => {
         usersFilters.push([column, value])
         return {
-          eq: vi.fn((column2: string, value2: unknown) => {
-            usersFilters.push([column2, value2])
+          eq: vi.fn((statusColumn: string, statusValue: unknown) => {
+            usersFilters.push([statusColumn, statusValue])
             return {
               maybeSingle: () => resolved(tableResults.users, { data: null, error: null }),
             }
           }),
         }
       })
-      return { select: vi.fn(() => ({ eq: firstEq })) }
+      return { select: vi.fn(() => ({ eq: firstUserFilter })) }
     }
 
     throw new Error(`Tabella inattesa nel test: ${table}`)

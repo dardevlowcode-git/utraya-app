@@ -6,51 +6,18 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NextRequest } from 'next/server'
-import { randomBytes, scryptSync } from 'node:crypto'
-
-const adminUsername = 'admin'
-const adminSecret = 'test-secret-admin-session-0123456789'
+import { adminPassword, adminUsername, setAdminEnv } from '@/__tests__/admin-route-helpers'
+import { createSupabaseSsrFake } from '@/__tests__/helpers/supabaseSsrFake'
 
 const getUserMock = vi.fn()
+const rpcMock = vi.fn()
+const maybeSingleMock = vi.fn()
+const fromMock = vi.fn()
 
-vi.mock('@supabase/ssr', () => ({
-  createServerClient: vi.fn(() => ({
-    auth: { getUser: getUserMock },
-    rpc: vi.fn(async () => ({ data: true, error: null })),
-    from: vi.fn(() => {
-      const builder: Record<string, unknown> = {}
-      builder.select = () => builder
-      builder.eq = () => builder
-      builder.maybeSingle = async () => ({ data: { id: 'admin' }, error: null })
-      return builder
-    }),
-  })),
-}))
+vi.mock('@supabase/ssr', () => ({ createServerClient: vi.fn(() => createSupabaseSsrFake({ getUserMock, rpcMock, maybeSingleMock, fromMock })) }))
 
 const { buildAdminSessionCookieValue, readAdminSessionFromCookieValue, verifySuperAdminCredentials } = await import('@/lib/auth/admin')
 const { middleware } = await import('@/middleware')
-
-function scryptHash(password: string, params = { N: 16384, r: 8, p: 1, keyLen: 64 }): string {
-  const salt = randomBytes(16)
-  const derived = scryptSync(password, salt, params.keyLen, { N: params.N, r: params.r, p: params.p })
-  return `scrypt$${params.N}$${params.r}$${params.p}$${params.keyLen}$${salt.toString('base64')}$${derived.toString('base64')}`
-}
-
-function setAdminEnv(overrides: Record<string, string | undefined> = {}) {
-  const env: Record<string, string | undefined> = {
-    SUPERADMIN_USERNAME: adminUsername,
-    SUPERADMIN_SESSION_SECRET: adminSecret,
-    SUPERADMIN_PASSWORD_HASH: scryptHash('correct-password'),
-    ...overrides,
-  }
-  for (const [key, value] of Object.entries(env)) {
-    if (value === undefined) {
-      vi.stubEnv(key, '')
-    } else {
-      vi.stubEnv(key, value)
-    }
-  }
-}
 
 function adminRequest(cookieValue?: string) {
   return new NextRequest('https://utraya.com/api/admin/probe', {
@@ -83,9 +50,12 @@ describe('sessione admin: contratto fra admin.ts e middleware', () => {
     vi.resetAllMocks()
     setAdminEnv()
     getUserMock.mockResolvedValue({ data: { user: null } })
+    rpcMock.mockResolvedValue({ data: true, error: null })
+    maybeSingleMock.mockResolvedValue({ data: { id: adminUsername }, error: null })
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     vi.unstubAllEnvs()
   })
 
@@ -126,7 +96,6 @@ describe('sessione admin: contratto fra admin.ts e middleware', () => {
 
     expect(readAdminSessionFromCookieValue(cookie)).toBeNull()
     await expect(middlewareAccepts(cookie)).resolves.toBe(false)
-    vi.useRealTimers()
   })
 
   it('rifiuta da entrambi un cookie firmato con un\'altra secret', async () => {
@@ -170,12 +139,12 @@ describe('verifySuperAdminCredentials', () => {
 
   it('accetta username e password corretti', () => {
     setAdminEnv()
-    expect(verifySuperAdminCredentials(adminUsername, 'correct-password')).toBe(true)
+    expect(verifySuperAdminCredentials(adminUsername, adminPassword)).toBe(true)
   })
 
   it('normalizza gli spazi attorno allo username', () => {
     setAdminEnv()
-    expect(verifySuperAdminCredentials(`  ${adminUsername}  `, 'correct-password')).toBe(true)
+    expect(verifySuperAdminCredentials(`  ${adminUsername}  `, adminPassword)).toBe(true)
   })
 
   it('rifiuta la password errata', () => {
@@ -185,26 +154,26 @@ describe('verifySuperAdminCredentials', () => {
 
   it('rifiuta lo username errato', () => {
     setAdminEnv()
-    expect(verifySuperAdminCredentials('intruso', 'correct-password')).toBe(false)
+    expect(verifySuperAdminCredentials('intruso', adminPassword)).toBe(false)
   })
 
   it('rifiuta un hash che non inizia con scrypt$', () => {
     setAdminEnv({ SUPERADMIN_PASSWORD_HASH: 'bcrypt$16384$8$1$64$c2FsdA==$aGFzaA==' })
-    expect(verifySuperAdminCredentials(adminUsername, 'correct-password')).toBe(false)
+    expect(verifySuperAdminCredentials(adminUsername, adminPassword)).toBe(false)
   })
 
   it('rifiuta un hash con parti mancanti', () => {
     setAdminEnv({ SUPERADMIN_PASSWORD_HASH: 'scrypt$16384$8$1$64$c2FsdA==' })
-    expect(verifySuperAdminCredentials(adminUsername, 'correct-password')).toBe(false)
+    expect(verifySuperAdminCredentials(adminUsername, adminPassword)).toBe(false)
   })
 
   it('rifiuta un hash con parametri numerici non validi', () => {
     setAdminEnv({ SUPERADMIN_PASSWORD_HASH: 'scrypt$abc$8$1$64$c2FsdA==$aGFzaA==' })
-    expect(verifySuperAdminCredentials(adminUsername, 'correct-password')).toBe(false)
+    expect(verifySuperAdminCredentials(adminUsername, adminPassword)).toBe(false)
   })
 
   it('rifiuta quando la configurazione è assente', () => {
     setAdminEnv({ SUPERADMIN_USERNAME: '', SUPERADMIN_PASSWORD_HASH: '', SUPERADMIN_SESSION_SECRET: '' })
-    expect(verifySuperAdminCredentials(adminUsername, 'correct-password')).toBe(false)
+    expect(verifySuperAdminCredentials(adminUsername, adminPassword)).toBe(false)
   })
 })

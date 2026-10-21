@@ -245,6 +245,44 @@ describe('credential save and validation enqueue', () => {
     })
   })
 
+  it('salva la chiave senza contattare il provider né accodare il segreto in chiaro', async () => {
+    const userId = 'service-save-owner'
+    const apiKey = 'test-secret-firecrawl-service-key'
+    const keyVersion = 'service-save-key-version'
+    const { supabase } = createCredentialSupabase('credential-service-save')
+    const fetchMock = vi.fn()
+    configureRetryLimitClient(0, keyVersion)
+    vi.stubEnv('CREDENTIAL_ENCRYPTION_KEY', 'test-only-encryption-key')
+    vi.stubGlobal('fetch', fetchMock)
+
+    try {
+      const saved = await saveApiKey({
+        userId,
+        provider: 'firecrawl',
+        apiKey,
+        supabase: supabase as unknown as AppSupabaseClient,
+      })
+
+      expect(saved).toMatchObject({
+        provider: 'firecrawl',
+        validationStatus: 'pending',
+        jobId: 'validation-job-1',
+      })
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(enqueueCredentialValidationMock).toHaveBeenCalledWith({
+        credentialId: 'credential-service-save',
+        userId,
+        provider: 'firecrawl',
+        keyVersion,
+        retryLimit: 0,
+      })
+      expect(JSON.stringify(enqueueCredentialValidationMock.mock.calls)).not.toContain(apiKey)
+    } finally {
+      vi.unstubAllGlobals()
+      vi.unstubAllEnvs()
+    }
+  })
+
   it('scrive lo storico con il client privilegiato e il payload minimo', async () => {
     const audit = {
       credential_id: 'credential-1',
