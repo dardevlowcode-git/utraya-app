@@ -36,13 +36,9 @@ vi.mock('@/lib/auth/provider', async (importOriginal) => {
 })
 
 import { DELETE as deletePublicAccount } from '@/app/api/account/route'
-import { DELETE as deleteAdminAllowlist, POST as postAdminAllowlist } from '@/app/api/admin/allowlist/route'
-import { POST as postAdminLogin } from '@/app/api/admin/auth/login/route'
-import { POST as postAdminLogout } from '@/app/api/admin/auth/logout/route'
 import { POST as postAdminScanNow } from '@/app/api/admin/channels/[channelId]/scan-now/route'
 import { DELETE as deleteAdminJob, POST as postAdminJob } from '@/app/api/admin/jobs/[jobId]/route'
 import { POST as postAdminLogsCleanup } from '@/app/api/admin/logs/cleanup/route'
-import { DELETE as deleteAdminUser } from '@/app/api/admin/users/[userId]/route'
 import { GET as getDailyDeletionExecutor } from '@/app/api/cron/daily-deletion-executor/route'
 import { DELETE as deleteIntegrations, GET as getIntegrations, POST as postIntegrations } from '@/app/api/integrations/route'
 import { POST as postLegalAcceptance } from '@/app/api/legal/accept/route'
@@ -80,15 +76,10 @@ type SmokeCase = {
 
 const smokeCases: SmokeCase[] = [
   { routeFile: 'src/app/api/account/route.ts', method: 'DELETE', expectedStatus: 401, run: () => deletePublicAccount(requestFor('DELETE', '/account')) },
-  { routeFile: 'src/app/api/admin/allowlist/route.ts', method: 'POST', expectedStatus: 401, run: () => postAdminAllowlist(requestFor('POST', '/admin/allowlist')) },
-  { routeFile: 'src/app/api/admin/allowlist/route.ts', method: 'DELETE', expectedStatus: 401, run: () => deleteAdminAllowlist(requestFor('DELETE', '/admin/allowlist')) },
-  { routeFile: 'src/app/api/admin/auth/login/route.ts', method: 'POST', expectedStatus: 400, run: () => postAdminLogin(requestFor('POST', '/admin/auth/login')) },
-  { routeFile: 'src/app/api/admin/auth/logout/route.ts', method: 'POST', expectedStatus: 200, run: () => postAdminLogout(requestFor('POST', '/admin/auth/logout')) },
   { routeFile: 'src/app/api/admin/channels/[channelId]/scan-now/route.ts', method: 'POST', expectedStatus: 401, run: () => postAdminScanNow(requestFor('POST', '/admin/channels/not-a-real-id/scan-now'), { params: Promise.resolve({ channelId: 'not-a-real-id' }) }) },
   { routeFile: 'src/app/api/admin/jobs/[jobId]/route.ts', method: 'POST', expectedStatus: 401, run: () => postAdminJob(requestFor('POST', '/admin/jobs/not-a-real-id'), { params: Promise.resolve({ jobId: 'not-a-real-id' }) }) },
   { routeFile: 'src/app/api/admin/jobs/[jobId]/route.ts', method: 'DELETE', expectedStatus: 401, run: () => deleteAdminJob(requestFor('DELETE', '/admin/jobs/not-a-real-id'), { params: Promise.resolve({ jobId: 'not-a-real-id' }) }) },
   { routeFile: 'src/app/api/admin/logs/cleanup/route.ts', method: 'POST', expectedStatus: 401, run: () => postAdminLogsCleanup(requestFor('POST', '/admin/logs/cleanup')) },
-  { routeFile: 'src/app/api/admin/users/[userId]/route.ts', method: 'DELETE', expectedStatus: 401, run: () => deleteAdminUser(requestFor('DELETE', '/admin/users/not-a-real-id'), { params: Promise.resolve({ userId: 'not-a-real-id' }) }) },
   { routeFile: 'src/app/api/cron/daily-deletion-executor/route.ts', method: 'GET', expectedStatus: 401, run: () => getDailyDeletionExecutor(requestFor('GET', '/cron/daily-deletion-executor')) },
   { routeFile: 'src/app/api/legal/accept/route.ts', method: 'POST', expectedStatus: 401, run: () => postLegalAcceptance(requestFor('POST', '/legal/accept')) },
   { routeFile: 'src/app/api/v1/account/route.ts', method: 'GET', expectedStatus: 401, run: () => getV1Account(requestFor('GET', '/v1/account')) },
