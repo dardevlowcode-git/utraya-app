@@ -1,11 +1,11 @@
 /* Commento didattico:
- * Scopo del file: verifica il provisioning OAuth e l'idempotenza della watchlist default senza DB reale.
- * Moduli richiamati: `provisionNewUser`, client admin Supabase mockato, `vitest`.
- * Flusso: simula lookup/inserimento e una callback concorrente che vince il vincolo univoco.
+ * Scopo del file: verifica la decisione di accesso (`isEmailAllowlisted`) e il provisioning OAuth con watchlist default senza DB reale.
+ * Moduli richiamati: `isEmailAllowlisted`, `provisionNewUser`, client admin Supabase mockato, `vitest`.
+ * Flusso: simula la lettura della allowlist e lookup/inserimento della callback concorrente che vince il vincolo univoco.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { provisionNewUser } from '@/lib/auth/allowlist'
+import { isEmailAllowlisted, provisionNewUser } from '@/lib/auth/allowlist'
 
 const { createAdminClientMock } = vi.hoisted(() => ({
   createAdminClientMock: vi.fn(),
@@ -143,5 +143,82 @@ describe('provisionNewUser default watchlist', () => {
     await expect(provisionNewUser(userParams)).resolves.toMatchObject({ success: false, error: 'insert failed' })
     expect(defaultWatchlistReadMock).toHaveBeenCalledTimes(1)
     expect(defaultWatchlistInsertMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+type AllowlistResult = { data: unknown; error: { message: string } | null }
+
+/**
+ * Finge il client admin per la sola tabella `allowlist_entries`, registrando
+ * i filtri applicati alla query così da poterli asserire.
+ */
+function createAllowlistClient(result: AllowlistResult | (() => Promise<AllowlistResult>)) {
+  const ilikeMock = vi.fn()
+  const eqMock = vi.fn()
+  const singleMock = vi.fn(() =>
+    Promise.resolve(typeof result === 'function' ? result() : result)
+  )
+
+  const chain = { ilike: ilikeMock, eq: eqMock, single: singleMock }
+  ilikeMock.mockReturnValue({ eq: eqMock })
+  eqMock.mockReturnValue({ single: singleMock })
+
+  const selectMock = vi.fn(() => ({ ilike: ilikeMock }))
+  const fromMock = vi.fn(() => ({ select: selectMock }))
+  createAdminClientMock.mockReturnValue({ from: fromMock })
+
+  return { fromMock, selectMock, ilikeMock, eqMock, singleMock }
+}
+
+describe('isEmailAllowlisted', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('autorizza una email attiva presente in allowlist', async () => {
+    createAllowlistClient({ data: { id: 'entry-1', is_active: true }, error: null })
+
+    await expect(isEmailAllowlisted('utente@example.com')).resolves.toBe(true)
+  })
+
+  it('nega una email assente in allowlist', async () => {
+    createAllowlistClient({ data: null, error: { message: 'no rows' } })
+
+    await expect(isEmailAllowlisted('assente@example.com')).resolves.toBe(false)
+  })
+
+  it('nega una email presente ma con is_active falso', async () => {
+    createAllowlistClient({ data: { id: 'entry-1', is_active: false }, error: null })
+
+    await expect(isEmailAllowlisted('disattivata@example.com')).resolves.toBe(false)
+  })
+
+  it('applica il confronto case-insensitive (ilike) e il filtro is_active', async () => {
+    const { ilikeMock, eqMock } = createAllowlistClient({
+      data: { id: 'entry-1', is_active: true },
+      error: null,
+    })
+
+    await isEmailAllowlisted('Utente@Example.com')
+
+    expect(ilikeMock).toHaveBeenCalledWith('email', 'Utente@Example.com')
+    expect(eqMock).toHaveBeenCalledWith('is_active', true)
+  })
+
+  it('normalizza gli spazi ai bordi come fa il codice (trim)', async () => {
+    const { ilikeMock } = createAllowlistClient({
+      data: { id: 'entry-1', is_active: true },
+      error: null,
+    })
+
+    await isEmailAllowlisted('   utente@example.com   ')
+
+    expect(ilikeMock).toHaveBeenCalledWith('email', 'utente@example.com')
+  })
+
+  it('nega con fail-closed quando la query restituisce un errore DB', async () => {
+    createAllowlistClient({ data: null, error: { message: 'connection refused' } })
+
+    await expect(isEmailAllowlisted('utente@example.com')).resolves.toBe(false)
   })
 })
