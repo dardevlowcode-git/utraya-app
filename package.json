@@ -14,7 +14,6 @@
     "type-check": "tsc --noEmit",
     "check-comments": "node scripts/check-comments.mjs",
     "validate": "npm run check-comments && npm run lint && npm run type-check",
-    "admin:hash": "node scripts/generate-admin-password-hash.mjs",
     "legal:hash": "node --import tsx scripts/hashLegal.ts"
   },
   "dependencies": {
