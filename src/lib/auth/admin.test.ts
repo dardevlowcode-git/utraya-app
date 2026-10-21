@@ -65,7 +65,9 @@ async function middlewareAccepts(cookieValue: string | undefined): Promise<boole
 
 function tamperSignature(cookie: string): string {
   const [payload, signature] = cookie.split('.')
-  const flipped = signature!.slice(0, -1) + (signature!.endsWith('A') ? 'B' : 'A')
+  // Cambia il primo carattere: l'ultimo porta bit di riempimento base64url e
+  // alterarlo può lasciare invariati i byte decodificati della firma.
+  const flipped = (signature!.startsWith('A') ? 'B' : 'A') + signature!.slice(1)
   return `${payload}.${flipped}`
 }
 
