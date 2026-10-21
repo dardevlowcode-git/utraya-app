@@ -21,8 +21,12 @@ export type UserProviderCredential = Database['public']['Tables']['user_provider
 export type AppLog = Database['public']['Tables']['app_logs']['Row']
 export type AuditLog = Database['public']['Tables']['audit_logs']['Row']
 export type Incident = Database['public']['Tables']['incidents']['Row']
+export type ApiUsageEventRow = Database['public']['Tables']['api_usage_events']['Row']
 
 // --- Domain types (enriched / composed) ---
+
+export const INTEGRATION_PROVIDERS = ['youtube', 'gemini', 'firecrawl'] as const
+export type IntegrationProvider = (typeof INTEGRATION_PROVIDERS)[number]
 
 /**
  * Video with its AI analysis content (localized), user state, and channel info.
@@ -58,9 +62,10 @@ export interface ChannelWithUserContext {
 
 /** API credential status for a provider */
 export interface CredentialStatus {
-  provider: 'youtube' | 'gemini'
+  provider: IntegrationProvider
   isConfigured: boolean
   isValid: boolean | null
+  validationStatus: 'idle' | 'pending' | 'running' | 'completed'
   lastValidatedAt: string | null
   lastUsedAt: string | null
   lastError: string | null

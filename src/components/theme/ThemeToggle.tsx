@@ -8,7 +8,7 @@
 
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useSyncExternalStore } from 'react'
 import { useTranslations } from 'next-intl'
 
 type SiteTheme = 'light' | 'dark'
@@ -16,9 +16,37 @@ type SiteTheme = 'light' | 'dark'
 const themeCookieName = 'theme'
 const themeStorageKey = 'utraya-theme'
 const oneYearInSeconds = 60 * 60 * 24 * 365
+const THEME_CHANGE_EVENT = 'utraya:theme-change'
 
 function isValidTheme(value: string | null): value is SiteTheme {
   return value === 'light' || value === 'dark'
+}
+
+/** Risolve la preferenza tema mantenendo priorità al valore persistito. */
+export function resolveTheme(themeFromStorage: string | null, themeFromHtml: string | null): SiteTheme {
+  if (isValidTheme(themeFromStorage)) return themeFromStorage
+  if (isValidTheme(themeFromHtml)) return themeFromHtml
+  return 'light'
+}
+
+/** Sottoscrive il selettore ai cambi tema prodotti da questa scheda. */
+function subscribeToThemeChanges(onChange: () => void) {
+  window.addEventListener(THEME_CHANGE_EVENT, onChange)
+
+  return () => window.removeEventListener(THEME_CHANGE_EVENT, onChange)
+}
+
+/** Legge il tema preferito da storage o dall'attributo root del documento. */
+function getThemeSnapshot(): SiteTheme {
+  return resolveTheme(
+    localStorage.getItem(themeStorageKey),
+    document.documentElement.getAttribute('data-theme')
+  )
+}
+
+/** Mantiene il tema chiaro nello snapshot server e nella hydration iniziale. */
+function getServerThemeSnapshot(): SiteTheme {
+  return 'light'
 }
 
 function applyAndPersistTheme(nextTheme: SiteTheme) {
@@ -29,25 +57,19 @@ function applyAndPersistTheme(nextTheme: SiteTheme) {
 
 export default function ThemeToggle() {
   const t = useTranslations()
-  const [theme, setTheme] = useState<SiteTheme>('light')
+  const theme = useSyncExternalStore(
+    subscribeToThemeChanges,
+    getThemeSnapshot,
+    getServerThemeSnapshot
+  )
 
   useEffect(() => {
-    const themeFromHtml = document.documentElement.getAttribute('data-theme')
-    const themeFromStorage = localStorage.getItem(themeStorageKey)
-
-    const nextTheme: SiteTheme = isValidTheme(themeFromStorage)
-      ? themeFromStorage
-      : isValidTheme(themeFromHtml)
-        ? themeFromHtml
-        : 'light'
-
-    setTheme(nextTheme)
-    applyAndPersistTheme(nextTheme)
+    applyAndPersistTheme(getThemeSnapshot())
   }, [])
 
   function setNextTheme(nextTheme: SiteTheme) {
-    setTheme(nextTheme)
     applyAndPersistTheme(nextTheme)
+    window.dispatchEvent(new Event(THEME_CHANGE_EVENT))
   }
 
   return (

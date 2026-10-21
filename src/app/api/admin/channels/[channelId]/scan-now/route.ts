@@ -4,12 +4,16 @@
  * Flusso: valida sessione super-admin, risolve un utente attivo per il canale e avvia la scansione senza attendere scheduler.
  */
 
-import { NextResponse } from 'next/server'
+import { NextResponse, after } from 'next/server'
 import { getAdminSession } from '@/lib/auth/admin'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requestScanNowForUser } from '@/lib/services/channels'
+import { runAutoTranscriptionsForChannel } from '@/lib/services/transcription-auto'
 import { AppError, errorResponse } from '@/lib/utils/errors'
 import { ensureJsonRequest, ensureSameOrigin, getClientIp, getRequestId } from '@/lib/security/http'
+
+/** Lo scan gira nella richiesta e il worker di trascrizione in after(): serve la durata massima dei job lunghi. */
+export const maxDuration = 300
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -59,6 +63,8 @@ export async function POST(request: Request, context: { params: Promise<{ channe
 
   try {
     await requestScanNowForUser({ userId: userChannel.user_id, channelId }, { asAdmin: true })
+    // after() riceve la Promise del worker (ADR-014): trascrizione automatica dei video appena importati.
+    after(() => runAutoTranscriptionsForChannel(channelId))
   } catch (error) {
     if (error instanceof AppError) {
       return errorResponse(error.message, error.type, error.statusCode ?? 500, requestId)

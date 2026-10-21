@@ -27,6 +27,7 @@ export async function DELETE(request: Request) {
       reason,
       ipAddress: getClientIp(request),
       userAgent: request.headers.get('user-agent'),
+      requestId,
     })
 
     await current.supabase.auth.signOut()

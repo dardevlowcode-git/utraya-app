@@ -1,12 +1,14 @@
 /* Commento didattico:
  * Scopo del file: pagina admin per consultare il contenuto canonico video e lo stato dei riepiloghi AI.
- * Moduli richiamati: `next`, `next-intl/server`, `@/lib/supabase/admin`
- * Flusso: carica video canonici + contenuto localizzato e mostra una vista sintetica per revisione in console admin.
+ * Moduli richiamati: `next`, `next-intl/server`, view service admin e cella contenuto canonico.
+ * Flusso: carica metadati dei contenuti localizzati e mostra link di lettura nella console admin.
  */
 
 import type { Metadata } from 'next'
 import { getLocale, getTranslations } from 'next-intl/server'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { notFound, redirect } from 'next/navigation'
+import CanonicalContentCell from '@/components/admin/CanonicalContentCell'
+import { loadAdminCanonicalVideos } from '@/lib/services/admin-canonical-content'
 
 export const metadata: Metadata = {
   title: 'Admin - Contenuto canonico',
@@ -16,44 +18,27 @@ export const metadata: Metadata = {
  * Pagina admin per rivedere i contenuti canonici esistenti.
  */
 export default async function AdminCanonicalVideosPage() {
-  const supabase = createAdminClient()
+  const result = await loadAdminCanonicalVideos()
+  if (result.status === 'unauthorized') redirect('/admin/login')
+  if (result.status === 'not_found') notFound()
+
   const t = await getTranslations()
   const locale = await getLocale()
 
-  const { data: videos, error } = await supabase
-    .from('videos')
-    .select(`
-      id,
-      title,
-      youtube_video_id,
-      published_at,
-      channel:channels(title),
-      localized:video_localized_content(language_code, short_summary, is_admin_edited)
-    `)
-    .order('published_at', { ascending: false })
-    .limit(100)
-
-  if (error) {
+  if (result.status === 'error') {
     return (
       <div className="p-8 max-w-7xl">
         <h1 className="font-headline text-3xl font-extrabold text-on-surface mb-2">
           {t('admin.content.title')}
         </h1>
         <p className="text-sm text-error">
-          Errore caricamento contenuto canonico: {error.message}
+          Errore caricamento contenuto canonico: {result.message} ({result.code})
         </p>
       </div>
     )
   }
 
-  const rows = ((videos ?? []) as unknown) as Array<{
-    id: string
-    title: string
-    youtube_video_id: string
-    published_at: string
-    channel: { title: string } | null
-    localized: Array<{ language_code: string; short_summary: string | null; is_admin_edited: boolean }> | null
-  }>
+  const rows = result.data
 
   return (
     <div className="p-8 max-w-7xl">
@@ -71,42 +56,45 @@ export default async function AdminCanonicalVideosPage() {
           Nessun contenuto canonico disponibile.
         </div>
       ) : (
-        <div className="bg-surface-container-lowest rounded-2xl shadow-ambient overflow-hidden">
-          <div className="grid grid-cols-[2fr_1fr_120px_180px] px-4 py-3 text-xs font-semibold uppercase tracking-wide text-on-surface-variant border-b border-surface-container-high">
-            <span>Video</span>
-            <span>Canale</span>
-            <span>Lingue</span>
-            <span>Pubblicato</span>
-          </div>
-
-          <div className="divide-y divide-surface-container-high">
-            {rows.map((video) => {
-              const localized = video.localized ?? []
-              const languages = localized.map((x) => x.language_code.toUpperCase()).join(', ')
-              const anyAdminEdited = localized.some((x) => x.is_admin_edited)
-
-              return (
-                <div key={video.id} className="grid grid-cols-[2fr_1fr_120px_180px] gap-3 px-4 py-3 text-sm">
-                  <div className="min-w-0">
+        <div className="overflow-x-auto rounded-2xl shadow-ambient">
+          <table className="w-full min-w-[1120px] bg-surface-container-lowest text-left text-sm">
+            <thead>
+              <tr className="border-b border-surface-container-high text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
+                <th scope="col" className="px-4 py-3">Video</th>
+                <th scope="col" className="px-4 py-3">Canale</th>
+                <th scope="col" className="px-4 py-3">Lingue</th>
+                <th scope="col" className="px-4 py-3">Pubblicato</th>
+                <th scope="col" className="px-4 py-3">Trascrizione</th>
+                <th scope="col" className="px-4 py-3">Riassunti</th>
+                <th scope="col" className="px-4 py-3">Categorie</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-surface-container-high">
+              {rows.map((video) => (
+                <tr key={video.id}>
+                  <th scope="row" className="min-w-56 px-4 py-3 font-normal">
                     <p className="font-semibold text-on-surface truncate">{video.title}</p>
-                    <p className="text-xs text-on-surface-variant truncate">
-                      {video.youtube_video_id}
-                    </p>
-                    {anyAdminEdited ? (
+                    <p className="text-xs text-on-surface-variant truncate">{video.youtubeVideoId}</p>
+                    {video.isAdminEdited ? (
                       <span className="inline-flex mt-1 text-[10px] px-2 py-0.5 rounded-full bg-secondary-fixed text-on-secondary-fixed">
                         {t('admin.content.adminEdited')}
                       </span>
                     ) : null}
-                  </div>
-                  <div className="text-on-surface-variant truncate">{video.channel?.title ?? '—'}</div>
-                  <div className="text-on-surface-variant">{languages || '—'}</div>
-                  <div className="text-on-surface-variant">
-                    {new Date(video.published_at).toLocaleString(locale)}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
+                  </th>
+                  <td className="px-4 py-3 text-on-surface-variant">{video.channelTitle ?? '—'}</td>
+                  <td className="px-4 py-3 text-on-surface-variant">
+                    {video.languages.map((language) => language.toUpperCase()).join(', ') || '—'}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-on-surface-variant">
+                    {new Date(video.publishedAt).toLocaleString(locale)}
+                  </td>
+                  <td className="px-4 py-3"><CanonicalContentCell label="Trascrizione" items={video.transcripts} /></td>
+                  <td className="px-4 py-3"><CanonicalContentCell label="Riassunti" items={video.summaries} /></td>
+                  <td className="px-4 py-3"><CanonicalContentCell label="Categorie" items={video.categories} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

@@ -8,6 +8,9 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const getCurrentSessionMock = vi.fn()
 const addChannelForUserMock = vi.fn()
+const requestScanNowForUserMock = vi.fn()
+const afterMock = vi.fn()
+const runAutoTranscriptionsMock = vi.fn()
 
 vi.mock('@/lib/auth/provider', () => ({
   getCurrentSession: getCurrentSessionMock,
@@ -17,8 +20,11 @@ vi.mock('@/lib/services/channels', () => ({
   addChannelForUser: addChannelForUserMock,
   getChannelsForUser: vi.fn(),
   removeChannelForUser: vi.fn(),
-  requestScanNowForUser: vi.fn(),
+  requestScanNowForUser: requestScanNowForUserMock,
 }))
+
+vi.mock('next/server', async (importOriginal) => ({ ...(await importOriginal<typeof import('next/server')>()), after: afterMock }))
+vi.mock('@/lib/services/transcription-auto', () => ({ runAutoTranscriptionsForChannel: runAutoTranscriptionsMock }))
 
 let POST: typeof import('@/app/api/channels/route').POST
 
@@ -90,5 +96,26 @@ describe('POST /api/channels', () => {
     const payload = await response.json()
     expect(payload.data.warningCode).toBeNull()
     expect(payload.data.message).toBe('Canale aggiunto correttamente')
+  })
+
+  it('dopo aggiunta e scan manuale avvia in after() la trascrizione automatica del canale', async () => {
+    addChannelForUserMock.mockResolvedValue({
+      channelId: 'channel-1', normalizedChannelUrl: 'https://www.youtube.com/@test',
+      initialScanError: null, scanBlockedReason: null, markedSeenCount: 0,
+    })
+    requestScanNowForUserMock.mockResolvedValue({ queued: true, jobId: 'job-1', deduplicated: false })
+    const post = (body: unknown) => POST(new Request('http://localhost/api/channels', {
+      method: 'POST',
+      headers: { origin: 'http://localhost', 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }))
+
+    expect((await post({ channelUrl: 'https://www.youtube.com/@test' })).status).toBe(200)
+    expect((await post({ action: 'scan_now', channelId: 'channel-2' })).status).toBe(200)
+
+    expect(afterMock).toHaveBeenCalledTimes(2)
+    // after() riceve una funzione che restituisce la Promise del worker (ADR-014).
+    for (const [callback] of afterMock.mock.calls) await (callback as () => Promise<unknown>)()
+    expect(runAutoTranscriptionsMock.mock.calls).toEqual([['channel-1'], ['channel-2']])
   })
 })

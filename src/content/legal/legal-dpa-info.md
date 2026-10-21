@@ -1,7 +1,7 @@
 # DPA — Catena del trattamento dati Utraya
 
 > **Stato**: 🟡 bozza pre-launch — la versione "pubblica" (lista sub-processors da inserire nella Privacy Policy) deve essere validata legalmente (`tasks/SEC.md` PUBSEC-007).
-> **Versione documento**: `2026-05-16-1`
+> **Versione documento**: `2026-10-04-1`
 > **Lingua sorgente**: italiano.
 > **A cosa serve questo file**: documentare in modo unitario (a) il ruolo di Utraya nel GDPR, (b) i responsabili esterni del trattamento (sub-processors) con i rispettivi DPA, (c) i trasferimenti extra-UE e le relative garanzie, (d) il template DPA che Utraya offrirà ai clienti business quando aprirà la API.
 
@@ -29,7 +29,7 @@ Tutti i sub-processors sotto sono soggetti a contratto di nomina ex GDPR art. 28
 | Ragione sociale | Supabase, Inc. |
 | Sede | 970 Toa Payoh North #07-04, Singapore 318992 |
 | Ruolo | Responsabile esterno (hosting database PostgreSQL + auth + storage) |
-| Dati trattati | Tutti i dati account utente (vedi `DATA_MODEL.md`) inclusi: email, Google sub, watchlist, riassunti video associati all'utente, chiavi API cifrate, registrazioni accettazione TOS |
+| Dati trattati | Tutti i dati account utente (vedi `DATA_MODEL.md`) inclusi: email, Google sub, watchlist, riassunti video associati all'utente, chiavi API cifrate, metadati minimizzati di utilizzo API (finestra 30 giorni, retention tecnica massima 31), registrazioni accettazione TOS |
 | Hosting fisico dei dati | Regione **EU (Frankfurt o Ireland)** — selezionata in fase di setup progetto |
 | Trasferimento extra-UE | I dati a riposo restano in UE. Eventuali operazioni di supporto (es. log applicativi tecnici) possono comportare accesso temporaneo da personale Supabase USA: coperto da SCC 2021/914/UE Modulo 3 |
 | DPA pubblicamente disponibile | <https://supabase.com/legal/dpa> |

@@ -1,7 +1,7 @@
 /* Commento didattico:
  * Scopo del file: endpoint pubblico (tokenizzato) per annullare una richiesta cancellazione account entro il grace period.
  * Moduli richiamati: service account deletion e helper envelope API.
- * Flusso: valida token firmato, ripristina stato utente attivo e risponde con esito standard.
+ * Flusso: valida token firmato, ripristina lo stato precedente se ancora coerente e risponde con esito standard.
  */
 
 import { apiErr, apiOk } from '@/lib/http/apiResponse'
@@ -18,12 +18,20 @@ export async function POST(request: Request) {
     const token = tokenFromQuery ?? body?.token
 
     if (!token) {
-      return apiErr('VALIDATION_FAILED', 'Token mancante', 400, requestId)
+      return noStore(apiErr('VALIDATION_FAILED', 'Token mancante', 400, requestId))
     }
 
-    await cancelDeletion(token)
-    return apiOk({ restored: true }, requestId)
+    const restored = await cancelDeletion(token)
+    if (!restored) return noStore(apiErr('ACCOUNT_DELETION_FAILED', 'Stato account modificato: ripristino non eseguito', 409, requestId))
+    return noStore(apiOk({ restored: true }, requestId))
   } catch (error) {
-    return apiErr('ACCOUNT_DELETION_FAILED', error instanceof Error ? error.message : 'Impossibile annullare cancellazione', 400, requestId)
+    return noStore(apiErr('ACCOUNT_DELETION_FAILED', 'Impossibile annullare cancellazione', 400, requestId))
   }
+}
+
+// Impedisce caching delle risposte su un flusso che trasporta token capability.
+// Il token resta segreto: via preferita POST body, query solo per compatibilita` legacy.
+function noStore(response: Response): Response {
+  response.headers.set('Cache-Control', 'no-store')
+  return response
 }

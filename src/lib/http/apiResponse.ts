@@ -16,8 +16,9 @@ export function apiOk<T>(data: T, requestId: string, status = 200): Response {
 }
 
 export function apiErr(code: ErrorCode, message: string, status: number, requestId: string): Response {
+  const safeMessage = status >= 500 ? 'Errore interno' : message
   return withRequestId(
-    Response.json({ ok: false, error: { code, message, requestId } }, { status }),
+    Response.json({ ok: false, error: { code, message: safeMessage }, requestId }, { status }),
     requestId
   )
 }

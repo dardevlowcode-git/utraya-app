@@ -30,7 +30,22 @@ export async function getCurrentUserFromSupabase(supabase: ServerSupabaseClient)
   }
 }
 
+async function getActiveCurrentUserFromSupabase(supabase: ServerSupabaseClient): Promise<CurrentUserContext | null> {
+  const current = await getCurrentUserFromSupabase(supabase)
+  if (!current) return null
+
+  const { data: appUser, error } = await supabase
+    .from('users')
+    .select('id')
+    .eq('id', current.user.id)
+    .eq('status', 'active')
+    .maybeSingle()
+  if (error || !appUser) return null
+
+  return current
+}
+
 export async function getCurrentUser(): Promise<CurrentUserContext | null> {
   const supabase = await createClient()
-  return getCurrentUserFromSupabase(supabase)
+  return getActiveCurrentUserFromSupabase(supabase)
 }

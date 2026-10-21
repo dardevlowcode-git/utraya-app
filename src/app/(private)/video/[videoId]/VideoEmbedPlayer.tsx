@@ -7,6 +7,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { EMBED_LISTENING_MESSAGE, EMBED_PLAYER_ELEMENT_ID } from '@/lib/utils/youtube-embed-control'
 
 interface VideoEmbedPlayerProps {
   youtubeVideoId: string
@@ -17,20 +18,20 @@ interface VideoEmbedPlayerProps {
  * Mostra iframe YouTube con fallback automatico tra host embed per mitigare blocchi browser/privacy.
  */
 export default function VideoEmbedPlayer({ youtubeVideoId, title }: VideoEmbedPlayerProps) {
+  return <VideoEmbedPlayerInstance key={youtubeVideoId} youtubeVideoId={youtubeVideoId} title={title} />
+}
+
+/** Mantiene lo stato del fallback limitato all'identificativo YouTube corrente. */
+function VideoEmbedPlayerInstance({ youtubeVideoId, title }: VideoEmbedPlayerProps) {
   const sources = useMemo(
     () => [
-      `https://www.youtube-nocookie.com/embed/${youtubeVideoId}`,
-      `https://www.youtube.com/embed/${youtubeVideoId}`,
+      `https://www.youtube-nocookie.com/embed/${youtubeVideoId}?enablejsapi=1`,
+      `https://www.youtube.com/embed/${youtubeVideoId}?enablejsapi=1`,
     ],
     [youtubeVideoId]
   )
   const [sourceIndex, setSourceIndex] = useState(0)
   const [hasLoaded, setHasLoaded] = useState(false)
-
-  useEffect(() => {
-    setSourceIndex(0)
-    setHasLoaded(false)
-  }, [youtubeVideoId])
 
   useEffect(() => {
     if (hasLoaded) return
@@ -45,6 +46,7 @@ export default function VideoEmbedPlayer({ youtubeVideoId, title }: VideoEmbedPl
 
   return (
     <iframe
+      id={EMBED_PLAYER_ELEMENT_ID}
       key={sources[sourceIndex]}
       src={sources[sourceIndex]}
       title={title}
@@ -52,7 +54,16 @@ export default function VideoEmbedPlayer({ youtubeVideoId, title }: VideoEmbedPl
       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
       referrerPolicy="strict-origin-when-cross-origin"
       allowFullScreen
-      onLoad={() => setHasLoaded(true)}
+      onLoad={(event) => {
+        setHasLoaded(true)
+        // Handshake per accettare i comandi postMessage (salto al secondo dalle frasi).
+        const frame = event.currentTarget
+        try {
+          frame.contentWindow?.postMessage(EMBED_LISTENING_MESSAGE, new URL(frame.src).origin)
+        } catch {
+          // Il player resta usabile anche senza controllo dalla pagina.
+        }
+      }}
     />
   )
 }

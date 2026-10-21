@@ -4,7 +4,7 @@
  * Flusso: route utente/admin/cron delegano qui per request/cancel/execute/force-delete e audit coerente.
  */
 
-import { createHmac, randomBytes } from 'node:crypto'
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buildSiteUrl } from '@/lib/env/getSiteUrl'
 import type { DeletionRequestView } from '@/lib/view-models/deletion'
@@ -12,9 +12,9 @@ import type { DeletionRequestView } from '@/lib/view-models/deletion'
 const GRACE_DAYS = 30
 
 function requireDeletionSecret(): string {
-  const secret = process.env.SUPERADMIN_SESSION_SECRET?.trim()
+  const secret = process.env.ACCOUNT_DELETION_TOKEN_SECRET?.trim()
   if (!secret) {
-    throw new Error('SUPERADMIN_SESSION_SECRET mancante per firma token cancellazione')
+    throw new Error('ACCOUNT_DELETION_TOKEN_SECRET mancante per firma token cancellazione')
   }
   return secret
 }
@@ -42,7 +42,10 @@ export function createCancelDeletionToken(userId: string, requestId: string, exp
 function verifyCancelDeletionToken(token: string): { userId: string; requestId: string } {
   const secret = requireDeletionSecret()
   const [payload, signature] = token.split('.')
-  if (!payload || !signature || sign(payload, secret) !== signature) {
+  const expectedSignature = payload ? sign(payload, secret) : ''
+  const receivedBuffer = Buffer.from(signature ?? '', 'utf8')
+  const expectedBuffer = Buffer.from(expectedSignature, 'utf8')
+  if (!payload || !signature || receivedBuffer.length !== expectedBuffer.length || !timingSafeEqual(receivedBuffer, expectedBuffer)) {
     throw new Error('Token cancellazione non valido')
   }
 
@@ -62,6 +65,10 @@ function verifyCancelDeletionToken(token: string): { userId: string; requestId: 
   }
 
   return { userId: parsed.userId, requestId: parsed.requestId }
+}
+
+export function getCancelDeletionTokenOwner(token: string): string {
+  return verifyCancelDeletionToken(token).userId
 }
 
 export async function getDeletionRequestView(userId: string): Promise<DeletionRequestView> {
@@ -118,7 +125,9 @@ export async function requestDeletion(params: {
   reason: string | null
   ipAddress: string | null
   userAgent: string | null
-}): Promise<{ scheduledFor: string; cancelUrl: string }> {
+  requestId?: string
+  cancelPath?: string
+}): Promise<{ scheduledFor: string; cancelUrl: string; cancelToken: string }> {
   const supabase = createAdminClient()
   const scheduledFor = new Date(Date.now() + GRACE_DAYS * 24 * 60 * 60 * 1000).toISOString()
 
@@ -133,86 +142,64 @@ export async function requestDeletion(params: {
     const token = createCancelDeletionToken(params.userId, existing.id, existing.scheduled_deletion_at)
     return {
       scheduledFor: existing.scheduled_deletion_at,
-      cancelUrl: buildSiteUrl(`/api/account/cancel-deletion?token=${encodeURIComponent(token)}`),
+      cancelUrl: buildSiteUrl(`${params.cancelPath ?? '/api/account/cancel-deletion'}?token=${encodeURIComponent(token)}`),
+      cancelToken: token,
     }
   }
 
-  const { data: created, error: createError } = await supabase
-    .from('user_deletion_requests')
-    .insert({
-      user_id: params.userId,
-      reason: params.reason,
-      ip_address: params.ipAddress,
-      user_agent: params.userAgent,
-      scheduled_deletion_at: scheduledFor,
-      status: 'pending',
-    })
-    .select('id, scheduled_deletion_at')
-    .single()
-
-  if (createError || !created) {
+  const { data: rpcRows, error: createError } = await supabase.rpc('request_account_deletion', {
+    p_user_id: params.userId,
+    p_reason: params.reason,
+    p_ip_address: params.ipAddress,
+    p_user_agent: params.userAgent,
+    p_scheduled_at: scheduledFor,
+  })
+  const created = Array.isArray(rpcRows) ? rpcRows[0] : rpcRows
+  if (createError || !created?.request_id || !created.scheduled_for) {
     throw new Error(createError?.message ?? 'Errore creazione richiesta cancellazione')
   }
 
-  const { error: suspendError } = await supabase
-    .from('users')
-    .update({ status: 'suspended' })
-    .eq('id', params.userId)
-
-  if (suspendError) {
-    throw new Error(`Errore sospensione utente: ${suspendError.message}`)
-  }
-
-  const token = createCancelDeletionToken(params.userId, created.id, created.scheduled_deletion_at)
-  const cancelUrl = buildSiteUrl(`/api/account/cancel-deletion?token=${encodeURIComponent(token)}`)
+  const token = createCancelDeletionToken(params.userId, created.request_id, created.scheduled_for)
+  const cancelUrl = buildSiteUrl(`${params.cancelPath ?? '/api/account/cancel-deletion'}?token=${encodeURIComponent(token)}`)
 
   await supabase.from('app_logs').insert({
     level: 'info',
     message: 'account_deletion_requested',
     context: {
-      user_id: params.userId,
-      user_email: params.userEmail,
-      scheduled_for: created.scheduled_deletion_at,
-      cancel_url: cancelUrl,
+      user_id_hash: createHash('sha256').update(params.userId).digest('hex').slice(0, 16),
+       scheduled_for: created.scheduled_for,
+      request_id: params.requestId ?? null,
     },
   })
 
   return {
-    scheduledFor: created.scheduled_deletion_at,
+    scheduledFor: created.scheduled_for,
     cancelUrl,
+    cancelToken: token,
   }
 }
 
-export async function cancelDeletion(token: string): Promise<void> {
+export async function cancelDeletion(token: string): Promise<boolean> {
   const payload = verifyCancelDeletionToken(token)
   const supabase = createAdminClient()
 
-  const { error: updateError } = await supabase
-    .from('user_deletion_requests')
-    .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
-    .eq('id', payload.requestId)
-    .eq('user_id', payload.userId)
-    .eq('status', 'pending')
-
-  if (updateError) {
-    throw new Error(`Errore annullamento cancellazione: ${updateError.message}`)
-  }
-
-  const { error: restoreError } = await supabase
-    .from('users')
-    .update({ status: 'active' })
-    .eq('id', payload.userId)
-
-  if (restoreError) {
-    throw new Error(`Errore riattivazione utente: ${restoreError.message}`)
-  }
+  const { data: restored, error } = await supabase.rpc('cancel_account_deletion', {
+    p_user_id: payload.userId,
+    p_request_id: payload.requestId,
+  })
+  if (error) throw new Error(`Errore annullamento cancellazione: ${error.message}`)
+  return restored === true
 }
 
 export async function executeDeletion(requestId: string): Promise<void> {
   const supabase = createAdminClient()
+  const { data: claimed, error: claimError } = await supabase.rpc('claim_account_deletion', { p_request_id: requestId })
+  if (claimError) throw new Error(`Errore acquisizione cancellazione: ${claimError.message}`)
+  if (!claimed) return
+
   const { data: request, error: requestError } = await supabase
     .from('user_deletion_requests')
-    .select('id, user_id, status')
+    .select('id, user_id')
     .eq('id', requestId)
     .maybeSingle()
 
@@ -220,25 +207,21 @@ export async function executeDeletion(requestId: string): Promise<void> {
     throw new Error(requestError?.message ?? 'Richiesta cancellazione non trovata')
   }
 
-  if (request.status !== 'pending' && request.status !== 'executing') {
-    return
-  }
-
-  await supabase.from('user_deletion_requests').update({ status: 'executing' }).eq('id', request.id)
-
   const { error: rpcError } = await supabase.rpc('execute_user_deletion', { p_user_id: request.user_id })
   if (rpcError) {
-    await supabase
+    const { error: failureUpdateError } = await supabase
       .from('user_deletion_requests')
-      .update({ status: 'failed', error_details: rpcError.message })
+      .update({ status: 'failed', executing_at: null, error_details: rpcError.message })
       .eq('id', request.id)
+    if (failureUpdateError) throw new Error(`Errore execute_user_deletion: ${rpcError.message}; impossibile registrare failure: ${failureUpdateError.message}`)
     throw new Error(`Errore execute_user_deletion: ${rpcError.message}`)
   }
 
-  await supabase
+  const { error: completionUpdateError } = await supabase
     .from('user_deletion_requests')
-    .update({ status: 'completed', executed_at: new Date().toISOString() })
+    .update({ status: 'completed', executing_at: null, executed_at: new Date().toISOString() })
     .eq('id', request.id)
+  if (completionUpdateError) throw new Error(`Cancellazione completata ma stato richiesta non aggiornato: ${completionUpdateError.message}`)
 }
 
 export async function forceDeleteUser(userId: string, adminUsername: string, reason: string): Promise<void> {
@@ -252,7 +235,7 @@ export async function forceDeleteUser(userId: string, adminUsername: string, rea
     level: 'warn',
     message: 'force_delete_user',
     context: {
-      user_id: userId,
+      user_id_hash: createHash('sha256').update(userId).digest('hex').slice(0, 16),
       admin_username: adminUsername,
       reason,
       executed_at: new Date().toISOString(),
@@ -262,20 +245,28 @@ export async function forceDeleteUser(userId: string, adminUsername: string, rea
 
 export async function processPendingDeletionRequests(nowIso = new Date().toISOString()): Promise<{ processed: number; failed: number }> {
   const supabase = createAdminClient()
-  const { data, error } = await supabase
-    .from('user_deletion_requests')
-    .select('id')
-    .eq('status', 'pending')
-    .lte('scheduled_deletion_at', nowIso)
+  const staleExecutingBefore = new Date(new Date(nowIso).getTime() - 15 * 60 * 1000).toISOString()
+  const [{ data: pending, error: pendingError }, { data: staleExecuting, error: staleError }] = await Promise.all([
+    supabase
+      .from('user_deletion_requests')
+      .select('id')
+      .eq('status', 'pending')
+      .lte('scheduled_deletion_at', nowIso),
+    supabase
+      .from('user_deletion_requests')
+      .select('id')
+      .eq('status', 'executing')
+      .lt('executing_at', staleExecutingBefore),
+  ])
 
-  if (error) {
-    throw new Error(`Errore query richieste pendenti: ${error.message}`)
+  if (pendingError || staleError) {
+    throw new Error(`Errore query richieste cancellazione: ${pendingError?.message ?? staleError?.message}`)
   }
 
   let processed = 0
   let failed = 0
 
-  for (const item of data ?? []) {
+  for (const item of [...(pending ?? []), ...(staleExecuting ?? [])]) {
     try {
       await executeDeletion(item.id)
       processed += 1

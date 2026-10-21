@@ -23,10 +23,12 @@ name: Security Scan
 on:
   push:
     branches:
+      - dev
       - main
       - preprod
   pull_request:
     branches:
+      - dev
       - main
       - preprod
   schedule:
@@ -35,8 +37,6 @@ on:
 
 permissions:
   contents: read
-  security-events: write
-  actions: read
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
@@ -48,12 +48,14 @@ jobs:
   npm-audit:
     name: npm audit (dipendenze)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout codice
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Setup Node.js 24
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: '24'
           cache: 'npm'
@@ -73,7 +75,7 @@ jobs:
 
       - name: Upload report npm audit
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: npm-audit-report
           path: npm-audit-report.json
@@ -85,11 +87,15 @@ jobs:
   semgrep:
     name: Semgrep SAST
     runs-on: ubuntu-latest
+    # Carica SARIF nella tab Security: e' l'unico permesso aggiuntivo richiesto dal job.
+    permissions:
+      contents: read
+      security-events: write
     container:
       image: returntocorp/semgrep
     steps:
       - name: Checkout codice
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Esegui Semgrep con ruleset Next.js + TypeScript + OWASP
         # Scansiona la root (il progetto Next.js sta alla root)
@@ -107,14 +113,14 @@ jobs:
 
       - name: Upload SARIF su GitHub Code Scanning
         if: always()
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
           sarif_file: semgrep-results.sarif
           category: semgrep
 
       - name: Upload report Semgrep
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: semgrep-results
           path: semgrep-results.sarif
@@ -126,16 +132,23 @@ jobs:
   gitleaks:
     name: Gitleaks (segreti)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout completo (history necessaria)
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           # fetch-depth: 0 OBBLIGATORIO per scansionare tutta la history
           fetch-depth: 0
 
       - name: Esegui Gitleaks
         # Gitleaks scansiona TUTTO il repo (incluso .git/), non serve working-directory
-        uses: gitleaks/gitleaks-action@v3
+        # .gitleaksignore contiene solo il fingerprint dell'occorrenza storica della
+        # chiave client pubblicamente distribuita da YouTube come INNERTUBE_API_KEY.
+        # Non prova proprietà/restrizioni di un progetto Google Cloud né riguarda una
+        # credenziale privata; regole, file, commit e nuove occorrenze restano scansionati.
+        # Il fingerprint ignore è sperimentale: ogni altra eccezione richiede prove proprie.
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}  # solo per organizzazioni
@@ -146,12 +159,16 @@ jobs:
   trivy-fs:
     name: Trivy (filesystem - librerie)
     runs-on: ubuntu-latest
+    # Carica SARIF nella tab Security: e' l'unico permesso aggiuntivo richiesto dal job.
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - name: Checkout codice
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Scansione filesystem (vulnerabilita package-lock)
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: 'fs'
           scan-ref: '.'        # package-lock.json e' alla root
@@ -162,7 +179,7 @@ jobs:
 
       - name: Upload SARIF Trivy fs
         if: always()
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
           sarif_file: trivy-fs.sarif
           category: trivy-fs
@@ -175,6 +192,8 @@ jobs:
     needs: [npm-audit, semgrep, gitleaks, trivy-fs]
     if: always()
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Stampa esito
         run: |

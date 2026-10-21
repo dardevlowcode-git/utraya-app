@@ -6,11 +6,12 @@
 
 'use client'
 
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useContext, useMemo, useState, useSyncExternalStore } from 'react'
 import { COOKIE_POLICY_VERSION } from './version'
 
 const COOKIE_NAME = 'cf_consent'
 const SIX_MONTHS_SECONDS = 60 * 60 * 24 * 180
+const CONSENT_COOKIE_CHANGE_EVENT = 'utraya:consent-cookie-change'
 
 export type ConsentState = {
   necessary: true
@@ -60,45 +61,68 @@ export function isConsentVersionCurrent(state: ConsentState | null, currentVersi
   return state.version === currentVersion
 }
 
-function readConsentCookie(): ConsentState | null {
-  if (typeof document === 'undefined') return null
-  const cookieValue = document.cookie
+/** Estrae e valida il consenso dal cookie browser senza leggere l'ambiente globale. */
+export function parseConsentCookieHeader(cookieHeader: string | null): ConsentState | null {
+  if (cookieHeader === null) return null
+
+  const cookieValue = cookieHeader
     .split('; ')
     .find((item) => item.startsWith(`${COOKIE_NAME}=`))
     ?.slice(COOKIE_NAME.length + 1)
 
   if (!cookieValue) return null
-  const decoded = decodeURIComponent(cookieValue)
+
+  let decoded: string
+  try {
+    decoded = decodeURIComponent(cookieValue)
+  } catch {
+    return null
+  }
+
   return parseConsentCookie(decoded)
+}
+
+/** Sottoscrive i consumatori ai salvataggi consenso effettuati in questa scheda. */
+function subscribeToConsentCookie(onChange: () => void) {
+  window.addEventListener(CONSENT_COOKIE_CHANGE_EVENT, onChange)
+
+  return () => window.removeEventListener(CONSENT_COOKIE_CHANGE_EVENT, onChange)
+}
+
+/** Restituisce l'header cookie attuale solo nel browser. */
+function getConsentCookieSnapshot() {
+  return typeof document === 'undefined' ? null : document.cookie
+}
+
+/** Fornisce uno snapshot assente e stabile a SSR e hydration iniziale. */
+function getServerConsentCookieSnapshot() {
+  return null
 }
 
 function writeConsentCookie(state: ConsentState) {
   const secure = typeof window !== 'undefined' && window.location.protocol === 'https:' ? '; secure' : ''
   document.cookie = `${COOKIE_NAME}=${encodeURIComponent(serializeConsentCookie(state))}; path=/; max-age=${SIX_MONTHS_SECONDS}; samesite=lax${secure}`
+  window.dispatchEvent(new Event(CONSENT_COOKIE_CHANGE_EVENT))
 }
 
 export function ConsentProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<ConsentState | null>(null)
-  const [isBannerOpen, setIsBannerOpen] = useState(false)
-
-  useEffect(() => {
-    const current = readConsentCookie()
-    if (!isConsentVersionCurrent(current)) {
-      setState(current)
-      setIsBannerOpen(true)
-      return
-    }
-
-    setState(current)
-    setIsBannerOpen(false)
-  }, [])
+  const cookieHeader = useSyncExternalStore(
+    subscribeToConsentCookie,
+    getConsentCookieSnapshot,
+    getServerConsentCookieSnapshot
+  )
+  const state = useMemo(() => parseConsentCookieHeader(cookieHeader), [cookieHeader])
+  const [bannerOpenOverride, setBannerOpenOverride] = useState<boolean | null>(null)
+  const isBannerOpen = bannerOpenOverride ?? (
+    cookieHeader !== null && !isConsentVersionCurrent(state)
+  )
 
   function openBanner() {
-    setIsBannerOpen(true)
+    setBannerOpenOverride(true)
   }
 
   function closeBanner() {
-    setIsBannerOpen(false)
+    setBannerOpenOverride(false)
   }
 
   function saveConsent(next: { analytics: boolean; marketing: boolean }) {
@@ -111,8 +135,7 @@ export function ConsentProvider({ children }: { children: React.ReactNode }) {
     }
 
     writeConsentCookie(saved)
-    setState(saved)
-    setIsBannerOpen(false)
+    setBannerOpenOverride(false)
   }
 
   const contextValue = useMemo(

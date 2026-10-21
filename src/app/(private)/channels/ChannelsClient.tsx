@@ -211,7 +211,7 @@ export default function ChannelsClient({ initialChannels }: ChannelsClientProps)
                 value={channelUrl}
                 onChange={(event) => setChannelUrl(event.target.value)}
                 placeholder={t('channels.addChannelPlaceholder')}
-                className="w-full bg-transparent text-sm text-on-surface placeholder:text-on-surface-variant outline-none"
+                className="w-full bg-transparent text-sm text-on-surface placeholder:text-on-surface-variant outline-hidden"
                 aria-label={t('channels.addChannel')}
                 disabled={busy?.type === 'add'}
               />

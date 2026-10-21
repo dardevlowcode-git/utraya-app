@@ -58,6 +58,29 @@ export async function getLegalAcceptanceStatus(userId: string, locale: 'it' | 'e
   }
 }
 
+/**
+ * Vero se l'utente ha accettato la versione TOS correntemente richiesta.
+ * Riusa la stessa tabella e la stessa versione del gate in `(private)/layout.tsx`,
+ * senza duplicare il confronto: serve alle rotazioni delle chiavi, che richiedono
+ * il consenso ai costi dato dall'accettazione corrente.
+ */
+export async function hasAcceptedCurrentTos(userId: string): Promise<boolean> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('legal_acceptances')
+    .select('document_kind, document_version')
+    .eq('user_id', userId)
+    .eq('document_kind', 'tos')
+    .eq('document_version', TOS_REQUIRED_VERSION)
+    .limit(1)
+
+  if (error) {
+    throw new Error(`Errore lettura legal_acceptances: ${error.message}`)
+  }
+
+  return (data?.length ?? 0) > 0
+}
+
 export async function recordLegalAcceptance(params: {
   userId: string
   userEmail: string
@@ -81,8 +104,12 @@ export async function recordLegalAcceptance(params: {
     }
   })
 
-  const { error } = await supabase.from('legal_acceptances').insert(rows)
-  if (error && !error.message.includes('duplicate key value')) {
-    throw new Error(`Errore insert legal_acceptances: ${error.message}`)
+  // Una insert per riga: un duplicato (indice unico parziale user/kind/version) non deve scartare le altre righe.
+  for (const row of rows) {
+    const { error } = await supabase.from('legal_acceptances').insert(row)
+    const isDuplicate = error && (error.code === '23505' || error.message?.includes('duplicate key value'))
+    if (error && !isDuplicate) {
+      throw new Error(`Errore insert legal_acceptances: ${error.message}`)
+    }
   }
 }

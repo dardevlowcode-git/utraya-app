@@ -1,0 +1,305 @@
+/* Commento didattico:
+ * Scopo: registra chiamate API personali e prepara il riepilogo privato del pannello utilizzo.
+ * Moduli richiamati: `@/lib/supabase/admin`, `@/lib/supabase/server`, `@/lib/types/database`.
+ * Flusso: i service upstream scrivono solo metadati allowlistati; il pannello legge sotto RLS dell'utente.
+ */
+
+import { createAdminClient } from '@/lib/supabase/admin'
+import { createClient } from '@/lib/supabase/server'
+import type { Database } from '@/lib/types/database'
+import type { AppSupabaseClient } from '@/lib/supabase/types'
+import { toApiUsageEventViewModel } from '@/lib/view-models/api-usage'
+import type {
+  ApiUsageDashboardViewModel,
+  ApiUsageProvider,
+  ApiUsageSummaryViewModel,
+} from '@/lib/view-models/api-usage'
+
+export type { ApiUsageProvider } from '@/lib/view-models/api-usage'
+
+export const API_USAGE_WINDOW_DAYS = 30
+export const GEMINI_INPUT_RATE_USD_PER_MILLION = 0.3
+export const GEMINI_OUTPUT_RATE_USD_PER_MILLION = 2.5
+export const API_USAGE_PAGE_SIZE = 25
+
+export type ApiUsageOutcome = 'success' | 'http_error' | 'network_error' | 'timeout'
+
+export type ApiUsageSummary = ApiUsageSummaryViewModel
+export type ApiUsageDashboard = ApiUsageDashboardViewModel
+
+export interface RecordApiUsageInput {
+  userId: string
+  provider: ApiUsageProvider
+  operation: string
+  outcome: ApiUsageOutcome
+  httpStatus?: number | null
+  errorCategory?: 'provider_error' | 'network_error' | 'timeout' | 'unknown' | null
+  model?: string | null
+  inputTokens?: number | null
+  outputTokens?: number | null
+  totalTokens?: number | null
+  quotaUnits?: number | null
+  quotaBucket?: 'default' | 'search' | null
+  /** Tariffe Gemini USD/1M token del profilo di trascrizione; se assenti valgono quelle predefinite. */
+  inputRateUsdPerMillion?: number | null
+  outputRateUsdPerMillion?: number | null
+  occurredAt?: string
+}
+
+/** Campi d'uso letti dalla risposta del provider dopo la richiesta (token Gemini). */
+export type ProviderResponseUsage = Pick<RecordApiUsageInput, 'inputTokens' | 'outputTokens' | 'totalTokens'>
+
+export function getYouTubeQuotaEstimate(operation: string): { units: number; bucket: 'default' | 'search' } {
+  // Gli endpoint read correnti dell'app costano 1 unità per richiesta secondo Google.
+  const knownReadMethods = new Set([
+    'channels.list',
+    'playlistItems.list',
+    'videos.list',
+    'search.list',
+  ])
+  if (!knownReadMethods.has(operation)) {
+    return { units: 1, bucket: 'default' }
+  }
+  return { units: 1, bucket: operation === 'search.list' ? 'search' : 'default' }
+}
+
+export function estimateGeminiCostUsd(
+  inputTokens: number,
+  outputTokens: number,
+  rates: { inputUsdPerMillion: number; outputUsdPerMillion: number } = {
+    inputUsdPerMillion: GEMINI_INPUT_RATE_USD_PER_MILLION,
+    outputUsdPerMillion: GEMINI_OUTPUT_RATE_USD_PER_MILLION,
+  }
+): number {
+  const raw = (inputTokens * rates.inputUsdPerMillion
+    + outputTokens * rates.outputUsdPerMillion) / 1_000_000
+  return Number(raw.toFixed(9))
+}
+
+export function buildApiUsageEventInsert(input: RecordApiUsageInput): Database['public']['Tables']['api_usage_events']['Insert'] {
+  const isGemini = input.provider === 'gemini'
+  const inputTokens = isGemini ? input.inputTokens ?? null : null
+  const outputTokens = isGemini ? input.outputTokens ?? null : null
+  const hasTokenUsage = isGemini && inputTokens !== null && outputTokens !== null
+  const inputRate = input.inputRateUsdPerMillion ?? GEMINI_INPUT_RATE_USD_PER_MILLION
+  const outputRate = input.outputRateUsdPerMillion ?? GEMINI_OUTPUT_RATE_USD_PER_MILLION
+  const quota = input.provider === 'youtube'
+    ? input.quotaUnits === undefined || input.quotaUnits === null
+      ? getYouTubeQuotaEstimate(input.operation)
+      : { units: input.quotaUnits, bucket: input.quotaBucket ?? 'default' }
+    : null
+
+  return {
+    user_id: input.userId,
+    provider: input.provider,
+    operation: input.operation,
+    occurred_at: input.occurredAt,
+    outcome: input.outcome,
+    http_status: input.httpStatus ?? null,
+    error_category: input.errorCategory ?? null,
+    model: isGemini ? input.model ?? null : null,
+    input_tokens: inputTokens,
+    output_tokens: outputTokens,
+    total_tokens: isGemini ? input.totalTokens ?? null : null,
+    estimated_cost_usd: hasTokenUsage
+      ? estimateGeminiCostUsd(inputTokens, outputTokens, { inputUsdPerMillion: inputRate, outputUsdPerMillion: outputRate })
+      : null,
+    input_rate_usd_per_million: hasTokenUsage ? inputRate : null,
+    output_rate_usd_per_million: hasTokenUsage ? outputRate : null,
+    quota_units: quota?.units ?? null,
+    quota_bucket: quota?.bucket ?? null,
+  }
+}
+
+export interface FetchAndRecordInput extends Omit<RecordApiUsageInput, 'outcome' | 'httpStatus' | 'errorCategory'> {
+  url: string
+  init?: RequestInit
+  fetcher?: typeof fetch
+  /**
+   * Legge i token dalla risposta (su un clone, mai sull'originale) per registrarli nello stesso evento.
+   * Un errore nella lettura non cambia la risposta ne' l'esito: l'evento resta senza token.
+   */
+  readUsage?: (response: Response) => Promise<ProviderResponseUsage | null>
+}
+
+/** Esegue una singola richiesta provider e registra l'esito senza serializzare URL o payload. */
+export async function fetchAndRecordProviderRequest(input: FetchAndRecordInput): Promise<Response> {
+  const { url, init, fetcher = fetch, readUsage, ...usageInput } = input
+  try {
+    const response = await fetcher(url, init)
+    const responseUsage = response.ok && readUsage
+      ? await Promise.resolve().then(() => readUsage(response.clone())).catch(() => null)
+      : null
+    await recordApiUsageEvent({
+      ...usageInput,
+      ...(responseUsage ?? {}),
+      outcome: response.ok ? 'success' : 'http_error',
+      httpStatus: response.status,
+      errorCategory: response.ok ? null : 'provider_error',
+    })
+    return response
+  } catch (error) {
+    const timedOut = error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')
+    await recordApiUsageEvent({
+      ...usageInput,
+      outcome: timedOut ? 'timeout' : 'network_error',
+      errorCategory: timedOut ? 'timeout' : 'network_error',
+    })
+    throw error
+  }
+}
+
+export async function recordGeminiUsage(params: {
+  userId: string
+  operation: string
+  model: string
+  outcome: ApiUsageOutcome
+  httpStatus?: number | null
+  errorCategory?: 'provider_error' | 'network_error' | 'timeout' | 'unknown' | null
+  usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number }
+}): Promise<boolean> {
+  return recordApiUsageEvent({
+    userId: params.userId,
+    provider: 'gemini',
+    operation: params.operation,
+    model: params.model,
+    outcome: params.outcome,
+    httpStatus: params.httpStatus,
+    errorCategory: params.errorCategory,
+    inputTokens: params.usageMetadata?.promptTokenCount,
+    outputTokens: params.usageMetadata?.candidatesTokenCount,
+    totalTokens: params.usageMetadata?.totalTokenCount,
+  })
+}
+
+/**
+ * Inserisce un evento in modo append-only. Un problema nel registro non deve
+ * trasformare una risposta upstream valida in errore applicativo; il log
+ * server-side segnala il guasto senza includere dati o credenziali.
+ */
+export async function recordApiUsageEvent(
+  input: RecordApiUsageInput,
+  adminClient?: ReturnType<typeof createAdminClient>
+): Promise<boolean> {
+  try {
+    const row = buildApiUsageEventInsert(input)
+    const client = adminClient ?? createAdminClient()
+    const { error } = await client.from('api_usage_events').insert(row)
+    if (!error) return true
+  } catch {
+    // Il dettaglio DB/eccezione non viene incluso nei log applicativi.
+  }
+  console.error('API usage event could not be persisted')
+  return false
+}
+
+export async function cleanupExpiredApiUsageEvents(
+  now = new Date(),
+  adminClient?: ReturnType<typeof createAdminClient>
+): Promise<number> {
+  const client = adminClient ?? createAdminClient()
+  const cutoff = new Date(now.getTime() - API_USAGE_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString()
+  const { count, error } = await client
+    .from('api_usage_events')
+    .delete({ count: 'exact' })
+    .lt('occurred_at', cutoff)
+  if (error) throw new Error('Impossibile eliminare gli eventi API scaduti')
+  return count ?? 0
+}
+
+const EMPTY_SUMMARY = (provider: ApiUsageProvider): ApiUsageSummaryViewModel => ({
+  provider,
+  requestCount: 0,
+  inputTokens: provider === 'firecrawl' ? null : 0,
+  outputTokens: provider === 'firecrawl' ? null : 0,
+  totalTokens: provider === 'firecrawl' ? null : 0,
+  estimatedCostUsd: provider === 'firecrawl' ? null : 0,
+  quotaUnits: provider === 'firecrawl' ? null : 0,
+  unknownUsageCount: 0,
+  usageQuality: 'none',
+})
+
+function nullableNumber(value: number | null): number | null {
+  return value === null ? null : Number(value)
+}
+
+export async function getApiUsageDashboard(
+  userId: string,
+  requestedPage = 1,
+  client?: AppSupabaseClient,
+  now = new Date()
+): Promise<ApiUsageDashboardViewModel> {
+  const supabase = client ?? await createClient()
+  const since = new Date(now.getTime() - API_USAGE_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString()
+  const { data: summaryRows, error: summaryError } = await supabase.rpc('get_my_api_usage_summary', { p_since: since })
+  if (summaryError) {
+    throw new Error('Impossibile caricare il riepilogo di utilizzo API')
+  }
+
+  const summaries = new Map<ApiUsageProvider, ApiUsageSummary>([
+    ['gemini', EMPTY_SUMMARY('gemini')],
+    ['youtube', EMPTY_SUMMARY('youtube')],
+    ['firecrawl', EMPTY_SUMMARY('firecrawl')],
+  ])
+  for (const row of summaryRows ?? []) {
+    const provider = row.provider as ApiUsageProvider
+    if (provider !== 'gemini' && provider !== 'youtube' && provider !== 'firecrawl') continue
+    const requestCount = Number(row.request_count)
+    const inputTokens = nullableNumber(row.input_tokens)
+    const outputTokens = nullableNumber(row.output_tokens)
+    const totalTokens = nullableNumber(row.total_tokens)
+    const estimatedCostUsd = nullableNumber(row.estimated_cost_usd)
+    const quotaUnits = nullableNumber(row.quota_units)
+    const unknownUsageCount = Number(row.unknown_usage_count)
+    const hasKnownUsage = provider === 'gemini'
+      ? inputTokens !== null || outputTokens !== null || totalTokens !== null || estimatedCostUsd !== null
+      : provider === 'youtube'
+        ? quotaUnits !== null
+        : false
+
+    summaries.set(provider, {
+      provider,
+      requestCount,
+      inputTokens,
+      outputTokens,
+      totalTokens,
+      estimatedCostUsd,
+      quotaUnits,
+      unknownUsageCount,
+      usageQuality: requestCount === 0
+        ? 'none'
+        : !hasKnownUsage
+          ? 'unknown'
+          : unknownUsageCount > 0
+            ? 'partial'
+            : 'recorded',
+    })
+  }
+
+  const totalEvents = Array.from(summaries.values()).reduce((sum, summary) => sum + summary.requestCount, 0)
+  const totalPages = Math.max(1, Math.ceil(totalEvents / API_USAGE_PAGE_SIZE))
+  const page = Math.min(Math.max(1, Math.floor(requestedPage)), totalPages)
+  const start = (page - 1) * API_USAGE_PAGE_SIZE
+  const { data: eventRows, error: eventsError } = await supabase
+    .from('api_usage_events')
+    .select('id, provider, operation, occurred_at, outcome, http_status, error_category, model, input_tokens, output_tokens, total_tokens, estimated_cost_usd, quota_units, quota_bucket')
+    .eq('user_id', userId)
+    .gte('occurred_at', since)
+    .order('occurred_at', { ascending: false })
+    .order('id', { ascending: false })
+    .range(start, start + API_USAGE_PAGE_SIZE - 1)
+
+  if (eventsError) {
+    throw new Error('Impossibile caricare il riepilogo di utilizzo API')
+  }
+
+  return {
+    since,
+    page,
+    pageSize: API_USAGE_PAGE_SIZE,
+    totalEvents,
+    totalPages,
+    summaries: [summaries.get('gemini')!, summaries.get('youtube')!, summaries.get('firecrawl')!],
+    events: (eventRows ?? []).map(toApiUsageEventViewModel),
+  }
+}

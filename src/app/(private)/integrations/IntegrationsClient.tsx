@@ -6,11 +6,21 @@
 
 'use client'
 
-import { useMemo, useState, type FormEvent } from 'react'
-import type { CredentialStatus } from '@/lib/types/domain'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { INTEGRATION_PROVIDERS as PROVIDERS, type CredentialStatus, type IntegrationProvider as Provider } from '@/lib/types/domain'
 import { useTranslations } from 'next-intl'
+import YouTubeApiKeyGuide from '@/components/integrations/YouTubeApiKeyGuide'
+import GeminiApiKeyGuide from '@/components/integrations/GeminiApiKeyGuide'
+import FirecrawlApiKeyGuide from '@/components/integrations/FirecrawlApiKeyGuide'
 
-type Provider = 'youtube' | 'gemini'
+type ApiErrorPayload = string | { message?: string } | null
+
+/** Legge il messaggio errore sia dai vecchi consumer sia dall'envelope API standard. */
+function getApiErrorMessage(error: ApiErrorPayload): string | undefined {
+  if (typeof error === 'string') return error
+  if (error && typeof error.message === 'string') return error.message
+  return undefined
+}
 
 interface IntegrationsClientProps {
   initialStatuses: CredentialStatus[]
@@ -27,13 +37,18 @@ const CONNECTOR_META: Record<Provider, { title: string; description: string; ico
     description: 'integrations.geminiKeyDesc',
     iconBg: 'gradient-ai',
   },
+  firecrawl: {
+    title: 'integrations.firecrawlKey',
+    description: 'integrations.firecrawlKeyDesc',
+    iconBg: 'bg-surface-container-high',
+  },
 }
 
 export default function IntegrationsClient({ initialStatuses }: IntegrationsClientProps) {
   const t = useTranslations()
   const [statuses, setStatuses] = useState<CredentialStatus[]>(initialStatuses)
   const [busyProvider, setBusyProvider] = useState<Provider | null>(null)
-  const [providerInput, setProviderInput] = useState<Record<Provider, string>>({ youtube: '', gemini: '' })
+  const [providerInput, setProviderInput] = useState<Record<Provider, string>>({ youtube: '', gemini: '', firecrawl: '' })
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -50,6 +65,41 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
     return map
   }, [statuses])
 
+  const pendingValidationSignature = statuses
+    .filter((status) => status.validationStatus === 'pending' || status.validationStatus === 'running')
+    .map((status) => status.provider)
+    .sort()
+    .join(',')
+
+  useEffect(() => {
+    if (!pendingValidationSignature) return
+
+    let active = true
+    let timer: ReturnType<typeof setTimeout>
+    const pollStatuses = async () => {
+      try {
+        const response = await fetch('/api/integrations', { method: 'GET', cache: 'no-store' })
+        const payload = await response.json().catch(() => null) as
+          | { data: CredentialStatus[] | null; error: ApiErrorPayload }
+          | null
+        if (!response.ok || !payload?.data) throw new Error(getApiErrorMessage(payload?.error ?? null) ?? t('integrations.refreshError'))
+        if (!active) return
+        setStatuses(payload.data)
+        if (payload.data.some((status) => status.validationStatus === 'pending' || status.validationStatus === 'running')) {
+          timer = setTimeout(pollStatuses, 5_000)
+        }
+      } catch {
+        if (active) timer = setTimeout(pollStatuses, 10_000)
+      }
+    }
+
+    timer = setTimeout(pollStatuses, 5_000)
+    return () => {
+      active = false
+      clearTimeout(timer)
+    }
+  }, [pendingValidationSignature, t])
+
   function clearFeedback() {
     setMessage(null)
     setError(null)
@@ -58,11 +108,11 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
   async function refreshStatuses() {
     const response = await fetch('/api/integrations', { method: 'GET', cache: 'no-store' })
     const payload = (await response.json().catch(() => null)) as
-      | { data: CredentialStatus[] | null; error: string | null }
+      | { data: CredentialStatus[] | null; error: ApiErrorPayload }
       | null
 
     if (!response.ok || !payload?.data) {
-      throw new Error(payload?.error ?? t('integrations.refreshError'))
+      throw new Error(getApiErrorMessage(payload?.error ?? null) ?? t('integrations.refreshError'))
     }
 
     setStatuses(payload.data)
@@ -88,16 +138,22 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
       })
 
       const payload = (await response.json().catch(() => null)) as
-        | { data: { isValid: boolean | null; validationMessage: string | null } | null; error: string | null }
+        | { data: { jobId: string | null; isValid: boolean | null; validationMessage: string | null; validationStatus?: string } | null; error: ApiErrorPayload }
         | null
 
       if (!response.ok) {
-        throw new Error(payload?.error ?? t('integrations.saveError'))
+        throw new Error(getApiErrorMessage(payload?.error ?? null) ?? t('integrations.saveError'))
       }
 
       setProviderInput((current) => ({ ...current, [provider]: '' }))
 
-      if (payload?.data?.isValid === false && payload.data.validationMessage) {
+      if (payload?.data?.validationStatus === 'pending' || payload?.data?.validationStatus === 'running') {
+        if (!payload.data.jobId) throw new Error(t('integrations.saveError'))
+        setStatuses((current) => current.map((status) => status.provider === provider
+          ? { ...status, isConfigured: true, isValid: null, validationStatus: payload.data?.validationStatus as 'pending' | 'running' }
+          : status))
+        setMessage(t('integrations.validationPending'))
+      } else if (payload?.data?.isValid === false && payload.data.validationMessage) {
         setError(`${t('integrations.savedButInvalid')}: ${payload.data.validationMessage}`)
       } else {
         setMessage(t('integrations.saved'))
@@ -123,17 +179,23 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
       })
 
       const payload = (await response.json().catch(() => null)) as
-        | { data: { isValid: boolean; message: string | null } | null; error: string | null }
+        | { data: { jobId: string | null; isValid: boolean | null; message: string | null; validationStatus?: string } | null; error: ApiErrorPayload }
         | null
 
       if (!response.ok) {
-        throw new Error(payload?.error ?? t('integrations.validateError'))
+        throw new Error(getApiErrorMessage(payload?.error ?? null) ?? t('integrations.validateError'))
       }
 
-      if (payload?.data?.isValid) {
-        setMessage(t('integrations.validationSuccess'))
+      if (payload?.data?.validationStatus === 'pending' || payload?.data?.validationStatus === 'running') {
+        if (!payload.data.jobId) throw new Error(t('integrations.validateError'))
+        setStatuses((current) => current.map((status) => status.provider === provider
+          ? { ...status, validationStatus: payload.data?.validationStatus as 'pending' | 'running' }
+          : status))
+        setMessage(t('integrations.validationPending'))
+      } else if (payload?.data?.isValid) {
+        setMessage(provider === 'firecrawl' ? t('integrations.discoverySuccess') : t('integrations.validationSuccess'))
       } else {
-        setError(payload?.data?.message ?? t('integrations.keyError'))
+        setError(provider === 'firecrawl' ? t('integrations.discoveryFailed') : payload?.data?.message ?? t('integrations.keyError'))
       }
 
       await refreshStatuses()
@@ -160,11 +222,11 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
       })
 
       const payload = (await response.json().catch(() => null)) as
-        | { data: { message?: string } | null; error: string | null }
+        | { data: { message?: string } | null; error: ApiErrorPayload }
         | null
 
       if (!response.ok) {
-        throw new Error(payload?.error ?? t('integrations.removeError'))
+        throw new Error(getApiErrorMessage(payload?.error ?? null) ?? t('integrations.removeError'))
       }
 
       setMessage(payload?.data?.message ?? t('integrations.removed'))
@@ -177,7 +239,7 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
   }
 
   return (
-    <div className="p-8 max-w-4xl">
+    <div className="p-4 max-w-4xl sm:p-8">
       <header className="mb-10">
         <h1 className="font-headline text-4xl font-extrabold tracking-tight text-on-surface mb-2">
           {t('integrations.title')}
@@ -186,7 +248,7 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
           {t('integrations.subtitle')}
         </p>
         <div className="mt-3 inline-flex items-center gap-2 text-sm">
-          <span className={`w-2 h-2 rounded-full ${configuredCount === 2 ? 'status-active' : 'status-pending status-warning'}`} />
+          <span className={`w-2 h-2 rounded-full ${configuredCount === PROVIDERS.length ? 'status-active' : 'status-pending status-warning'}`} />
           <span className="text-on-surface-variant font-medium">
             {t('integrations.activeConnectors', { count: configuredCount })}
           </span>
@@ -211,21 +273,27 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
       {error && <p className="mb-4 text-sm text-error">{error}</p>}
 
       <div className="space-y-4">
-        {(['youtube', 'gemini'] as Provider[]).map((provider) => {
+        {PROVIDERS.map((provider) => {
           const connector = CONNECTOR_META[provider]
           const status = byProvider.get(provider)
           const isBusy = busyProvider === provider
           const isConfigured = status?.isConfigured ?? false
           const isValid = status?.isValid
+          const isValidationPending = status?.validationStatus === 'pending' || status?.validationStatus === 'running'
 
           return (
             <div key={provider} className="bg-surface-container-lowest rounded-2xl p-6 shadow-ambient">
-              <div className="flex items-start justify-between gap-6">
+              <div className="flex flex-col items-stretch gap-6 lg:flex-row lg:items-start lg:justify-between">
                 <div className="flex items-start gap-4">
-                  <div className={`w-12 h-12 ${connector.iconBg} rounded-xl flex items-center justify-center text-white shrink-0`}>
+                  <div className={`w-12 h-12 ${connector.iconBg} rounded-xl flex items-center justify-center ${provider === 'firecrawl' ? 'text-on-surface' : 'text-white'} shrink-0`}>
                     {provider === 'youtube' ? (
                       <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
+                      </svg>
+                    ) : provider === 'firecrawl' ? (
+                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <circle cx="12" cy="12" r="9" strokeWidth={1.5} />
+                        <path strokeLinecap="round" strokeWidth={1.5} d="M3 12h18M12 3a15 15 0 010 18m0-18a15 15 0 000 18" />
                       </svg>
                     ) : (
                       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -242,25 +310,36 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
                   <div>
                     <h3 className="font-headline font-bold text-on-surface">{t(connector.title)}</h3>
                     <p className="text-sm text-on-surface-variant mb-3">{t(connector.description)}</p>
+                    {provider === 'youtube' && <YouTubeApiKeyGuide />}
+                    {provider === 'gemini' && <GeminiApiKeyGuide />}
+                    {provider === 'firecrawl' && <FirecrawlApiKeyGuide />}
 
                     <div className="flex flex-wrap items-center gap-3 text-xs mb-2">
                       <span
                         className={`flex items-center gap-1.5 font-semibold px-3 py-1 rounded-full
-                                  ${isConfigured
-                                    ? isValid === false
-                                      ? 'bg-error-container text-error'
-                                      : 'bg-green-100 text-green-700'
+                                    ${isConfigured
+                                      ? isValidationPending
+                                        ? 'bg-primary-fixed text-on-primary-fixed'
+                                        : isValid === false
+                                        ? 'bg-error-container text-error'
+                                        : 'bg-green-100 text-green-700'
                                     : 'bg-surface-container text-on-surface-variant'}`}
                       >
                         <span
                           className={`w-1.5 h-1.5 rounded-full
                                     ${isConfigured
-                                      ? isValid === false ? 'bg-error' : 'bg-green-500'
+                                      ? isValidationPending ? 'bg-primary'
+                                        : isValid === false ? 'bg-error' : 'bg-green-500'
                                       : 'bg-outline'}`}
                         />
+                        <span aria-live="polite">
                         {isConfigured
-                          ? isValid === false ? t('integrations.status.invalid') : t('integrations.status.configured')
+                          ? isValidationPending ? t('integrations.status.pending')
+                            : isValid === false
+                              ? t(provider === 'firecrawl' ? 'integrations.status.discoveryNotConfirmed' : 'integrations.status.invalid')
+                              : t('integrations.status.configured')
                           : t('integrations.status.notConfigured')}
+                        </span>
                       </span>
 
                       {status?.maskedKey && (
@@ -274,14 +353,14 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
                       )}
                     </div>
 
-                    {status?.lastError && (
+                    {status?.lastError && !isValidationPending && (
                       <p className="text-xs text-error">{status.lastError}</p>
                     )}
                   </div>
                 </div>
 
-                <div className="shrink-0 w-[340px]">
-                  <form onSubmit={(event) => handleSave(provider, event)} className="flex items-center gap-2">
+                <div className="w-full lg:shrink-0 lg:w-[340px]">
+                  <form onSubmit={(event) => handleSave(provider, event)} className="flex flex-col gap-2 sm:flex-row sm:items-center">
                     <input
                       type="password"
                       value={providerInput[provider]}
@@ -292,14 +371,20 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
                         }))
                       }
                       placeholder={t('integrations.keyPlaceholder')}
-                      className="flex-1 bg-surface-container-low rounded-xl px-3 py-2.5 text-sm text-on-surface
-                                 placeholder:text-on-surface-variant outline-none"
+                      aria-label={`${t(connector.title)}: ${t('integrations.keyPlaceholder')}`}
+                      inputMode="text"
+                      autoComplete="off"
+                      enterKeyHint="done"
+                      className="w-full flex-1 bg-surface-container-low rounded-xl px-3 py-2.5 text-base text-on-surface
+                                 placeholder:text-on-surface-variant outline-none
+                                 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
                       disabled={isBusy}
                     />
                     <button
                       type="submit"
                       disabled={isBusy}
-                      className="gradient-primary text-on-primary px-4 py-2.5 rounded-xl font-bold text-sm
+                      className="w-full min-h-11 gradient-primary text-on-primary px-4 py-2.5 rounded-xl font-bold text-sm
+                                 sm:w-auto
                                  disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       {t('integrations.saveKey')}
@@ -314,7 +399,7 @@ export default function IntegrationsClient({ initialStatuses }: IntegrationsClie
                                  hover:text-on-surface px-4 py-2 rounded-xl ghost-border transition-all
                                  disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {t('integrations.check')}
+                      {t(provider === 'firecrawl' ? 'integrations.discoveryCheck' : 'integrations.check')}
                     </button>
                     <button
                       onClick={() => handleRemove(provider)}

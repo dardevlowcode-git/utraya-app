@@ -5,7 +5,7 @@
  */
 
 export type DeletionRequestView = {
-  status: 'none' | 'pending' | 'cancelled' | 'completed'
+  status: 'none' | 'pending' | 'cancelled' | 'executing' | 'completed' | 'failed'
   scheduledFor: string | null
   requestedAt: string | null
   canCancel: boolean

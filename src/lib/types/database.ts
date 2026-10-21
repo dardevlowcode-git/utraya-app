@@ -55,6 +55,7 @@ export type Database = {
           status?: 'active' | 'suspended' | 'deleted'
           updated_at?: string
         }
+        Relationships: []
       }
       user_identities: {
         Row: {
@@ -76,6 +77,7 @@ export type Database = {
         Update: {
           email?: string
         }
+        Relationships: []
       }
       roles: {
         Row: {
@@ -89,6 +91,7 @@ export type Database = {
         Update: {
           name?: 'user' | 'super_admin'
         }
+        Relationships: []
       }
       user_roles: {
         Row: {
@@ -104,6 +107,7 @@ export type Database = {
           assigned_by?: string | null
         }
         Update: Record<string, never>
+        Relationships: []
       }
       allowlist_entries: {
         Row: {
@@ -123,6 +127,7 @@ export type Database = {
         Update: {
           is_active?: boolean
         }
+        Relationships: []
       }
       admin_actions_audit: {
         Row: {
@@ -144,13 +149,14 @@ export type Database = {
           created_at?: string
         }
         Update: Record<string, never>
+        Relationships: []
       }
       // --- User API Credentials ---
       user_provider_credentials: {
         Row: {
           id: string
           user_id: string
-          provider: 'youtube' | 'gemini'
+          provider: 'youtube' | 'gemini' | 'firecrawl'
           encrypted_key: string | null
           is_configured: boolean
           is_valid: boolean | null
@@ -163,7 +169,7 @@ export type Database = {
         Insert: {
           id?: string
           user_id: string
-          provider: 'youtube' | 'gemini'
+          provider: 'youtube' | 'gemini' | 'firecrawl'
           encrypted_key?: string | null
           is_configured?: boolean
           is_valid?: boolean | null
@@ -182,6 +188,44 @@ export type Database = {
           last_error?: string | null
           updated_at?: string
         }
+        Relationships: []
+      }
+      user_provider_credential_retry_limits: {
+        Row: {
+          credential_id: string
+          retry_limit: number
+          key_version: string
+          updated_at: string
+        }
+        Insert: {
+          credential_id: string
+          retry_limit?: number
+          key_version?: string
+          updated_at?: string
+        }
+        Update: {
+          retry_limit?: number
+          key_version?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      shared_provider_retry_settings: {
+        Row: {
+          provider_key: 'youtube_innertube'
+          retry_limit: number
+          updated_at: string
+        }
+        Insert: {
+          provider_key: 'youtube_innertube'
+          retry_limit?: number
+          updated_at?: string
+        }
+        Update: {
+          retry_limit?: number
+          updated_at?: string
+        }
+        Relationships: []
       }
       credential_checks: {
         Row: {
@@ -201,6 +245,49 @@ export type Database = {
           error_type?: 'temporary' | 'structural' | null
         }
         Update: Record<string, never>
+        Relationships: []
+      }
+      api_usage_events: {
+        Row: {
+          id: string
+          user_id: string
+          provider: 'youtube' | 'gemini' | 'firecrawl'
+          operation: string
+          occurred_at: string
+          outcome: 'success' | 'http_error' | 'network_error' | 'timeout'
+          http_status: number | null
+          error_category: 'provider_error' | 'network_error' | 'timeout' | 'unknown' | null
+          model: string | null
+          input_tokens: number | null
+          output_tokens: number | null
+          total_tokens: number | null
+          estimated_cost_usd: number | null
+          input_rate_usd_per_million: number | null
+          output_rate_usd_per_million: number | null
+          quota_units: number | null
+          quota_bucket: 'default' | 'search' | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          provider: 'youtube' | 'gemini' | 'firecrawl'
+          operation: string
+          occurred_at?: string
+          outcome: 'success' | 'http_error' | 'network_error' | 'timeout'
+          http_status?: number | null
+          error_category?: 'provider_error' | 'network_error' | 'timeout' | 'unknown' | null
+          model?: string | null
+          input_tokens?: number | null
+          output_tokens?: number | null
+          total_tokens?: number | null
+          estimated_cost_usd?: number | null
+          input_rate_usd_per_million?: number | null
+          output_rate_usd_per_million?: number | null
+          quota_units?: number | null
+          quota_bucket?: 'default' | 'search' | null
+        }
+        Update: Record<string, never>
+        Relationships: []
       }
       // --- Canonical Layer ---
       channels: {
@@ -246,6 +333,7 @@ export type Database = {
           status?: 'active' | 'inactive' | 'error'
           updated_at?: string
         }
+        Relationships: []
       }
       videos: {
         Row: {
@@ -288,6 +376,7 @@ export type Database = {
           youtube_metadata?: Json | null
           updated_at?: string
         }
+        Relationships: []
       }
       video_analysis: {
         Row: {
@@ -318,6 +407,7 @@ export type Database = {
           analyzed_at?: string | null
           error_message?: string | null
         }
+        Relationships: []
       }
       video_analysis_raw: {
         Row: {
@@ -337,6 +427,7 @@ export type Database = {
           created_at?: string
         }
         Update: Record<string, never>
+        Relationships: []
       }
       video_localized_content: {
         Row: {
@@ -376,6 +467,285 @@ export type Database = {
           is_admin_edited?: boolean
           updated_at?: string
         }
+        Relationships: []
+      }
+      video_transcripts: {
+        Row: {
+          id: string
+          video_id: string
+          youtube_video_id: string
+          language_code: string
+          kind: 'standard' | 'asr' | 'unknown'
+          is_asr: boolean | null
+          transcript_status: 'pending' | 'fetched' | 'missing' | 'failed' | 'legacy_missing'
+          transcript_text: string | null
+          segments: Json | null
+          source: string
+          fetched_at: string | null
+          error_details: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          video_id: string
+          youtube_video_id: string
+          language_code?: string
+          kind?: 'standard' | 'asr' | 'unknown'
+          is_asr?: boolean | null
+          transcript_status?: 'pending' | 'fetched' | 'missing' | 'failed' | 'legacy_missing'
+          transcript_text?: string | null
+          segments?: Json | null
+          source?: string
+          fetched_at?: string | null
+          error_details?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          language_code?: string
+          kind?: 'standard' | 'asr' | 'unknown'
+          is_asr?: boolean | null
+          transcript_status?: 'pending' | 'fetched' | 'missing' | 'failed' | 'legacy_missing'
+          transcript_text?: string | null
+          segments?: Json | null
+          source?: string
+          fetched_at?: string | null
+          error_details?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      transcription_profile_audit: {
+        Row: {
+          id: string
+          admin_username: string
+          previous_values: Json
+          new_values: Json
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          admin_username: string
+          previous_values: Json
+          new_values: Json
+          created_at?: string
+        }
+        Update: Record<string, never>
+        Relationships: []
+      }
+      transcription_relaunch_audit: {
+        Row: {
+          id: string
+          admin_username: string
+          transcription_id: string | null
+          video_id: string
+          part_position: number | null
+          parts_reset: number
+          job_id: string | null
+          credential_mode: 'requester' | 'channel_rotation'
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          admin_username: string
+          transcription_id?: string | null
+          video_id: string
+          part_position?: number | null
+          parts_reset: number
+          job_id?: string | null
+          credential_mode: 'requester' | 'channel_rotation'
+          created_at?: string
+        }
+        Update: Record<string, never>
+        Relationships: []
+      }
+      transcription_profile: {
+        Row: {
+          id: boolean
+          model: string
+          thinking_level: 'minimal' | 'low' | 'medium' | 'high'
+          input_price_per_million: number
+          output_price_per_million: number
+          updated_at: string
+        }
+        Insert: {
+          id?: boolean
+          model?: string
+          thinking_level?: 'minimal' | 'low' | 'medium' | 'high'
+          input_price_per_million?: number
+          output_price_per_million?: number
+          updated_at?: string
+        }
+        Update: {
+          model?: string
+          thinking_level?: 'minimal' | 'low' | 'medium' | 'high'
+          input_price_per_million?: number
+          output_price_per_million?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      transcriptions: {
+        Row: {
+          id: string
+          video_id: string
+          language_code: string | null
+          status: 'pending' | 'running' | 'complete' | 'needs_review' | 'unavailable'
+          model: string
+          thinking_level: 'minimal' | 'low' | 'medium' | 'high'
+          requested_by_user_id: string | null
+          doubtful_phrase_count: number
+          missing_part_count: number
+          chunk_seconds: number
+          created_at: string
+          updated_at: string
+          completed_at: string | null
+        }
+        Insert: {
+          id?: string
+          video_id: string
+          language_code?: string | null
+          status?: 'pending' | 'running' | 'complete' | 'needs_review' | 'unavailable'
+          model: string
+          thinking_level: 'minimal' | 'low' | 'medium' | 'high'
+          requested_by_user_id?: string | null
+          doubtful_phrase_count?: number
+          missing_part_count?: number
+          chunk_seconds?: number
+          created_at?: string
+          updated_at?: string
+          completed_at?: string | null
+        }
+        Update: {
+          language_code?: string | null
+          status?: 'pending' | 'running' | 'complete' | 'needs_review' | 'unavailable'
+          model?: string
+          thinking_level?: 'minimal' | 'low' | 'medium' | 'high'
+          requested_by_user_id?: string | null
+          doubtful_phrase_count?: number
+          missing_part_count?: number
+          updated_at?: string
+          completed_at?: string | null
+        }
+        Relationships: []
+      }
+      transcription_phrases: {
+        Row: {
+          id: string
+          transcription_id: string
+          position: number
+          start_seconds: number
+          text: string
+          doubtful_time: boolean
+        }
+        Insert: {
+          id?: string
+          transcription_id: string
+          position: number
+          start_seconds: number
+          text: string
+          doubtful_time?: boolean
+        }
+        Update: {
+          start_seconds?: number
+          text?: string
+          doubtful_time?: boolean
+        }
+        Relationships: []
+      }
+      transcription_part_exhausted_keys: {
+        Row: {
+          transcription_id: string
+          part_position: number
+          credential_id: string
+          key_version: string
+          created_at: string
+        }
+        Insert: {
+          transcription_id: string
+          part_position: number
+          credential_id: string
+          key_version: string
+          created_at?: string
+        }
+        Update: {
+          created_at?: string
+        }
+        Relationships: []
+      }
+      transcription_parts: {
+        Row: {
+          id: string
+          transcription_id: string
+          position: number
+          start_seconds: number
+          end_seconds: number
+          status: 'pending' | 'done' | 'missing'
+          attempts: number
+          last_error: string | null
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          transcription_id: string
+          position: number
+          start_seconds: number
+          end_seconds: number
+          status?: 'pending' | 'done' | 'missing'
+          attempts?: number
+          last_error?: string | null
+          updated_at?: string
+        }
+        Update: {
+          status?: 'pending' | 'done' | 'missing'
+          attempts?: number
+          last_error?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      channel_scan_firecrawl_transcript_targets: {
+        Row: {
+          job_id: string
+          channel_id: string
+          video_id: string
+          youtube_video_id: string
+          status: 'pending' | 'fetched' | 'missing' | 'skipped' | 'disabled'
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          job_id: string
+          channel_id: string
+          video_id: string
+          youtube_video_id: string
+          status?: 'pending' | 'fetched' | 'missing' | 'skipped' | 'disabled'
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          status?: 'pending' | 'fetched' | 'missing' | 'skipped' | 'disabled'
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      firecrawl_transcript_recovery_settings: {
+        Row: {
+          id: boolean
+          enabled: boolean
+          updated_at: string
+        }
+        Insert: {
+          id?: boolean
+          enabled?: boolean
+          updated_at?: string
+        }
+        Update: {
+          enabled?: boolean
+          updated_at?: string
+        }
+        Relationships: []
       }
       canonical_sync_state: {
         Row: {
@@ -400,6 +770,15 @@ export type Database = {
           next_sync_at?: string | null
           videos_found_count?: number | null
         }
+        Relationships: [
+          {
+            foreignKeyName: 'canonical_sync_state_channel_id_fkey'
+            columns: ['channel_id']
+            isOneToOne: true
+            referencedRelation: 'channels'
+            referencedColumns: ['id']
+          },
+        ]
       }
       // --- User Layer ---
       user_channels: {
@@ -423,6 +802,15 @@ export type Database = {
           is_active?: boolean
           removed_at?: string | null
         }
+        Relationships: [
+          {
+            foreignKeyName: 'user_channels_channel_id_fkey'
+            columns: ['channel_id']
+            isOneToOne: false
+            referencedRelation: 'channels'
+            referencedColumns: ['id']
+          },
+        ]
       }
       user_channel_preferences: {
         Row: {
@@ -441,6 +829,15 @@ export type Database = {
           sync_frequency_hours?: number
           is_paused?: boolean
         }
+        Relationships: [
+          {
+            foreignKeyName: 'user_channel_preferences_user_channel_id_fkey'
+            columns: ['user_channel_id']
+            isOneToOne: false
+            referencedRelation: 'user_channels'
+            referencedColumns: ['id']
+          },
+        ]
       }
       user_video_states: {
         Row: {
@@ -464,6 +861,7 @@ export type Database = {
           seen_at?: string | null
           hidden_at?: string | null
         }
+        Relationships: []
       }
       watchlists: {
         Row: {
@@ -484,6 +882,7 @@ export type Database = {
           name?: string
           is_default?: boolean
         }
+        Relationships: []
       }
       watchlist_items: {
         Row: {
@@ -499,6 +898,7 @@ export type Database = {
           added_at?: string
         }
         Update: Record<string, never>
+        Relationships: []
       }
       // --- Jobs & Operations ---
       jobs: {
@@ -514,6 +914,10 @@ export type Database = {
           started_at: string | null
           completed_at: string | null
           error_message: string | null
+          lease_id: string | null
+          lease_expires_at: string | null
+          available_at: string | null
+          next_attempt_at: string | null
         }
         Insert: {
           id?: string
@@ -527,13 +931,28 @@ export type Database = {
           started_at?: string | null
           completed_at?: string | null
           error_message?: string | null
+          lease_id?: string | null
+          lease_expires_at?: string | null
+          available_at?: string | null
+          next_attempt_at?: string | null
         }
         Update: {
           status?: 'pending' | 'running' | 'completed' | 'failed'
           started_at?: string | null
           completed_at?: string | null
           error_message?: string | null
+          lease_id?: string | null
+          lease_expires_at?: string | null
+          available_at?: string | null
+          next_attempt_at?: string | null
         }
+        Relationships: []
+      }
+      api_verifier_oidc_nonces: {
+        Row: { jti: string; expires_at: string; created_at: string }
+        Insert: { jti: string; expires_at: string; created_at?: string }
+        Update: { expires_at?: string }
+        Relationships: []
       }
       job_attempts: {
         Row: {
@@ -562,6 +981,7 @@ export type Database = {
           error_message?: string | null
           error_details?: Json | null
         }
+        Relationships: []
       }
       job_locks: {
         Row: {
@@ -581,6 +1001,7 @@ export type Database = {
         Update: {
           expires_at?: string
         }
+        Relationships: []
       }
       app_logs: {
         Row: {
@@ -598,6 +1019,7 @@ export type Database = {
           created_at?: string
         }
         Update: Record<string, never>
+        Relationships: []
       }
       audit_logs: {
         Row: {
@@ -621,6 +1043,7 @@ export type Database = {
           created_at?: string
         }
         Update: Record<string, never>
+        Relationships: []
       }
       incidents: {
         Row: {
@@ -647,10 +1070,489 @@ export type Database = {
           status?: 'open' | 'investigating' | 'resolved'
           resolved_at?: string | null
         }
+        Relationships: []
+      }
+      user_deletion_requests: {
+        Row: {
+          id: string
+          user_id: string | null
+          requested_at: string
+          scheduled_deletion_at: string
+          status: 'pending' | 'cancelled' | 'executing' | 'completed' | 'failed'
+          reason: string | null
+          ip_address: string | null
+          user_agent: string | null
+          cancelled_at: string | null
+          executed_at: string | null
+          error_details: string | null
+          previous_user_status: 'active' | 'suspended' | 'deleted'
+          suspension_updated_at: string | null
+          executing_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id?: string | null
+          requested_at?: string
+          scheduled_deletion_at: string
+          status?: 'pending' | 'cancelled' | 'executing' | 'completed' | 'failed'
+          reason?: string | null
+          ip_address?: string | null
+          user_agent?: string | null
+          cancelled_at?: string | null
+          executed_at?: string | null
+          error_details?: string | null
+          previous_user_status?: 'active' | 'suspended' | 'deleted'
+          suspension_updated_at?: string | null
+          executing_at?: string | null
+        }
+        Update: {
+          status?: 'pending' | 'cancelled' | 'executing' | 'completed' | 'failed'
+          cancelled_at?: string | null
+          executed_at?: string | null
+          error_details?: string | null
+          previous_user_status?: 'active' | 'suspended' | 'deleted'
+          suspension_updated_at?: string | null
+          executing_at?: string | null
+        }
+        Relationships: []
+      }
+      transcript_fetch_diagnostics: {
+        Row: {
+          id: string
+          fetch_run_id: string
+          video_id: string
+          request_id: string | null
+          attempt_no: number
+          client_name: 'ANDROID' | 'TVHTML5' | null
+          stage: 'configuration' | 'player' | 'timedtext'
+          outcome:
+            | 'configuration_error'
+            | 'http_error'
+            | 'playability_blocked'
+            | 'no_usable_track'
+            | 'timeout'
+            | 'network_error'
+            | 'invalid_json'
+            | 'timedtext_empty'
+            | 'timedtext_error'
+            | 'fetched'
+            | 'unknown_error'
+          player_http_status: number | null
+          player_status_text: string | null
+          player_content_type: string | null
+          playability_status: string | null
+          player_reason: string | null
+          player_subreason: string | null
+          player_error_code: string | null
+          player_error_message: string | null
+          track_count: number | null
+          usable_track_count: number | null
+          selected_track_language: string | null
+          selected_track_kind: string | null
+          timedtext_http_status: number | null
+          timedtext_status_text: string | null
+          timedtext_content_type: string | null
+          player_duration_ms: number | null
+          timedtext_duration_ms: number | null
+          error_type: string | null
+          error_code: string | null
+          error_message: string | null
+          attempt_started_at: string
+          completed_at: string
+          runtime_environment: string | null
+          runtime_region: string | null
+          deployment_id: string | null
+          git_commit_sha: string | null
+          git_commit_ref: string | null
+          node_version: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          fetch_run_id: string
+          video_id: string
+          request_id?: string | null
+          attempt_no: number
+          client_name?: 'ANDROID' | 'TVHTML5' | null
+          stage: 'configuration' | 'player' | 'timedtext'
+          outcome:
+            | 'configuration_error'
+            | 'http_error'
+            | 'playability_blocked'
+            | 'no_usable_track'
+            | 'timeout'
+            | 'network_error'
+            | 'invalid_json'
+            | 'timedtext_empty'
+            | 'timedtext_error'
+            | 'fetched'
+            | 'unknown_error'
+          player_http_status?: number | null
+          player_status_text?: string | null
+          player_content_type?: string | null
+          playability_status?: string | null
+          player_reason?: string | null
+          player_subreason?: string | null
+          player_error_code?: string | null
+          player_error_message?: string | null
+          track_count?: number | null
+          usable_track_count?: number | null
+          selected_track_language?: string | null
+          selected_track_kind?: string | null
+          timedtext_http_status?: number | null
+          timedtext_status_text?: string | null
+          timedtext_content_type?: string | null
+          player_duration_ms?: number | null
+          timedtext_duration_ms?: number | null
+          error_type?: string | null
+          error_code?: string | null
+          error_message?: string | null
+          attempt_started_at: string
+          completed_at: string
+          runtime_environment?: string | null
+          runtime_region?: string | null
+          deployment_id?: string | null
+          git_commit_sha?: string | null
+          git_commit_ref?: string | null
+          node_version?: string | null
+          created_at?: string
+        }
+        Update: Record<string, never>
+        Relationships: [
+          {
+            foreignKeyName: 'transcript_fetch_diagnostics_video_id_fkey'
+            columns: ['video_id']
+            isOneToOne: false
+            referencedRelation: 'videos'
+            referencedColumns: ['id']
+          },
+        ]
       }
     }
     Views: Record<string, never>
-    Functions: Record<string, never>
+    Functions: {
+      relaunch_missing_transcription_parts: {
+        Args: { p_transcription_id: string; p_part_position: number | null; p_admin_username: string }
+        Returns: {
+          status: 'relaunched' | 'not_found' | 'no_missing' | 'busy'
+          job_id: string | null
+          parts_reset: number
+          credential_mode: 'requester' | 'channel_rotation' | null
+        }[]
+      }
+      transcription_review_stats: {
+        Args: { p_days: number }
+        Returns: { status: string; total: number; doubtful_phrases: number }[]
+      }
+      update_transcription_profile: {
+        Args: {
+          p_model: string
+          p_thinking_level: string
+          p_input_price: number
+          p_output_price: number
+          p_admin_username: string
+        }
+        Returns: {
+          model: string
+          thinking_level: 'minimal' | 'low' | 'medium' | 'high'
+          input_price_per_million: number
+          output_price_per_million: number
+          updated_at: string
+        }[]
+      }
+      is_current_user_allowlisted: {
+        Args: Record<string, never>
+        Returns: boolean
+      }
+      claim_account_deletion: {
+        Args: { p_request_id: string }
+        Returns: boolean
+      }
+      request_account_deletion: {
+        Args: {
+          p_user_id: string
+          p_reason: string | null
+          p_ip_address: string | null
+          p_user_agent: string | null
+          p_scheduled_at: string
+        }
+        Returns: { request_id: string; scheduled_for: string }[]
+      }
+      cancel_account_deletion: {
+        Args: { p_user_id: string; p_request_id: string }
+        Returns: boolean
+      }
+      execute_user_deletion: {
+        Args: { p_user_id: string }
+        Returns: undefined
+      }
+      commit_fenced_channel_import: {
+        Args: {
+          p_job_id: string
+          p_lease_id: string
+          p_user_id: string
+          p_requested_channel_id: string
+          p_resolved_youtube_channel_id: string | null
+          p_resolved_channel_title: string | null
+          p_resolved_channel_handle: string | null
+          p_channel_snapshot: Json
+          p_video_rows: Json
+          p_sync_status: 'success' | 'partial'
+          p_videos_found_count: number
+        }
+        Returns: Json
+      }
+      claim_scan_job_with_attempt: {
+        Args: {
+          p_job_id: string
+          p_started_at: string
+          p_lease_id: string
+          p_lease_expires_at: string
+        }
+        Returns: { job_id: string; lease_id: string; attempt_id: string; attempt_number: number }[]
+      }
+      claim_credential_validation_job_with_attempt: {
+        Args: {
+          p_job_id: string
+          p_started_at: string
+          p_lease_id: string
+          p_lease_expires_at: string
+        }
+        Returns: {
+          job_id: string
+          lease_id: string
+          attempt_id: string
+          attempt_number: number
+          payload: Json
+        }[]
+      }
+      finish_credential_validation_job_attempt: {
+        Args: {
+          p_job_id: string
+          p_lease_id: string
+          p_attempt_id: string
+          p_attempt_number: number
+          p_retry_limit: number
+          p_status: 'pending' | 'completed' | 'failed'
+          p_completed_at: string
+          p_next_attempt_at: string | null
+          p_is_valid: boolean
+          p_error_message: string | null
+          p_error_type: 'temporary' | 'structural' | null
+          p_credential_changed: boolean
+        }
+        Returns: boolean
+      }
+      finish_scan_job_attempt: {
+        Args: {
+          p_job_id: string
+          p_lease_id: string
+          p_attempt_id: string
+          p_status: 'completed' | 'failed'
+          p_completed_at: string
+          p_error_message: string | null
+          p_error_details: Json | null
+        }
+        Returns: boolean
+      }
+      requeue_scan_job_if_expired: {
+        Args: {
+          p_job_id: string
+          p_expected_lease_id: string | null
+          p_legacy_cutoff: string
+        }
+        Returns: boolean
+      }
+      save_user_provider_credential_atomic: {
+        Args: {
+          p_credential_id: string | null
+          p_user_id: string
+          p_provider: 'youtube' | 'gemini' | 'firecrawl'
+          p_encrypted_key: string
+          p_expected_encrypted_key: string | null
+          p_expected_key_version: string | null
+          p_reset_retry_policy: boolean
+        }
+        Returns: {
+          status: 'saved' | 'conflict'
+          credential_id: string | null
+          retry_limit: number | null
+          key_version: string | null
+        }[]
+      }
+      claim_channel_scan_provider_request: {
+        Args: {
+          p_job_id: string
+          p_lease_id: string
+          p_channel_id: string
+          p_request_key: string
+          p_provider?: 'youtube' | 'firecrawl'
+        }
+        Returns: {
+          status: 'assigned' | 'cached' | 'waiting' | 'exhausted' | 'backoff' | 'disabled'
+          credential_id: string | null
+          user_id: string | null
+          key_version: string | null
+          retry_limit: number | null
+          attempt_number: number | null
+          retry_at: string | null
+          response: Json
+        }[]
+      }
+      complete_firecrawl_transcript_recovery_target: {
+        Args: {
+          p_job_id: string
+          p_lease_id: string
+          p_video_id: string
+          p_youtube_video_id: string
+          p_status: 'fetched' | 'missing' | 'skipped'
+          p_language_code: string | null
+          p_transcript_text: string | null
+        }
+        Returns: Json
+      }
+      finish_channel_scan_provider_attempt: {
+        Args: {
+          p_job_id: string
+          p_lease_id: string
+          p_request_key: string
+          p_credential_id: string
+          p_key_version: string
+          p_outcome: 'success' | 'retryable_error' | 'ineligible'
+          p_response: Json | null
+          p_retry_at: string | null
+        }
+        Returns: boolean
+      }
+      defer_scan_job_attempt: {
+        Args: {
+          p_job_id: string
+          p_lease_id: string
+          p_attempt_id: string
+          p_available_at: string | null
+          p_reason: string
+          p_completed_at: string
+        }
+        Returns: boolean
+      }
+      claim_transcription_job_with_attempt: {
+        Args: {
+          p_job_id: string
+          p_started_at: string
+          p_lease_id: string
+          p_lease_expires_at: string
+        }
+        Returns: { job_id: string; lease_id: string; attempt_id: string; attempt_number: number; payload: Json }[]
+      }
+      finish_transcription_job_attempt: {
+        Args: {
+          p_job_id: string
+          p_lease_id: string
+          p_attempt_id: string
+          p_status: 'pending' | 'completed' | 'failed'
+          p_completed_at: string
+          p_error_message: string | null
+          p_error_details: Json | null
+        }
+        Returns: boolean
+      }
+      save_transcription_part: {
+        Args: {
+          p_job_id: string
+          p_lease_id: string
+          p_transcription_id: string
+          p_part_position: number
+          p_status: 'pending' | 'done' | 'missing'
+          p_attempts: number
+          p_last_error: string | null
+          p_language_code: string | null
+          p_phrases: Json | null
+        }
+        Returns: boolean
+      }
+      finalize_transcription: {
+        Args: {
+          p_job_id: string
+          p_lease_id: string
+          p_transcription_id: string
+          p_close_pending: boolean
+        }
+        Returns: string | null
+      }
+      claim_transcription_job_credential: {
+        Args: { p_job_id: string; p_lease_id: string; p_channel_id: string }
+        Returns: {
+          status: 'assigned' | 'waiting' | 'exhausted' | 'lease_lost'
+          credential_id: string | null
+          user_id: string | null
+          key_version: string | null
+          retry_limit: number | null
+        }[]
+      }
+      release_transcription_job_credential: {
+        Args: {
+          p_job_id: string
+          p_lease_id: string
+          p_credential_id: string
+          p_key_version: string
+          p_status: 'exhausted' | 'ineligible'
+          p_transcription_id: string
+          p_part_position: number | null
+          p_last_error: string | null
+        }
+        Returns: boolean
+      }
+      record_transcription_part_key_exhausted: {
+        Args: {
+          p_job_id: string
+          p_lease_id: string
+          p_transcription_id: string
+          p_part_position: number
+          p_credential_id: string
+          p_key_version: string
+          p_last_error: string | null
+        }
+        Returns: boolean
+      }
+      claim_transcription_part_credential: {
+        Args: {
+          p_job_id: string
+          p_lease_id: string
+          p_channel_id: string
+          p_transcription_id: string
+          p_part_position: number
+        }
+        Returns: {
+          status: 'assigned' | 'none' | 'lease_lost'
+          credential_id: string | null
+          user_id: string | null
+          key_version: string | null
+          retry_limit: number | null
+        }[]
+      }
+      has_eligible_transcription_credential: {
+        Args: { p_channel_id: string }
+        Returns: boolean
+      }
+      enqueue_auto_transcriptions: {
+        Args: { p_channel_id: string; p_youtube_video_ids: string[] }
+        Returns: number
+      }
+      get_my_api_usage_summary: {
+        Args: { p_since: string }
+        // The DB type generator omits nullable SUM results; preserve their SQL NULL semantics here.
+        Returns: {
+          provider: string
+          request_count: number
+          input_tokens: number | null
+          output_tokens: number | null
+          total_tokens: number | null
+          estimated_cost_usd: number | null
+          quota_units: number | null
+          unknown_usage_count: number
+        }[]
+      }
+    }
     Enums: Record<string, never>
   }
 }

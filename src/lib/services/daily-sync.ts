@@ -5,7 +5,10 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { requestScanNowForUser } from '@/lib/services/channels'
+import { processPendingScanJobs, requestScanNowForUser } from '@/lib/services/channels'
+import { processPendingCredentialValidationJobs } from '@/lib/services/credential-validation-jobs'
+import { performCredentialValidationAttempt } from '@/lib/services/integrations'
+import { recoverTranscriptionJobs } from '@/lib/services/transcription-requests'
 import { AppError } from '@/lib/utils/errors'
 import type { Database } from '@/lib/types/database'
 
@@ -44,6 +47,26 @@ export type DailySyncResult = {
   timedOut: boolean
   failedChannels: number
   failures: Array<{ channelId: string; error: string }>
+}
+
+/** Numero massimo di batch (3 job ciascuno) per run giornaliera: recovery limitato. */
+export const CREDENTIAL_VALIDATION_RECOVERY_MAX_BATCHES = 3
+
+/**
+ * Riprende validazioni chiave dovute o con lease scaduta, senza azzerare attempt né cambiare proprietario.
+ * I retry non ancora dovuti restano pending, quindi il ciclo termina al primo batch vuoto.
+ */
+export async function recoverCredentialValidationJobs(): Promise<{ claimed: number; completed: number; pending: number; failed: number }> {
+  const total = { claimed: 0, completed: 0, pending: 0, failed: 0 }
+  for (let batch = 0; batch < CREDENTIAL_VALIDATION_RECOVERY_MAX_BATCHES; batch += 1) {
+    const result = await processPendingCredentialValidationJobs({ attemptProvider: performCredentialValidationAttempt })
+    total.claimed += result.claimed
+    total.completed += result.completed
+    total.pending += result.pending
+    total.failed += result.failed
+    if (result.claimed === 0) break
+  }
+  return total
 }
 
 function readPositiveInt(value: string | undefined, fallback: number): number {
@@ -291,6 +314,39 @@ export async function runDailyChannelSync(): Promise<DailySyncResult> {
   }
 
   try {
+    try {
+      const recovered = await processPendingScanJobs(5)
+      if (recovered.processed > 0 || recovered.failed > 0) {
+        await writeLog(admin, 'info', 'Recovered pending API scan jobs', recovered)
+      }
+    } catch (error) {
+      await writeLog(admin, 'warn', 'Unable to recover pending API scan jobs', {
+        error: error instanceof Error ? error.message : 'recovery_failed',
+      })
+    }
+
+    try {
+      const recovered = await recoverCredentialValidationJobs()
+      if (recovered.claimed > 0) {
+        await writeLog(admin, 'info', 'Recovered pending credential validation jobs', recovered)
+      }
+    } catch (error) {
+      await writeLog(admin, 'warn', 'Unable to recover pending credential validation jobs', {
+        error: error instanceof Error ? error.message : 'recovery_failed',
+      })
+    }
+
+    try {
+      const recovered = await recoverTranscriptionJobs()
+      if (recovered.found > 0) {
+        await writeLog(admin, 'info', 'Recovered pending transcription jobs', recovered)
+      }
+    } catch (error) {
+      await writeLog(admin, 'warn', 'Unable to recover pending transcription jobs', {
+        error: error instanceof Error ? error.message : 'recovery_failed',
+      })
+    }
+
     const lockAcquired = await acquireRunLock(admin, runId, startedAtDate, env.timeBudgetMs + 120_000)
     if (!lockAcquired) {
       const endedAtDate = new Date()
@@ -378,6 +434,19 @@ export async function runDailyChannelSync(): Promise<DailySyncResult> {
             { onConflict: 'channel_id' }
           )
       }
+    }
+
+    // Le scansioni di questa esecuzione possono aver accodato trascrizioni automatiche: si avviano con la
+    // continuazione interna (un job per invocazione, nessun lavoro in linea) senza consumare il budget del cron.
+    try {
+      const queued = await recoverTranscriptionJobs(5, { inline: false })
+      if (queued.found > 0) {
+        await writeLog(admin, 'info', 'Started pending transcription jobs after sync', queued)
+      }
+    } catch (error) {
+      await writeLog(admin, 'warn', 'Unable to start pending transcription jobs after sync', {
+        error: error instanceof Error ? error.message : 'recovery_failed',
+      })
     }
 
     baseResult.success = baseResult.failedChannels === 0
