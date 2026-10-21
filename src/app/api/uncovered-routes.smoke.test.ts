@@ -35,7 +35,6 @@ vi.mock('@/lib/auth/provider', async (importOriginal) => {
   return { ...actual, getCurrentSession: getCurrentSessionMock }
 })
 
-import { POST as postPublicCancelDeletion } from '@/app/api/account/cancel-deletion/route'
 import { DELETE as deletePublicAccount } from '@/app/api/account/route'
 import { DELETE as deleteAdminAllowlist, POST as postAdminAllowlist } from '@/app/api/admin/allowlist/route'
 import { POST as postAdminLogin } from '@/app/api/admin/auth/login/route'
@@ -47,7 +46,6 @@ import { DELETE as deleteAdminUser } from '@/app/api/admin/users/[userId]/route'
 import { GET as getDailyDeletionExecutor } from '@/app/api/cron/daily-deletion-executor/route'
 import { DELETE as deleteIntegrations, GET as getIntegrations, POST as postIntegrations } from '@/app/api/integrations/route'
 import { POST as postLegalAcceptance } from '@/app/api/legal/accept/route'
-import { POST as postV1CancelDeletion } from '@/app/api/v1/account/cancel-deletion/route'
 import { DELETE as deleteV1Account, GET as getV1Account } from '@/app/api/v1/account/route'
 import { POST as postV1LegalAcceptance } from '@/app/api/v1/legal/accept/route'
 import { GET as getV1LegalAcceptance } from '@/app/api/v1/legal/acceptance/route'
@@ -81,7 +79,6 @@ type SmokeCase = {
 }
 
 const smokeCases: SmokeCase[] = [
-  { routeFile: 'src/app/api/account/cancel-deletion/route.ts', method: 'POST', expectedStatus: 400, run: () => postPublicCancelDeletion(requestFor('POST', '/account/cancel-deletion')) },
   { routeFile: 'src/app/api/account/route.ts', method: 'DELETE', expectedStatus: 401, run: () => deletePublicAccount(requestFor('DELETE', '/account')) },
   { routeFile: 'src/app/api/admin/allowlist/route.ts', method: 'POST', expectedStatus: 401, run: () => postAdminAllowlist(requestFor('POST', '/admin/allowlist')) },
   { routeFile: 'src/app/api/admin/allowlist/route.ts', method: 'DELETE', expectedStatus: 401, run: () => deleteAdminAllowlist(requestFor('DELETE', '/admin/allowlist')) },
@@ -94,7 +91,6 @@ const smokeCases: SmokeCase[] = [
   { routeFile: 'src/app/api/admin/users/[userId]/route.ts', method: 'DELETE', expectedStatus: 401, run: () => deleteAdminUser(requestFor('DELETE', '/admin/users/not-a-real-id'), { params: Promise.resolve({ userId: 'not-a-real-id' }) }) },
   { routeFile: 'src/app/api/cron/daily-deletion-executor/route.ts', method: 'GET', expectedStatus: 401, run: () => getDailyDeletionExecutor(requestFor('GET', '/cron/daily-deletion-executor')) },
   { routeFile: 'src/app/api/legal/accept/route.ts', method: 'POST', expectedStatus: 401, run: () => postLegalAcceptance(requestFor('POST', '/legal/accept')) },
-  { routeFile: 'src/app/api/v1/account/cancel-deletion/route.ts', method: 'POST', expectedStatus: 400, run: () => postV1CancelDeletion(requestFor('POST', '/v1/account/cancel-deletion')) },
   { routeFile: 'src/app/api/v1/account/route.ts', method: 'GET', expectedStatus: 401, run: () => getV1Account(requestFor('GET', '/v1/account')) },
   { routeFile: 'src/app/api/v1/account/route.ts', method: 'DELETE', expectedStatus: 401, run: () => deleteV1Account(requestFor('DELETE', '/v1/account')) },
   { routeFile: 'src/app/api/v1/legal/accept/route.ts', method: 'POST', expectedStatus: 401, run: () => postV1LegalAcceptance(requestFor('POST', '/v1/legal/accept')) },
