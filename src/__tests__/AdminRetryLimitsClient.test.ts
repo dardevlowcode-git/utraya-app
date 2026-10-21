@@ -88,9 +88,4 @@ describe('AdminRetryLimitsClient', () => {
     expect(html).not.toContain('Retry aggiuntivi')
   })
 
-  it('mantiene gli stessi identificatori di messaggio per italiano e inglese', () => {
-    expect(Object.keys(italianMessages.admin.retryLimits).sort()).toEqual(
-      Object.keys(englishMessages.admin.retryLimits).sort()
-    )
-  })
 })

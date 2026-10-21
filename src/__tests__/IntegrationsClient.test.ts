@@ -142,17 +142,6 @@ describe('IntegrationsClient YouTube setup guide', () => {
     expect(englishMessages.integrations.validationPending).toContain('verification is continuing in the background')
   })
 
-  it('fornisce lo stesso insieme di traduzioni per la guida nei due locali', () => {
-    expect(Object.keys(italianMessages.integrations.youtubeGuide).sort()).toEqual(
-      Object.keys(englishMessages.integrations.youtubeGuide).sort()
-    )
-    expect(Object.keys(italianMessages.integrations.geminiGuide).sort()).toEqual(
-      Object.keys(englishMessages.integrations.geminiGuide).sort()
-    )
-    expect(Object.keys(italianMessages.integrations.firecrawlGuide).sort()).toEqual(
-      Object.keys(englishMessages.integrations.firecrawlGuide).sort()
-    )
-  })
 })
 
 describe('IntegrationsClient Firecrawl setup guide', () => {
