@@ -35,19 +35,12 @@ vi.mock('@/lib/auth/provider', async (importOriginal) => {
   return { ...actual, getCurrentSession: getCurrentSessionMock }
 })
 
-import { DELETE as deletePublicAccount } from '@/app/api/account/route'
 import { POST as postAdminScanNow } from '@/app/api/admin/channels/[channelId]/scan-now/route'
 import { DELETE as deleteAdminJob, POST as postAdminJob } from '@/app/api/admin/jobs/[jobId]/route'
 import { POST as postAdminLogsCleanup } from '@/app/api/admin/logs/cleanup/route'
-import { GET as getDailyDeletionExecutor } from '@/app/api/cron/daily-deletion-executor/route'
 import { DELETE as deleteIntegrations, GET as getIntegrations, POST as postIntegrations } from '@/app/api/integrations/route'
-import { POST as postLegalAcceptance } from '@/app/api/legal/accept/route'
-import { DELETE as deleteV1Account, GET as getV1Account } from '@/app/api/v1/account/route'
-import { POST as postV1LegalAcceptance } from '@/app/api/v1/legal/accept/route'
 import { GET as getV1LegalAcceptance } from '@/app/api/v1/legal/acceptance/route'
-import { GET as getV1Me } from '@/app/api/v1/me/route'
 import { GET as getV1Video } from '@/app/api/v1/videos/[videoId]/route'
-import { DELETE as deleteV1Watchlist, GET as getV1Watchlist, POST as postV1Watchlist } from '@/app/api/v1/watchlist/route'
 import { GET as getVideos, POST as postVideos } from '@/app/api/videos/route'
 
 const routeBase = '/api'
@@ -75,22 +68,12 @@ type SmokeCase = {
 }
 
 const smokeCases: SmokeCase[] = [
-  { routeFile: 'src/app/api/account/route.ts', method: 'DELETE', expectedStatus: 401, run: () => deletePublicAccount(requestFor('DELETE', '/account')) },
   { routeFile: 'src/app/api/admin/channels/[channelId]/scan-now/route.ts', method: 'POST', expectedStatus: 401, run: () => postAdminScanNow(requestFor('POST', '/admin/channels/not-a-real-id/scan-now'), { params: Promise.resolve({ channelId: 'not-a-real-id' }) }) },
   { routeFile: 'src/app/api/admin/jobs/[jobId]/route.ts', method: 'POST', expectedStatus: 401, run: () => postAdminJob(requestFor('POST', '/admin/jobs/not-a-real-id'), { params: Promise.resolve({ jobId: 'not-a-real-id' }) }) },
   { routeFile: 'src/app/api/admin/jobs/[jobId]/route.ts', method: 'DELETE', expectedStatus: 401, run: () => deleteAdminJob(requestFor('DELETE', '/admin/jobs/not-a-real-id'), { params: Promise.resolve({ jobId: 'not-a-real-id' }) }) },
   { routeFile: 'src/app/api/admin/logs/cleanup/route.ts', method: 'POST', expectedStatus: 401, run: () => postAdminLogsCleanup(requestFor('POST', '/admin/logs/cleanup')) },
-  { routeFile: 'src/app/api/cron/daily-deletion-executor/route.ts', method: 'GET', expectedStatus: 401, run: () => getDailyDeletionExecutor(requestFor('GET', '/cron/daily-deletion-executor')) },
-  { routeFile: 'src/app/api/legal/accept/route.ts', method: 'POST', expectedStatus: 401, run: () => postLegalAcceptance(requestFor('POST', '/legal/accept')) },
-  { routeFile: 'src/app/api/v1/account/route.ts', method: 'GET', expectedStatus: 401, run: () => getV1Account(requestFor('GET', '/v1/account')) },
-  { routeFile: 'src/app/api/v1/account/route.ts', method: 'DELETE', expectedStatus: 401, run: () => deleteV1Account(requestFor('DELETE', '/v1/account')) },
-  { routeFile: 'src/app/api/v1/legal/accept/route.ts', method: 'POST', expectedStatus: 401, run: () => postV1LegalAcceptance(requestFor('POST', '/v1/legal/accept')) },
   { routeFile: 'src/app/api/v1/legal/acceptance/route.ts', method: 'GET', expectedStatus: 401, run: () => getV1LegalAcceptance(requestFor('GET', '/v1/legal/acceptance')) },
-  { routeFile: 'src/app/api/v1/me/route.ts', method: 'GET', expectedStatus: 401, run: () => getV1Me(requestFor('GET', '/v1/me')) },
   { routeFile: 'src/app/api/v1/videos/[videoId]/route.ts', method: 'GET', expectedStatus: 401, run: () => getV1Video(requestFor('GET', '/v1/videos/not-a-real-id'), { params: Promise.resolve({ videoId: 'not-a-real-id' }) }) },
-  { routeFile: 'src/app/api/v1/watchlist/route.ts', method: 'GET', expectedStatus: 401, run: () => getV1Watchlist(requestFor('GET', '/v1/watchlist')) },
-  { routeFile: 'src/app/api/v1/watchlist/route.ts', method: 'POST', expectedStatus: 401, run: () => postV1Watchlist(requestFor('POST', '/v1/watchlist')) },
-  { routeFile: 'src/app/api/v1/watchlist/route.ts', method: 'DELETE', expectedStatus: 401, run: () => deleteV1Watchlist(requestFor('DELETE', '/v1/watchlist')) },
   { routeFile: 'src/app/api/videos/route.ts', method: 'GET', expectedStatus: 401, run: () => getVideos(requestFor('GET', '/videos')) },
   { routeFile: 'src/app/api/videos/route.ts', method: 'POST', expectedStatus: 401, run: () => postVideos(requestFor('POST', '/videos')) },
 ]

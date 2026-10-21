@@ -37,8 +37,12 @@ describe('GET /api/cron/cleanup-api-usage', () => {
     const response = await GET(new Request('https://dev.utraya.com/api/cron/cleanup-api-usage', {
       headers: { authorization: 'Bearer invalid-cron-secret' },
     }))
+    const sameLengthWrongSecret = await GET(new Request('https://dev.utraya.com/api/cron/cleanup-api-usage', {
+      headers: { authorization: 'Bearer test-cron-secreX' },
+    }))
 
     expect(response.status).toBe(401)
+    expect(sameLengthWrongSecret.status).toBe(401)
     expect(cleanupMock).not.toHaveBeenCalled()
   })
 

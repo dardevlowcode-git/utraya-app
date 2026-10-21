@@ -48,10 +48,22 @@ describe('POST /api/videos/[videoId]/transcription', () => {
     expect(maxDuration).toBe(300)
   })
 
-  it('rifiuta origine diversa, content-type errato e payload non valido', async () => {
+  it('rifiuta origine diversa senza invocare il service', async () => {
     expect((await POST(post({}, { origin: 'https://evil.test' }), ctx)).status).toBe(403)
+    expect(requestMock).not.toHaveBeenCalled()
+  })
+
+  it('rifiuta content-type errato senza invocare il service', async () => {
     expect((await POST(post({}, { 'content-type': 'text/plain' }), ctx)).status).toBe(415)
+    expect(requestMock).not.toHaveBeenCalled()
+  })
+
+  it('rifiuta un payload con campo extra senza invocare il service', async () => {
     expect((await POST(post({ extra: true }), ctx)).status).toBe(400)
+    expect(requestMock).not.toHaveBeenCalled()
+  })
+
+  it('rifiuta un videoId non UUID senza invocare il service', async () => {
     expect((await POST(post({}), { params: Promise.resolve({ videoId: 'non-uuid' }) })).status).toBe(400)
     expect(requestMock).not.toHaveBeenCalled()
   })

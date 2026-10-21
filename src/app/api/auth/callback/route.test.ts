@@ -39,8 +39,8 @@ vi.mock('@/lib/services/account-deletion', () => ({
 
 let GET: typeof import('@/app/api/auth/callback/route').GET
 
-function callbackRequest(url: string): Request {
-  return new Request(url, { method: 'GET' })
+function callbackRequest(url: string, headers?: Record<string, string>): Request {
+  return new Request(url, { method: 'GET', headers })
 }
 
 describe('GET /api/auth/callback', () => {
@@ -70,8 +70,47 @@ describe('GET /api/auth/callback', () => {
   })
 
   it('ignora Host/X-Forwarded-Host e usa NEXT_PUBLIC_SITE_URL nel redirect', async () => {
-    const response = await GET(callbackRequest('https://evil.test/api/auth/callback?code=abc') as never)
+    const response = await GET(callbackRequest('https://app.utraya.test/api/auth/callback?code=abc', {
+      host: 'evil.test',
+      'x-forwarded-host': 'evil.test',
+    }) as never)
     expect(response.headers.get('location')).toBe('https://app.utraya.test/dashboard')
+  })
+
+  it('senza code torna al login senza tentare lo scambio', async () => {
+    const response = await GET(callbackRequest('https://app.utraya.test/api/auth/callback') as never)
+
+    expect(response.headers.get('location')).toBe('https://app.utraya.test/login?error=no_code')
+    expect(exchangeCodeForSessionMock).not.toHaveBeenCalled()
+  })
+
+  it('se lo scambio OAuth fallisce torna al login senza caricare l’utente', async () => {
+    exchangeCodeForSessionMock.mockResolvedValueOnce({ error: new Error('private exchange detail') })
+
+    const response = await GET(callbackRequest('https://app.utraya.test/api/auth/callback?code=bad') as never)
+
+    expect(response.headers.get('location')).toBe('https://app.utraya.test/login?error=exchange_failed')
+    expect(getUserMock).not.toHaveBeenCalled()
+  })
+
+  it('nega l’utente non allowlisted, esegue logout e non lo provisiona', async () => {
+    isEmailAllowlistedMock.mockResolvedValueOnce(false)
+
+    const response = await GET(callbackRequest('https://app.utraya.test/api/auth/callback?code=abc') as never)
+
+    expect(response.headers.get('location')).toBe('https://app.utraya.test/login?error=access_denied')
+    expect(signOutMock).toHaveBeenCalledOnce()
+    expect(provisionNewUserMock).not.toHaveBeenCalled()
+  })
+
+  it('rifiuta l’utente senza email prima di verificare la allowlist', async () => {
+    getUserMock.mockResolvedValueOnce({ data: { user: { id: 'user-1', email: null } } })
+
+    const response = await GET(callbackRequest('https://app.utraya.test/api/auth/callback?code=abc') as never)
+
+    expect(response.headers.get('location')).toBe('https://app.utraya.test/login?error=no_user')
+    expect(isEmailAllowlistedMock).not.toHaveBeenCalled()
+    expect(provisionNewUserMock).not.toHaveBeenCalled()
   })
 
   it('blocca redirect assoluti malevoli', async () => {
