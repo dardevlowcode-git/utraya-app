@@ -29,10 +29,10 @@ const validUserId = '3f2504e0-4f89-41d3-9a0c-0305e82c3301'
 let fake: SupabaseAdminFake
 let sessionCookie: string | undefined
 
-function deleteUser(userId: string, options: { body?: unknown; origin?: string | null } = {}) {
+function deleteUser(userId: string, options: { body?: unknown; origin?: string | null; headers?: Record<string, string> } = {}) {
   const url = `https://utraya.com/api/admin/users/${userId}`
   return DELETE(
-    adminRequest({ url, method: 'DELETE', body: options.body ?? { reason: 'richiesta utente' }, origin: options.origin }),
+    adminRequest({ url, method: 'DELETE', body: options.body ?? { reason: 'richiesta utente' }, origin: options.origin, headers: options.headers }),
     { params: Promise.resolve({ userId }) }
   )
 }
@@ -86,20 +86,24 @@ describe('DELETE /api/admin/users/[userId]', () => {
     expect(fake.rpcCalls).toHaveLength(0)
   })
 
-  // BUG: la guardia CSRF (`ensureSameOrigin`) lancia un AppError 403, ma il catch esterno
-  // la converte in un 500 con codice `ACCOUNT_DELETION_FAILED`, mascherando l'esito reale.
-  it.skip('rifiuta con 403 una origin diversa', async () => {
+  it('rifiuta con 403 una origin diversa', async () => {
     const response = await deleteUser(validUserId, { origin: 'https://attacker.example' })
 
     expect(response.status).toBe(403)
     expect(fake.rpcCalls).toHaveLength(0)
   })
 
-  // BUG: stessa causa del test precedente (origin assente → 500 anziché 403).
-  it.skip('rifiuta con 403 quando l\'origin è assente', async () => {
+  it('rifiuta con 403 quando l\'origin è assente', async () => {
     const response = await deleteUser(validUserId, { origin: null })
 
     expect(response.status).toBe(403)
+    expect(fake.rpcCalls).toHaveLength(0)
+  })
+
+  it('rifiuta con 415 un content-type non JSON', async () => {
+    const response = await deleteUser(validUserId, { headers: { 'content-type': 'text/plain' } })
+
+    expect(response.status).toBe(415)
     expect(fake.rpcCalls).toHaveLength(0)
   })
 
@@ -113,8 +117,7 @@ describe('DELETE /api/admin/users/[userId]', () => {
     expect(JSON.stringify(body)).not.toContain('segreta')
   })
 
-  // BUG: la route non valida il formato UUID dell'id prima di invocare la cancellazione forzata.
-  it.skip('rifiuta con 400 un id non UUID senza invocare la cancellazione', async () => {
+  it('rifiuta con 400 un id non UUID senza invocare la cancellazione', async () => {
     const response = await deleteUser('not-a-uuid')
 
     expect(response.status).toBe(400)

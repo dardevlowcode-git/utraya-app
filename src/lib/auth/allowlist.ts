@@ -22,11 +22,12 @@ import { createAdminClient } from '@/lib/supabase/admin'
  */
 export async function isEmailAllowlisted(email: string): Promise<boolean> {
   const supabase = createAdminClient()
+  const exactEmailPattern = email.trim().replace(/[\\%_]/g, '\\$&')
 
   const { data, error } = await supabase
     .from('allowlist_entries')
     .select('id, is_active')
-    .ilike('email', email.trim())
+    .ilike('email', exactEmailPattern)
     .eq('is_active', true)
     .single()
 

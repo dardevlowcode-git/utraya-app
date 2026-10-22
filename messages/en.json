@@ -815,7 +815,8 @@
       "suspend": "Suspend",
       "title": "User management",
       "showEmail": "Show email",
-      "hideEmail": "Hide email"
+      "hideEmail": "Hide email",
+      "email": "Email"
     },
     "channels": {
       "subtitle": "All channels in the Utraya archive ({count} channels).",
@@ -942,7 +943,9 @@
       "invalidPrice": "Invalid prices: use numbers greater than or equal to zero with at most 6 decimals."
     },
     "content": {
-      "title": "Canonical content"
+      "title": "Canonical content",
+      "subtitle": "Review and edit global AI summaries.",
+      "adminEdited": "EDITED BY ADMIN"
     },
     "superAdmin": "Super Admin",
     "systemHealth": "System health",

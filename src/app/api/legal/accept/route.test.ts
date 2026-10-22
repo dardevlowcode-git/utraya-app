@@ -40,15 +40,6 @@ describe('POST /api/legal/accept', () => {
     expect(recordLegalAcceptanceMock).not.toHaveBeenCalled()
   })
 
-  it.skip.each([
-    ['versione non corrente', { kinds: ['tos'], version: 'obsolete-version' }],
-    ['hash non corrente', { kinds: ['tos'], hash: 'sha256:obsolete' }],
-  ])('rifiuta la %s senza scrivere', async (_case, body) => {
-    // BUG: la route cookie ignora i campi versione/hash sconosciuti invece di rifiutarli.
-    expect((await request(body)).status).toBe(400)
-    expect(recordLegalAcceptanceMock).not.toHaveBeenCalled()
-  })
-
   it('registra l’accettazione usando l’identità di sessione, non quella nel body', async () => {
     const response = await request({
       kinds: ['tos', 'tos_vexatorious'],
@@ -66,16 +57,21 @@ describe('POST /api/legal/accept', () => {
     }))
   })
 
-  it.skip('rifiuta un origin assente o diverso prima della scrittura', async () => {
-    // BUG: la route cookie non applica ensureSameOrigin.
+  it('rifiuta un origin assente o diverso prima della scrittura', async () => {
     expect((await request({ kinds: ['tos'] }, { 'content-type': 'application/json' })).status).toBe(403)
     expect((await request({ kinds: ['tos'] }, { origin: 'https://evil.test', 'content-type': 'application/json' })).status).toBe(403)
     expect(recordLegalAcceptanceMock).not.toHaveBeenCalled()
   })
 
-  it.skip('rifiuta un content-type non JSON prima della scrittura', async () => {
-    // BUG: la route cookie non applica ensureJsonRequest.
+  it('rifiuta un content-type non JSON prima della scrittura', async () => {
     expect((await request({ kinds: ['tos'] }, { origin: 'http://localhost', 'content-type': 'text/plain' })).status).toBe(415)
+    expect(recordLegalAcceptanceMock).not.toHaveBeenCalled()
+  })
+
+  it('rifiuta kinds non ammessi senza registrare accettazioni', async () => {
+    const response = await request({ kinds: ['tos', 'unknown-kind'] })
+
+    expect(response.status).toBe(400)
     expect(recordLegalAcceptanceMock).not.toHaveBeenCalled()
   })
 })

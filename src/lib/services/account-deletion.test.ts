@@ -201,16 +201,13 @@ describe('account-deletion service', () => {
     expect(rpcMock).not.toHaveBeenCalled()
   })
 
-  // BUG: con firma valida ma payload non JSON, `verifyCancelDeletionToken` propaga il
-  // SyntaxError grezzo di JSON.parse invece di un errore di dominio ("token non valido").
-  // La route lo traduce comunque in 400, ma il contratto del service resta incoerente.
-  it.skip('non chiama alcuna RPC quando il payload firmato non e` JSON', async () => {
+  it('non chiama alcuna RPC quando il payload firmato non e` JSON', async () => {
     const rpcMock = rpcOnlyClient()
     const { createHmac } = await import('node:crypto')
     const notJson = Buffer.from('non-json', 'utf8').toString('base64url')
     const signedNotJson = `${notJson}.${createHmac('sha256', SECRET).update(notJson).digest('base64url')}`
 
-    await expect(cancelDeletion(signedNotJson)).rejects.toThrow(/Token cancellazione (non valido|malformato)/)
+    await expect(cancelDeletion(signedNotJson)).rejects.toThrow('Token cancellazione non valido')
     expect(rpcMock).not.toHaveBeenCalled()
   })
 

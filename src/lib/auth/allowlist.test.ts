@@ -152,12 +152,38 @@ type AllowlistResult = { data: unknown; error: { message: string } | null }
  * Finge il client admin per la sola tabella `allowlist_entries`, registrando
  * i filtri applicati alla query così da poterli asserire.
  */
-function createAllowlistClient(result: AllowlistResult | (() => Promise<AllowlistResult>)) {
+function matchesIlikePattern(value: string, pattern: string): boolean {
+  let expression = '^'
+  let escaped = false
+  for (const character of pattern) {
+    if (escaped) {
+      expression += character.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      escaped = false
+    } else if (character === '\\') {
+      escaped = true
+    } else if (character === '%') {
+      expression += '.*'
+    } else if (character === '_') {
+      expression += '.'
+    } else {
+      expression += character.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    }
+  }
+  if (escaped) expression += '\\\\'
+  return new RegExp(`${expression}$`, 'i').test(value)
+}
+
+function createAllowlistClient(result: AllowlistResult | (() => Promise<AllowlistResult>), databaseEmail?: string) {
   const ilikeMock = vi.fn()
   const eqMock = vi.fn()
-  const singleMock = vi.fn(() =>
-    Promise.resolve(typeof result === 'function' ? result() : result)
-  )
+  const singleMock = vi.fn(() => {
+    if (databaseEmail !== undefined) {
+      return Promise.resolve(matchesIlikePattern(databaseEmail, ilikeMock.mock.calls[0]?.[1] as string)
+        ? { data: { id: 'entry-1', is_active: true }, error: null }
+        : { data: null, error: { message: 'no rows' } })
+    }
+    return Promise.resolve(typeof result === 'function' ? result() : result)
+  })
 
   const chain = { ilike: ilikeMock, eq: eqMock, single: singleMock }
   ilikeMock.mockReturnValue({ eq: eqMock })
@@ -197,12 +223,27 @@ describe('isEmailAllowlisted', () => {
     const { ilikeMock, eqMock } = createAllowlistClient({
       data: { id: 'entry-1', is_active: true },
       error: null,
-    })
+    }, 'utente@example.com')
 
-    await isEmailAllowlisted('Utente@Example.com')
+    await expect(isEmailAllowlisted('Utente@Example.com')).resolves.toBe(true)
 
     expect(ilikeMock).toHaveBeenCalledWith('email', 'Utente@Example.com')
     expect(eqMock).toHaveBeenCalledWith('is_active', true)
+  })
+
+  it.each([
+    ['underscore', 'nome_utente@example.com', 'nome\\_utente@example.com'],
+    ['percentuale', 'nome%utente@example.com', 'nome\\%utente@example.com'],
+    ['backslash', 'nome\\utente@example.com', 'nome\\\\utente@example.com'],
+  ])('non autorizza una email diversa con un carattere speciale: %s', async (_nome, email, patternAtteso) => {
+    const { ilikeMock } = createAllowlistClient(
+      { data: null, error: { message: 'no rows' } },
+      'username@example.com'
+    )
+
+    await expect(isEmailAllowlisted(email)).resolves.toBe(false)
+
+    expect(ilikeMock).toHaveBeenCalledWith('email', patternAtteso)
   })
 
   it('normalizza gli spazi ai bordi come fa il codice (trim)', async () => {

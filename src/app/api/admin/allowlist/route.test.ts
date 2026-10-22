@@ -114,9 +114,7 @@ describe('route admin allowlist', () => {
     expect(fake.inserts.find((entry) => entry.table === 'allowlist_entries')).toBeUndefined()
   })
 
-  // BUG: la route accetta e ignora campi extra nel body invece di rifiutarli con 400
-  // (le route admin sorelle, es. transcription-profile, impongono uno schema strict).
-  it.skip('rifiuta con 400 un body con campi extra (schema non accettato)', async () => {
+  it('rifiuta con 400 un body con campi extra (schema non accettato)', async () => {
     const response = await post({ email: 'ok@example.com', is_active: true, admin_username: 'attacker' })
 
     expect(response.status).toBe(400)

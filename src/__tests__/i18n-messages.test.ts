@@ -49,8 +49,7 @@ function collectEmptyValuePaths(value: JsonValue, currentPath = ''): string[] {
 }
 
 describe('messaggi localizzati', () => {
-  it.skip('mantiene le stesse chiavi ricorsive in italiano e inglese', () => {
-    // BUG: 49 chiavi ricorsive presenti in it.json non sono presenti in en.json.
+  it('mantiene le stesse chiavi ricorsive in italiano e inglese', () => {
     expect(messageFiles).toContain('it.json')
     expect(messageFiles).toContain('en.json')
     expect(collectKeyPaths(loadMessages('it.json')).sort()).toEqual(
