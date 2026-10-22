@@ -146,12 +146,10 @@ describe('provisionNewUser default watchlist', () => {
   })
 })
 
-type AllowlistResult = { data: unknown; error: { message: string } | null }
+type AllowlistEntry = { email: string; is_active: boolean }
+type AllowlistError = { message: string }
 
-/**
- * Finge il client admin per la sola tabella `allowlist_entries`, registrando
- * i filtri applicati alla query così da poterli asserire.
- */
+/** Il fake applica i filtri alla riga, invece di restituire sempre un risultato prestabilito. */
 function matchesIlikePattern(value: string, pattern: string): boolean {
   let expression = '^'
   let escaped = false
@@ -161,7 +159,8 @@ function matchesIlikePattern(value: string, pattern: string): boolean {
       escaped = false
     } else if (character === '\\') {
       escaped = true
-    } else if (character === '%') {
+    } else if (character === '*' || character === '%') {
+      // PostgREST converte `*` in `%` prima di inviare il pattern a PostgreSQL.
       expression += '.*'
     } else if (character === '_') {
       expression += '.'
@@ -173,27 +172,50 @@ function matchesIlikePattern(value: string, pattern: string): boolean {
   return new RegExp(`${expression}$`, 'i').test(value)
 }
 
-function createAllowlistClient(result: AllowlistResult | (() => Promise<AllowlistResult>), databaseEmail?: string) {
-  const ilikeMock = vi.fn()
-  const eqMock = vi.fn()
-  const singleMock = vi.fn(() => {
-    if (databaseEmail !== undefined) {
-      return Promise.resolve(matchesIlikePattern(databaseEmail, ilikeMock.mock.calls[0]?.[1] as string)
-        ? { data: { id: 'entry-1', is_active: true }, error: null }
-        : { data: null, error: { message: 'no rows' } })
+function createAllowlistClient(options: {
+  rows?: readonly AllowlistEntry[]
+  error?: AllowlistError | null
+} = {}) {
+  const eqCalls: Array<[string, unknown]> = []
+  let ilikeFilter: [string, string] | null = null
+
+  function execute(requireOne: boolean) {
+    if (options.error) return Promise.resolve({ data: null, error: options.error })
+
+    const row = (options.rows ?? []).find((candidate) => {
+      const equalsMatch = eqCalls.every(([column, expected]) => candidate[column as keyof AllowlistEntry] === expected)
+      const patternMatch = !ilikeFilter || (
+        ilikeFilter[0] === 'email' && matchesIlikePattern(candidate.email, ilikeFilter[1])
+      )
+      return equalsMatch && patternMatch
+    })
+
+    if (!row) {
+      return Promise.resolve({
+        data: null,
+        error: requireOne ? { message: 'no rows' } : null,
+      })
     }
-    return Promise.resolve(typeof result === 'function' ? result() : result)
-  })
+    return Promise.resolve({ data: { id: 'entry-1', is_active: row.is_active }, error: null })
+  }
 
-  const chain = { ilike: ilikeMock, eq: eqMock, single: singleMock }
-  ilikeMock.mockReturnValue({ eq: eqMock })
-  eqMock.mockReturnValue({ single: singleMock })
-
-  const selectMock = vi.fn(() => ({ ilike: ilikeMock }))
+  const query = {
+    eq: vi.fn((column: string, value: unknown) => {
+      eqCalls.push([column, value])
+      return query
+    }),
+    ilike: vi.fn((column: string, pattern: string) => {
+      ilikeFilter = [column, pattern]
+      return query
+    }),
+    maybeSingle: vi.fn(() => execute(false)),
+    single: vi.fn(() => execute(true)),
+  }
+  const selectMock = vi.fn(() => query)
   const fromMock = vi.fn(() => ({ select: selectMock }))
   createAdminClientMock.mockReturnValue({ from: fromMock })
 
-  return { fromMock, selectMock, ilikeMock, eqMock, singleMock }
+  return { fromMock, selectMock, eqMock: query.eq, ilikeMock: query.ilike, maybeSingleMock: query.maybeSingle }
 }
 
 describe('isEmailAllowlisted', () => {
@@ -202,63 +224,50 @@ describe('isEmailAllowlisted', () => {
   })
 
   it('autorizza una email attiva presente in allowlist', async () => {
-    createAllowlistClient({ data: { id: 'entry-1', is_active: true }, error: null })
+    createAllowlistClient({ rows: [{ email: 'utente@example.com', is_active: true }] })
 
     await expect(isEmailAllowlisted('utente@example.com')).resolves.toBe(true)
   })
 
   it('nega una email assente in allowlist', async () => {
-    createAllowlistClient({ data: null, error: { message: 'no rows' } })
+    createAllowlistClient()
 
     await expect(isEmailAllowlisted('assente@example.com')).resolves.toBe(false)
   })
 
   it('nega una email presente ma con is_active falso', async () => {
-    createAllowlistClient({ data: { id: 'entry-1', is_active: false }, error: null })
+    createAllowlistClient({ rows: [{ email: 'disattivata@example.com', is_active: false }] })
 
     await expect(isEmailAllowlisted('disattivata@example.com')).resolves.toBe(false)
   })
 
-  it('applica il confronto case-insensitive (ilike) e il filtro is_active', async () => {
-    const { ilikeMock, eqMock } = createAllowlistClient({
-      data: { id: 'entry-1', is_active: true },
-      error: null,
-    }, 'utente@example.com')
+  it('normalizza spazi e maiuscole prima del confronto esatto', async () => {
+    const { eqMock, maybeSingleMock } = createAllowlistClient({
+      rows: [{ email: 'utente@example.com', is_active: true }],
+    })
 
-    await expect(isEmailAllowlisted('Utente@Example.com')).resolves.toBe(true)
+    await expect(isEmailAllowlisted('  Utente@Example.com  ')).resolves.toBe(true)
 
-    expect(ilikeMock).toHaveBeenCalledWith('email', 'Utente@Example.com')
+    expect(eqMock).toHaveBeenCalledWith('email', 'utente@example.com')
     expect(eqMock).toHaveBeenCalledWith('is_active', true)
+    expect(maybeSingleMock).toHaveBeenCalledOnce()
   })
 
   it.each([
-    ['underscore', 'nome_utente@example.com', 'nome\\_utente@example.com'],
-    ['percentuale', 'nome%utente@example.com', 'nome\\%utente@example.com'],
-    ['backslash', 'nome\\utente@example.com', 'nome\\\\utente@example.com'],
-  ])('non autorizza una email diversa con un carattere speciale: %s', async (_nome, email, patternAtteso) => {
-    const { ilikeMock } = createAllowlistClient(
-      { data: null, error: { message: 'no rows' } },
-      'username@example.com'
-    )
+    ['asterisco', 'user*name@example.com', 'username@example.com'],
+    ['percentuale', 'user%name@example.com', 'userXname@example.com'],
+    ['underscore', 'user_name@example.com', 'userXname@example.com'],
+    ['barra inversa', 'user\\name@example.com', 'username@example.com'],
+  ])('non autorizza una email diversa con il carattere speciale: %s', async (_nome, email, altraEmail) => {
+    const { eqMock } = createAllowlistClient({ rows: [{ email: altraEmail, is_active: true }] })
 
     await expect(isEmailAllowlisted(email)).resolves.toBe(false)
 
-    expect(ilikeMock).toHaveBeenCalledWith('email', patternAtteso)
-  })
-
-  it('normalizza gli spazi ai bordi come fa il codice (trim)', async () => {
-    const { ilikeMock } = createAllowlistClient({
-      data: { id: 'entry-1', is_active: true },
-      error: null,
-    })
-
-    await isEmailAllowlisted('   utente@example.com   ')
-
-    expect(ilikeMock).toHaveBeenCalledWith('email', 'utente@example.com')
+    expect(eqMock).toHaveBeenCalledWith('email', email)
   })
 
   it('nega con fail-closed quando la query restituisce un errore DB', async () => {
-    createAllowlistClient({ data: null, error: { message: 'connection refused' } })
+    createAllowlistClient({ error: { message: 'connection refused' } })
 
     await expect(isEmailAllowlisted('utente@example.com')).resolves.toBe(false)
   })
