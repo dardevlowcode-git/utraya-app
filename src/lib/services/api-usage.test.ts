@@ -2,9 +2,9 @@
  * Scopo: verifica i dati osservabili del registro utilizzo API e i calcoli mostrati all'utente.
  * Moduli richiamati: `vitest`, `./api-usage`.
  * Flusso: usa tariffe e costi quota fissati nella spec per controllare insert allowlistati.
+ * La policy RLS e la RPC summary sono provate in SQL reale (`scripts/postgres-tests/rls.sql`).
  */
 
-import { readFileSync } from 'node:fs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppSupabaseClient } from '@/lib/supabase/types'
 
@@ -13,19 +13,6 @@ const { createAdminClientMock, insertMock, fromMock } = vi.hoisted(() => ({
   insertMock: vi.fn(),
   fromMock: vi.fn(),
 }))
-
-const apiUsageMigration = readFileSync(
-  new URL('../../../supabase/migrations/20261004120000_api_usage_events.sql', import.meta.url),
-  'utf8'
-)
-const apiUsageSummaryMigration = readFileSync(
-  new URL('../../../supabase/migrations/20261006213338_api_usage_summary_quality.sql', import.meta.url),
-  'utf8'
-)
-const firecrawlValidationMigration = readFileSync(
-  new URL('../../../supabase/migrations/20261012000000_firecrawl_personal_credentials.sql', import.meta.url),
-  'utf8'
-)
 
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: createAdminClientMock }))
 
@@ -74,7 +61,7 @@ describe('api usage accounting', () => {
     })
   })
 
-  it('registra discovery Firecrawl per owner senza inventare crediti o costi e abilita il job persistente', () => {
+  it('registra discovery Firecrawl per owner senza inventare crediti o costi', () => {
     expect(buildApiUsageEventInsert({
       userId: 'firecrawl-key-owner',
       provider: 'firecrawl',
@@ -88,10 +75,6 @@ describe('api usage accounting', () => {
       estimated_cost_usd: null,
       quota_units: null,
     })
-
-    expect(firecrawlValidationMigration).toMatch(/provider IN \('youtube', 'gemini', 'firecrawl'\)/)
-    expect(firecrawlValidationMigration).toMatch(/v_provider NOT IN \('youtube', 'gemini', 'firecrawl'\)/)
-    expect(firecrawlValidationMigration).toMatch(/usage\.provider = 'firecrawl'/)
   })
 
   it('adatta i token effettivi restituiti da Gemini al registro privato', async () => {
@@ -295,23 +278,6 @@ describe('api usage accounting', () => {
     } finally {
       errorSpy.mockRestore()
     }
-  })
-
-  it('mantiene in RLS solo gli eventi dell’account autenticato e nella retention prevista', () => {
-    const policy = apiUsageMigration.match(
-      /CREATE POLICY "API usage: read own" ON public\.api_usage_events\s+FOR SELECT USING \(([\s\S]*?)\);/
-    )?.[1]
-
-    expect(policy).toBeDefined()
-    expect(policy).toMatch(/user_id\s*=\s*auth\.uid\(\)/)
-    expect(policy).toMatch(/occurred_at\s*>=\s*NOW\(\)\s*-\s*INTERVAL\s*'30 days'/)
-  })
-
-  it('aggiorna la RPC senza trasformare somme sconosciute in zero', () => {
-    expect(apiUsageSummaryMigration).toMatch(/DROP FUNCTION IF EXISTS public\.get_my_api_usage_summary\(TIMESTAMPTZ\)/)
-    expect(apiUsageSummaryMigration).toMatch(/unknown_usage_count/)
-    expect(apiUsageSummaryMigration).toMatch(/usage\.total_tokens IS NULL/)
-    expect(apiUsageSummaryMigration).not.toMatch(/COALESCE\(SUM\(usage\.(input_tokens|output_tokens|total_tokens|estimated_cost_usd|quota_units)\)/)
   })
 
   it('applica il cutoff della retention di 30 giorni nel cleanup schedulato', async () => {
