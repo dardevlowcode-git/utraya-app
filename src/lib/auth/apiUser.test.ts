@@ -54,9 +54,9 @@ function createAdminClientFake(tableResults: {
     if (table === 'allowlist_entries') {
       return {
         select: vi.fn(() => ({
-          ilike: vi.fn(() => ({
+          eq: vi.fn(() => ({
             eq: vi.fn(() => ({
-              single: () => resolved(tableResults.allowlist_entries, { data: null, error: null }),
+              maybeSingle: () => resolved(tableResults.allowlist_entries, { data: null, error: null }),
             })),
           })),
         })),
