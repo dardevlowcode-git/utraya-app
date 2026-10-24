@@ -1,19 +1,22 @@
 /* Commento didattico:
- * Scopo: protegge la geometria responsive della shell admin nei markup renderizzati.
- * Moduli richiamati: layout admin, mock auth e renderer React server-side.
- * Flusso: verifica che il rail mobile non riservi spazio desktop e che main/footer possano restringersi.
+ * Scopo: verifica che il layout admin protegga i figli con la sessione amministrativa.
+ * Moduli richiamati: layout admin, sessione admin controllata e renderer React server-side.
+ * Flusso: senza sessione osserva il redirect al login; con sessione verifica il rendering dei figli.
  */
 
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { getAdminSessionMock } = vi.hoisted(() => ({
+const { getAdminSessionMock, redirectMock } = vi.hoisted(() => ({
   getAdminSessionMock: vi.fn(),
+  redirectMock: vi.fn((destination: string) => {
+    throw new Error(`NEXT_REDIRECT:${destination}`)
+  }),
 }))
 
 vi.mock('@/lib/auth/admin', () => ({ getAdminSession: getAdminSessionMock }))
-vi.mock('next/navigation', () => ({ redirect: vi.fn() }))
+vi.mock('next/navigation', () => ({ redirect: redirectMock }))
 vi.mock('@/components/layout/TopNav', () => ({ default: () => null }))
 vi.mock('@/components/layout/AdminSideNav', () => ({ default: () => null }))
 vi.mock('@/components/layout/Footer', () => ({ default: () => null }))
@@ -25,12 +28,21 @@ beforeEach(() => {
 })
 
 describe('AdminLayout', () => {
-  it('uses a narrow mobile rail and lets the content column shrink without losing desktop alignment', async () => {
+  it('reindirizza al login e non rende i figli senza sessione admin', async () => {
+    getAdminSessionMock.mockResolvedValueOnce(null)
+
+    await expect(async () => renderToStaticMarkup(await AdminLayout({
+      children: createElement('section', null, 'Contenuto admin'),
+    }))).rejects.toThrow('NEXT_REDIRECT:/admin/login')
+
+    expect(redirectMock).toHaveBeenCalledWith('/admin/login')
+  })
+
+  it('rende i figli con una sessione admin valida', async () => {
     const markup = renderToStaticMarkup(await AdminLayout({
       children: createElement('section', null, 'Contenuto admin'),
     }))
 
-    expect(markup).toContain('class="min-w-0 flex-1 ml-24 md:ml-64 min-h-full"')
-    expect(markup).toContain('<div class="ml-24 md:ml-64"></div>')
+    expect(markup).toContain('<section>Contenuto admin</section>')
   })
 })

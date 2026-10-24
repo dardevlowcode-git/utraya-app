@@ -45,6 +45,7 @@ describe('route admin profilo di trascrizione', () => {
   })
 
   it('rifiuta origine diversa o assente', async () => {
+    expect((await put(validBody, { 'content-type': 'application/json' })).status).toBe(403)
     expect((await put(validBody, { origin: 'http://evil.test', 'content-type': 'application/json' })).status).toBe(403)
     expect(updateMock).not.toHaveBeenCalled()
   })

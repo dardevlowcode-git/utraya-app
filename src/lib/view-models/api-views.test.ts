@@ -65,26 +65,64 @@ function videoItem(): VideoWithContext {
 describe('API v1 view models', () => {
   it('mappa il canale senza row Supabase grezze', () => {
     const view = toChannelApiView(channelItem())
-    expect(view).toMatchObject({
+    expect(view).toEqual({
       id: 'channel-1',
       youtubeChannelId: 'UCtest',
       handle: '@test',
+      title: 'Canale Test',
+      description: 'Descrizione',
+      thumbnailUrl: 'https://img.test/t.jpg',
+      customUrl: 'https://www.youtube.com/@test',
+      addedAt: '2026-09-01T10:00:00.000Z',
       preferences: { syncFrequencyHours: 24, paused: false },
-      sync: { status: 'completed', videosFound: 7 },
+      sync: {
+        lastSyncAt: '2026-09-02T10:00:00.000Z',
+        status: 'completed',
+        videosFound: 7,
+      },
     })
     expect('user_id' in view).toBe(false)
   })
 
   it('mappa il video con contesto utente e lista paginata', () => {
     const view = toVideoApiView(videoItem())
-    expect(view.id).toBe('video-1')
-    expect(view.userState).toMatchObject({ seenStatus: 'unseen', isInWatchlist: false })
-    expect(view.channel.title).toBe('Canale Test')
-    expect(view.analysis).toMatchObject({ status: 'completed' })
+    const expectedVideo = {
+      id: 'video-1',
+      channelId: 'channel-1',
+      youtubeVideoId: 'yt1',
+      title: 'Video Test',
+      description: 'Desc',
+      thumbnailUrl: null,
+      publishedAt: null,
+      durationSeconds: 120,
+      videoUrl: 'https://www.youtube.com/watch?v=yt1',
+      type: 'video',
+      availabilityStatus: 'available',
+      createdAt: '2026-09-01T10:00:00.000Z',
+      updatedAt: '2026-09-01T10:00:00.000Z',
+      channel: {
+        id: 'channel-1',
+        youtubeChannelId: 'UCtest',
+        handle: '@test',
+        title: 'Canale Test',
+        description: null,
+        thumbnailUrl: null,
+        customUrl: null,
+        status: 'active',
+      },
+      analysis: {
+        id: 'a1',
+        status: 'completed',
+        model: 'gemini-test',
+        analyzedAt: '2026-09-02T10:00:00.000Z',
+      },
+      localizedContent: null,
+      userState: { seenStatus: 'unseen', isInWatchlist: false, seenAt: null, hiddenAt: null },
+    }
+    expect(view).toEqual(expectedVideo)
 
     const list = toVideoListApiView({ items: [videoItem()], page: 2, limit: 1, total: 5 })
-    expect(list).toMatchObject({ page: 2, limit: 1, total: 5 })
-    expect(list.items).toHaveLength(1)
+    expect(list).toEqual({ items: [expectedVideo], page: 2, limit: 1, total: 5 })
   })
 
   it('nasconde la chiave e riduce gli errori provider a booleano', () => {
@@ -99,7 +137,16 @@ describe('API v1 view models', () => {
       maskedKey: 'AIza...abcd',
     }
     const view = toIntegrationApiView(status)
-    expect(view).toMatchObject({ provider: 'youtube', isConfigured: true, isValid: false, validationStatus: 'completed', hasValidationError: true, maskedKey: 'AIza...abcd' })
+    expect(view).toEqual({
+      provider: 'youtube',
+      isConfigured: true,
+      isValid: false,
+      validationStatus: 'completed',
+      lastValidatedAt: '2026-09-02T10:00:00.000Z',
+      lastUsedAt: null,
+      hasValidationError: true,
+      maskedKey: 'AIza...abcd',
+    })
     expect(JSON.stringify(view)).not.toContain('quota_exceeded_dettaglio_interno')
   })
 
@@ -117,11 +164,28 @@ describe('API v1 view models', () => {
         channels: { id: 'channel-1', title: 'Canale Test', handle: '@test' },
       },
     })
-    expect(view).toMatchObject({ id: 'item-1', videoId: 'video-1', video: { title: 'Video Test', channel: { title: 'Canale Test' } } })
+    expect(view).toEqual({
+      id: 'item-1',
+      videoId: 'video-1',
+      addedAt: '2026-09-03T10:00:00.000Z',
+      video: {
+        id: 'video-1',
+        title: 'Video Test',
+        thumbnailUrl: null,
+        publishedAt: null,
+        durationSeconds: 60,
+        channel: { id: 'channel-1', title: 'Canale Test', handle: '@test' },
+      },
+    })
   })
 
   it('restituisce video nullo quando la relazione manca', () => {
     const view = toWatchlistItemView({ id: 'item-2', video_id: 'video-2', added_at: '2026-09-03T10:00:00.000Z' })
-    expect(view.video).toBeNull()
+    expect(view).toEqual({
+      id: 'item-2',
+      videoId: 'video-2',
+      addedAt: '2026-09-03T10:00:00.000Z',
+      video: null,
+    })
   })
 })

@@ -6,6 +6,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ApiUserContext } from '@/lib/auth/apiUser'
+import { resetRateLimits } from '@/lib/security/rate-limit'
 
 const { getApiUserMock, getChannelsForUserMock, removeChannelForUserMock, queueChannelScanMock, addChannelAndQueueScanMock, afterMock } = vi.hoisted(() => ({
   getApiUserMock: vi.fn(),
@@ -60,6 +61,7 @@ function jsonRequest(url: string, method: string, body: unknown, userId?: string
 describe('GET /api/v1/channels', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    resetRateLimits()
     getApiUserMock.mockResolvedValue(authedUser())
   })
 
@@ -95,6 +97,7 @@ describe('GET /api/v1/channels', () => {
 describe('POST /api/v1/channels', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    resetRateLimits()
     getApiUserMock.mockResolvedValue(authedUser())
   })
 
@@ -184,6 +187,7 @@ describe('POST /api/v1/channels', () => {
 describe('DELETE /api/v1/channels', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    resetRateLimits()
     getApiUserMock.mockResolvedValue(authedUser())
   })
 

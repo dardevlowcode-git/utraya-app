@@ -4,15 +4,14 @@
  * Flusso: La route viene richiamata dal client (o da altre parti server), usa servizi/utilita` in `src/lib` e poi ritorna JSON/HTTP status.
  */
 
+import { z } from 'zod'
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getAdminSession } from '@/lib/auth/admin'
 import { AppError, errorResponse } from '@/lib/utils/errors'
 import { ensureJsonRequest, ensureSameOrigin, getClientIp, getRequestId } from '@/lib/security/http'
 
-interface AllowlistBody {
-  email?: string
-}
+const allowlistBodySchema = z.object({ email: z.string().optional() }).strict()
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -52,8 +51,9 @@ export async function POST(request: Request) {
     return errorResponse('Unauthorized', 'unauthorized', 401, requestId)
   }
 
-  const body = (await request.json().catch(() => null)) as AllowlistBody | null
-  const email = normalizeEmail(body?.email ?? '')
+  const body = allowlistBodySchema.safeParse(await request.json().catch(() => null))
+  if (!body.success) return errorResponse('Richiesta non valida', 'validation', 400, requestId)
+  const email = normalizeEmail(body.data.email ?? '')
 
   if (!email) {
     return errorResponse('Email richiesta', 'validation', 400, requestId)
@@ -117,8 +117,9 @@ export async function DELETE(request: Request) {
     return errorResponse('Unauthorized', 'unauthorized', 401, requestId)
   }
 
-  const body = (await request.json().catch(() => null)) as AllowlistBody | null
-  const email = normalizeEmail(body?.email ?? '')
+  const body = allowlistBodySchema.safeParse(await request.json().catch(() => null))
+  if (!body.success) return errorResponse('Richiesta non valida', 'validation', 400, requestId)
+  const email = normalizeEmail(body.data.email ?? '')
 
   if (!email) {
     return errorResponse('Email richiesta', 'validation', 400, requestId)
