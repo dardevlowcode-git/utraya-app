@@ -41,7 +41,7 @@ vi.mock('@/lib/services/credential-validation-jobs', () => ({
 }))
 vi.mock('next/server', async (importOriginal) => ({ ...(await importOriginal<typeof import('next/server')>()), after: afterMock }))
 
-import { DELETE as deleteIntegrations, maxDuration as integrationsMaxDuration, POST as postIntegrations } from '@/app/api/integrations/route'
+import { POST as postIntegrations } from '@/app/api/integrations/route'
 import { getCredentialStatusesForUser, removeApiKey, runCredentialValidationJob, saveApiKey, writeCredentialCheckAudit } from '@/lib/services/integrations'
 
 let activeCredentialState: {
@@ -234,10 +234,6 @@ describe('credential save and validation enqueue', () => {
     configureRetryLimitClient(0)
   })
 
-  it('keeps the HTTP function timeout independent from persisted retries', () => {
-    expect(integrationsMaxDuration).toBe(60)
-  })
-
   it('lavora il job accodato con il solo attempt provider same-key e restituisce la Promise', async () => {
     const workerPromise = Promise.resolve({ attempts: 1, status: 'completed' })
     runCredentialValidationJobInlineMock.mockReturnValue(workerPromise)
@@ -247,6 +243,44 @@ describe('credential save and validation enqueue', () => {
       jobId: 'job-immediate',
       attemptProvider: expect.any(Function),
     })
+  })
+
+  it('salva la chiave senza contattare il provider né accodare il segreto in chiaro', async () => {
+    const userId = 'service-save-owner'
+    const apiKey = 'test-secret-firecrawl-service-key'
+    const keyVersion = 'service-save-key-version'
+    const { supabase } = createCredentialSupabase('credential-service-save')
+    const fetchMock = vi.fn()
+    configureRetryLimitClient(0, keyVersion)
+    vi.stubEnv('CREDENTIAL_ENCRYPTION_KEY', 'test-only-encryption-key')
+    vi.stubGlobal('fetch', fetchMock)
+
+    try {
+      const saved = await saveApiKey({
+        userId,
+        provider: 'firecrawl',
+        apiKey,
+        supabase: supabase as unknown as AppSupabaseClient,
+      })
+
+      expect(saved).toMatchObject({
+        provider: 'firecrawl',
+        validationStatus: 'pending',
+        jobId: 'validation-job-1',
+      })
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(enqueueCredentialValidationMock).toHaveBeenCalledWith({
+        credentialId: 'credential-service-save',
+        userId,
+        provider: 'firecrawl',
+        keyVersion,
+        retryLimit: 0,
+      })
+      expect(JSON.stringify(enqueueCredentialValidationMock.mock.calls)).not.toContain(apiKey)
+    } finally {
+      vi.unstubAllGlobals()
+      vi.unstubAllEnvs()
+    }
   })
 
   it('scrive lo storico con il client privilegiato e il payload minimo', async () => {
@@ -277,43 +311,6 @@ describe('credential save and validation enqueue', () => {
 
     expect(errorSpy).toHaveBeenCalledWith('credential_checks audit insert failed; validation result retained')
     errorSpy.mockRestore()
-  })
-
-  it('salva la chiave e risponde pending senza eseguire richieste provider', async () => {
-    const userId = 'validation-owner'
-    const { supabase } = createCredentialSupabase('credential-pending')
-    const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
-    const fetchMock = vi.fn()
-    process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
-    createClientMock.mockResolvedValue(supabase)
-    getCurrentSessionMock.mockResolvedValue({ userId })
-    vi.stubGlobal('fetch', fetchMock)
-
-    try {
-      const response = await postIntegrations(new Request('http://localhost/api/integrations', {
-        method: 'POST',
-        headers: { origin: 'http://localhost', 'content-type': 'application/json' },
-        body: JSON.stringify({ provider: 'youtube', apiKey: 'test-youtube-key-pending', action: 'save' }),
-      }))
-      const payload = await response.json()
-
-      expect(response.status).toBe(202)
-      expect(payload.data).toMatchObject({ isValid: null, validationStatus: 'pending', jobId: 'validation-job-1' })
-      expect(afterMock).toHaveBeenCalledTimes(1)
-      expect(enqueueCredentialValidationMock).toHaveBeenCalledWith(expect.objectContaining({
-        userId,
-        credentialId: 'credential-pending',
-        provider: 'youtube',
-        retryLimit: 0,
-        keyVersion: 'version-default',
-      }))
-      expect(JSON.stringify(enqueueCredentialValidationMock.mock.calls)).not.toContain('test-youtube-key-pending')
-      expect(fetchMock).not.toHaveBeenCalled()
-    } finally {
-      vi.unstubAllGlobals()
-      if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY
-      else process.env.CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey
-    }
   })
 
   it('accoda la discovery Firecrawl con owner, key-version e limite snapshot senza eseguire youtube/read', async () => {

@@ -8,6 +8,9 @@
 #   - type-check      -> tsc --noEmit
 #   - test            -> vitest run
 #
+# Job separato "postgres": applica tutte le migrazioni su un PostgreSQL effimero
+# (Docker, disponibile su ubuntu-latest) e verifica RPC, vincoli e isolamento RLS.
+#
 # Branch coperti:
 #   - main     -> produzione
 #   - preprod  -> staging / preview / preproduzione
@@ -66,3 +69,17 @@ jobs:
       - name: Test (Vitest)
         # "vitest run" e gia il default dello script "test" -> nessun watch mode
         run: npm test
+
+  postgres:
+    name: Postgres (migrations, RLS)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Run SQL tests (all migrations, RLS isolation)
+        # Applica tutte le migrazioni su PostgreSQL effimero in Docker e verifica
+        # RPC, vincoli e isolamento RLS (scripts/postgres-tests/run.sh).
+        run: bash scripts/postgres-tests/run.sh

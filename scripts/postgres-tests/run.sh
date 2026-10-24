@@ -25,22 +25,11 @@ tar -C "$repo_root" -cf - \
     trap "gosu postgres pg_ctl -D /tmp/utraya-pgdata -m fast stop >/dev/null" EXIT
     export PGHOST=127.0.0.1 PGPORT=5432 PGUSER=postgres PGDATABASE=postgres
     psql -X -v ON_ERROR_STOP=1 -f scripts/postgres-tests/fixture.sql
-    for migration in \
-      20261011230600_api_credential_retry_limits.sql \
-      20261011235900_persistent_credential_validation_jobs.sql \
-      20261012000000_firecrawl_personal_credentials.sql \
-      20261012001000_youtube_channel_key_rotation.sql \
-      20261012002000_firecrawl_transcript_recovery.sql \
-      20261012003000_atomic_credential_replacement.sql \
-      20261018100000_remove_firecrawl_import_enqueue.sql \
-      20261018120000_gemini_transcriptions.sql \
-      20261018130000_gemini_auto_transcription.sql \
-      20261018140000_gemini_part_key_exhaustion.sql \
-      20261018150000_transcription_profile_admin.sql \
-      20261018160000_transcription_review_admin.sql \
-      20261019120000_transcription_security_followup.sql \
-      20261019130000_transcription_relaunch_requester_eligibility.sql; do
-      psql -X -v ON_ERROR_STOP=1 -f "supabase/migrations/$migration"
+    # Tutte le migrazioni, in ordine lessicografico: i prefissi numerici (001..009)
+    # e i timestamp (2026...) ordinano correttamente come vuole Supabase.
+    for migration in $(ls supabase/migrations/*.sql | sort); do
+      psql -X -v ON_ERROR_STOP=1 -f "$migration"
     done
     psql -X -v ON_ERROR_STOP=1 -f scripts/postgres-tests/assertions.sql
+    psql -X -v ON_ERROR_STOP=1 -f scripts/postgres-tests/rls.sql
   '

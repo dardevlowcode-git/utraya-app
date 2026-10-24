@@ -11,6 +11,20 @@ BEGIN
 END;
 $$;
 
+-- Dati di test: le tabelle sono create dalle migrazioni reali, quindi qui si inseriscono
+-- solo le righe. Le credenziali preesistenti vengono inserite `service_role` e servono a
+-- provare che la migrazione del limite retry defaulta a 0 le righe già presenti.
+SET ROLE service_role;
+INSERT INTO auth.users (id, email) VALUES
+  ('00000000-0000-4000-8000-000000000001', 'owner-a@example.invalid'),
+  ('00000000-0000-4000-8000-000000000002', 'owner-b@example.invalid');
+INSERT INTO public.users (id, email) VALUES
+  ('00000000-0000-4000-8000-000000000001', 'owner-a@example.invalid'),
+  ('00000000-0000-4000-8000-000000000002', 'owner-b@example.invalid');
+INSERT INTO public.user_provider_credentials (id, user_id, provider, encrypted_key, is_configured)
+VALUES ('10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000001', 'youtube', 'cipher-old', TRUE);
+RESET ROLE;
+
 SELECT public.test_assert_true(
   (SELECT retry_limit = 0 FROM public.user_provider_credential_retry_limits
    WHERE credential_id = '10000000-0000-4000-8000-000000000001'),
@@ -1225,16 +1239,19 @@ INSERT INTO public.users (id, email) VALUES
   ('00000000-0000-4000-8000-0000000000b7', 'no-key@example.invalid'),
   ('00000000-0000-4000-8000-0000000000b9', 'suspended@example.invalid'),
   ('00000000-0000-4000-8000-0000000000ba', 'no-tos@example.invalid');
+INSERT INTO auth.users (id, email)
+SELECT u.id, u.email FROM public.users u
+WHERE NOT EXISTS (SELECT 1 FROM auth.users au WHERE au.id = u.id);
 -- K5: b9 è sospeso e ba non ha accettato i TOS correnti, quindi le loro chiavi non sono eleggibili.
 UPDATE public.users SET status = 'suspended' WHERE id = '00000000-0000-4000-8000-0000000000b9';
-INSERT INTO public.legal_acceptances (user_id, document_kind, document_version) VALUES
-  ('00000000-0000-4000-8000-0000000000b1', 'tos', '2026-10-11-1'),
-  ('00000000-0000-4000-8000-0000000000b2', 'tos', '2026-10-11-1'),
-  ('00000000-0000-4000-8000-0000000000b3', 'tos', '2026-10-11-1'),
-  ('00000000-0000-4000-8000-0000000000b9', 'tos', '2026-10-11-1');
+INSERT INTO public.legal_acceptances (user_id, document_kind, document_version, document_hash, locale, user_email_at_acceptance) VALUES
+  ('00000000-0000-4000-8000-0000000000b1', 'tos', '2026-10-11-1', 'hash-tos-test', 'it', 'g1@example.invalid'),
+  ('00000000-0000-4000-8000-0000000000b2', 'tos', '2026-10-11-1', 'hash-tos-test', 'it', 'g2@example.invalid'),
+  ('00000000-0000-4000-8000-0000000000b3', 'tos', '2026-10-11-1', 'hash-tos-test', 'it', 'g3@example.invalid'),
+  ('00000000-0000-4000-8000-0000000000b9', 'tos', '2026-10-11-1', 'hash-tos-test', 'it', 'suspended@example.invalid');
 -- ba ha accettato solo una versione precedente: non vale per l'eleggibilità corrente.
-INSERT INTO public.legal_acceptances (user_id, document_kind, document_version)
-VALUES ('00000000-0000-4000-8000-0000000000ba', 'tos', '2026-05-16-1');
+INSERT INTO public.legal_acceptances (user_id, document_kind, document_version, document_hash, locale, user_email_at_acceptance)
+VALUES ('00000000-0000-4000-8000-0000000000ba', 'tos', '2026-05-16-1', 'hash-tos-old', 'it', 'no-tos@example.invalid');
 INSERT INTO public.channels (id, youtube_channel_id, title) VALUES
   ('20000000-0000-4000-8000-0000000000c1', 'UC-auto-enqueue', 'Auto enqueue channel');
 INSERT INTO public.user_channels (user_id, channel_id, is_active, added_at) VALUES
