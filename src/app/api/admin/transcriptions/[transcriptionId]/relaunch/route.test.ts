@@ -98,8 +98,13 @@ describe('route admin rilancio parti mancanti', () => {
     relaunchMock.mockRejectedValue(new Error('postgres://secret'))
 
     const response = await post({})
+    const payload = await response.json()
 
     expect(response.status).toBe(500)
-    expect(JSON.stringify(await response.json())).not.toContain('secret')
+    expect(payload).toMatchObject({
+      ok: false,
+      error: { code: 'INTERNAL_ERROR', message: 'Errore interno' },
+    })
+    expect(JSON.stringify(payload)).not.toContain('postgres://secret')
   })
 })

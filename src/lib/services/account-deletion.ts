@@ -49,11 +49,16 @@ function verifyCancelDeletionToken(token: string): { userId: string; requestId: 
     throw new Error('Token cancellazione non valido')
   }
 
-  const parsed = JSON.parse(fromBase64Url(payload)) as {
+  let parsed: {
     purpose?: string
     userId?: string
     requestId?: string
     exp?: number
+  }
+  try {
+    parsed = JSON.parse(fromBase64Url(payload)) as typeof parsed
+  } catch {
+    throw new Error('Token cancellazione non valido')
   }
 
   if (parsed.purpose !== 'cancel_deletion' || !parsed.userId || !parsed.requestId || typeof parsed.exp !== 'number') {

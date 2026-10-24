@@ -26,11 +26,13 @@ vi.mock('@/lib/services/channels', () => ({
 vi.mock('next/server', async (importOriginal) => ({ ...(await importOriginal<typeof import('next/server')>()), after: afterMock }))
 vi.mock('@/lib/services/transcription-auto', () => ({ runAutoTranscriptionsForChannel: runAutoTranscriptionsMock }))
 
+let GET: typeof import('@/app/api/channels/route').GET
 let POST: typeof import('@/app/api/channels/route').POST
+let DELETE: typeof import('@/app/api/channels/route').DELETE
 
 describe('POST /api/channels', () => {
   beforeAll(async () => {
-    ;({ POST } = await import('@/app/api/channels/route'))
+    ;({ GET, POST, DELETE } = await import('@/app/api/channels/route'))
   })
 
   beforeEach(() => {
@@ -70,6 +72,50 @@ describe('POST /api/channels', () => {
     expect(payload.data.warningCode).toBe('missing_youtube_api_key')
     expect(payload.data.message).toContain('Scansione in pausa')
     expect(typeof payload.requestId).toBe('string')
+  })
+
+  it('risponde 401 senza sessione per GET, POST e DELETE', async () => {
+    getCurrentSessionMock.mockResolvedValue(null)
+    const postRequest = () => new Request('http://localhost/api/channels', {
+      method: 'POST',
+      headers: { origin: 'http://localhost', 'content-type': 'application/json' },
+      body: JSON.stringify({ channelUrl: 'https://www.youtube.com/@test' }),
+    })
+    const deleteRequest = () => new Request('http://localhost/api/channels', {
+      method: 'DELETE',
+      headers: { origin: 'http://localhost', 'content-type': 'application/json' },
+      body: JSON.stringify({ channelId: 'channel-test' }),
+    })
+
+    expect((await GET()).status).toBe(401)
+    expect((await POST(postRequest())).status).toBe(401)
+    expect((await DELETE(deleteRequest())).status).toBe(401)
+    expect(addChannelForUserMock).not.toHaveBeenCalled()
+    expect(requestScanNowForUserMock).not.toHaveBeenCalled()
+  })
+
+  it('rifiuta origin diverso con 403 prima di leggere la sessione', async () => {
+    const response = await POST(new Request('http://localhost/api/channels', {
+      method: 'POST',
+      headers: { origin: 'https://evil.test', 'content-type': 'application/json' },
+      body: JSON.stringify({ channelUrl: 'https://www.youtube.com/@test' }),
+    }))
+
+    expect(response.status).toBe(403)
+    expect(getCurrentSessionMock).not.toHaveBeenCalled()
+    expect(addChannelForUserMock).not.toHaveBeenCalled()
+  })
+
+  it('rifiuta content-type non JSON con 415 prima di leggere la sessione', async () => {
+    const response = await POST(new Request('http://localhost/api/channels', {
+      method: 'POST',
+      headers: { origin: 'http://localhost', 'content-type': 'text/plain' },
+      body: 'channelUrl=https://www.youtube.com/@test',
+    }))
+
+    expect(response.status).toBe(415)
+    expect(getCurrentSessionMock).not.toHaveBeenCalled()
+    expect(addChannelForUserMock).not.toHaveBeenCalled()
   })
 
   it('non restituisce warningCode quando la scansione non è bloccata', async () => {

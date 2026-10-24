@@ -29,9 +29,13 @@ describe('credential validations cron route', () => {
 
   it('rifiuta cron senza bearer valido e non avvia job', async () => {
     const response = await GET(new Request('http://localhost/api/cron/credential-validations'))
+    const sameLengthWrongSecret = await GET(new Request('http://localhost/api/cron/credential-validations', {
+      headers: { authorization: 'Bearer test-cron-only-secreX' },
+    }))
     const payload = await response.json()
 
     expect(response.status).toBe(401)
+    expect(sameLengthWrongSecret.status).toBe(401)
     expect(response.headers.get('X-Request-Id')).toBe(payload.requestId)
     expect(payload).toMatchObject({ ok: false, error: { code: 'CRON_UNAUTHORIZED' }, requestId: expect.any(String) })
     expect(processPendingCredentialValidationJobsMock).not.toHaveBeenCalled()
