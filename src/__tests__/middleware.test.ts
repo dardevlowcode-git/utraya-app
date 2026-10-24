@@ -128,7 +128,7 @@ describe('middleware', () => {
 
     it('risponde 401 con una secret diversa da quella che ha firmato il cookie', async () => {
       const cookie = signedAdminCookie()
-      vi.stubEnv('SUPERADMIN_SESSION_SECRET', 'test-secret-other-9876543210')
+      vi.stubEnv('SUPERADMIN_SESSION_SECRET', 'test-session-secret-not-a-real-key-for-invalid-signature')
 
       const response = await middleware(request('/api/admin/allowlist', { cookies: { [adminSessionCookieName]: cookie } }))
 

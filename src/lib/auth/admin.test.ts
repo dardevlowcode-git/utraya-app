@@ -101,7 +101,7 @@ describe('sessione admin: contratto fra admin.ts e middleware', () => {
   it('rifiuta da entrambi un cookie firmato con un\'altra secret', async () => {
     const cookie = buildAdminSessionCookieValue(adminUsername)
 
-    vi.stubEnv('SUPERADMIN_SESSION_SECRET', 'test-secret-other-9876543210')
+    vi.stubEnv('SUPERADMIN_SESSION_SECRET', 'test-session-secret-not-a-real-key-for-invalid-signature')
     expect(readAdminSessionFromCookieValue(cookie)).toBeNull()
     await expect(middlewareAccepts(cookie)).resolves.toBe(false)
   })
