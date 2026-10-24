@@ -130,6 +130,66 @@ INSERT INTO public.job_attempts (id, job_id, attempt_number, status) VALUES
 RESET ROLE;
 
 -- =========================================================================
+-- Hardening funzioni advisory: il trigger resta utilizzabile, la RPC no; le
+-- funzioni con effetti collaterali hanno un search_path vuoto.
+-- =========================================================================
+SELECT public.test_assert_rls(
+  NOT pg_catalog.has_function_privilege('anon', 'public.initialize_user_provider_credential_retry_limit()', 'EXECUTE')
+  AND NOT pg_catalog.has_function_privilege('authenticated', 'public.initialize_user_provider_credential_retry_limit()', 'EXECUTE'),
+  'anon e authenticated non possono invocare direttamente la funzione trigger'
+);
+
+SET ROLE service_role;
+INSERT INTO public.user_provider_credentials (id, user_id, provider, encrypted_key, is_configured)
+VALUES ('00000000-0000-4000-8000-00000000f001', '00000000-0000-4000-8000-00000000c001', 'gemini', 'cipher-trigger-test', TRUE);
+RESET ROLE;
+
+SELECT public.test_assert_rls(
+  (SELECT retry_limit = 0 FROM public.user_provider_credential_retry_limits
+   WHERE credential_id = '00000000-0000-4000-8000-00000000f001'),
+  'l inserimento credenziale inizializza comunque il limite retry via trigger'
+);
+
+SELECT public.test_assert_rls(
+  (SELECT EXISTS (
+     SELECT 1 FROM pg_catalog.unnest(p.proconfig) AS config
+     WHERE config = 'search_path=""'
+   ) FROM pg_catalog.pg_proc p
+   WHERE p.oid = 'public.update_updated_at_column()'::pg_catalog.regprocedure)
+  AND (SELECT EXISTS (
+     SELECT 1 FROM pg_catalog.unnest(p.proconfig) AS config
+     WHERE config = 'search_path=""'
+   ) FROM pg_catalog.pg_proc p
+   WHERE p.oid = 'public.cleanup_old_logs()'::pg_catalog.regprocedure),
+  'le funzioni update_updated_at_column e cleanup_old_logs fissano search_path vuoto'
+);
+
+INSERT INTO public.app_logs (id, level, message, created_at)
+VALUES ('13000000-0000-4000-8000-0000f150f010', 'info', 'cleanup test', NOW() - INTERVAL '8 days');
+INSERT INTO public.audit_logs (id, action, resource_type, created_at)
+VALUES ('13000000-0000-4000-8000-0000f150f011', 'cleanup test', 'test', NOW() - INTERVAL '8 days');
+INSERT INTO public.job_locks (id, lock_key, locked_by, expires_at)
+VALUES ('13000000-0000-4000-8000-0000f150f012', 'cleanup-test', 'test', NOW() - INTERVAL '1 minute');
+SELECT public.cleanup_old_logs();
+
+SELECT public.test_assert_rls(
+  NOT EXISTS (SELECT 1 FROM public.app_logs WHERE id = '13000000-0000-4000-8000-0000f150f010')
+  AND NOT EXISTS (SELECT 1 FROM public.audit_logs WHERE id = '13000000-0000-4000-8000-0000f150f011')
+  AND NOT EXISTS (SELECT 1 FROM public.job_locks WHERE id = '13000000-0000-4000-8000-0000f150f012'),
+  'cleanup_old_logs continua a eliminare log scaduti e lock scaduti'
+);
+
+UPDATE public.user_provider_credentials
+SET updated_at = '2000-01-01 00:00:00+00'
+WHERE id = '12000000-0000-4000-8000-0000f150a010';
+
+SELECT public.test_assert_rls(
+  (SELECT updated_at > '2000-01-01 00:00:00+00'::TIMESTAMPTZ
+   FROM public.user_provider_credentials WHERE id = '12000000-0000-4000-8000-0000f150a010'),
+  'update_updated_at_column imposta updated_at all aggiornamento'
+);
+
+-- =========================================================================
 -- Helper di sessione: gli stessi due usati dal resto del file.
 -- =========================================================================
 -- Apre una sessione `authenticated` con l'identità dell'utente indicato.
@@ -682,7 +742,7 @@ DELETE FROM public.user_deletion_requests WHERE id IN ('1a000000-0000-4000-8000-
 DELETE FROM public.user_roles WHERE user_id IN ('00000000-0000-4000-8000-00000000a001', '00000000-0000-4000-8000-00000000b001', '00000000-0000-4000-8000-00000000c001');
 DELETE FROM public.user_identities WHERE id IN ('11000000-0000-4000-8000-0000f150a010', '11000000-0000-4000-8000-0000f150b010');
 DELETE FROM public.credential_checks WHERE id IN ('13000000-0000-4000-8000-0000f150a010', '13000000-0000-4000-8000-0000f150b010');
-DELETE FROM public.user_provider_credentials WHERE id IN ('12000000-0000-4000-8000-0000f150a010', '12000000-0000-4000-8000-0000f150b010', '12000000-0000-4000-8000-0000f150c010');
+DELETE FROM public.user_provider_credentials WHERE id IN ('12000000-0000-4000-8000-0000f150a010', '12000000-0000-4000-8000-0000f150b010', '12000000-0000-4000-8000-0000f150c010', '00000000-0000-4000-8000-00000000f001');
 DELETE FROM public.user_channel_preferences WHERE id IN ('15000000-0000-4000-8000-0000f150a010', '15000000-0000-4000-8000-0000f150b010');
 DELETE FROM public.watchlist_items WHERE id IN ('18000000-0000-4000-8000-0000f150a010', '18000000-0000-4000-8000-0000f150b010');
 DELETE FROM public.watchlists WHERE id IN ('17000000-0000-4000-8000-0000f150a010', '17000000-0000-4000-8000-0000f150b010');
