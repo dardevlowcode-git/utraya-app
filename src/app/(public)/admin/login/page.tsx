@@ -70,9 +70,12 @@ function AdminLoginForm() {
               id="username"
               type="text"
               autoComplete="username"
+              spellCheck={false}
+              autoCapitalize="none"
+              autoCorrect="off"
               value={username}
               onChange={(event) => setUsername(event.target.value)}
-              className="w-full px-4 py-3 rounded-xl bg-surface-container border border-outline-variant/40 text-on-surface"
+              className="w-full px-4 py-3 rounded-xl bg-surface-container border border-outline-variant/40 text-on-surface [-webkit-text-security:disc]"
               placeholder={t('auth.admin.usernamePlaceholder')}
               required
             />

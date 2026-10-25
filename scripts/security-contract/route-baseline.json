@@ -8,6 +8,7 @@
   "^\\/admin\\/jobs\\/AdminJobsClient$",
   "^\\/admin\\/layout$",
   "^\\/admin\\/login$",
+  "^\\/admin\\/login\\/page.test$",
   "^\\/admin\\/logs$",
   "^\\/admin\\/logs\\/FailedJobsTableClient$",
   "^\\/admin\\/logs\\/LogCleanupButton$",
