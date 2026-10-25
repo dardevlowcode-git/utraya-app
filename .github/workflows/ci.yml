@@ -1,7 +1,7 @@
 # =============================================================================
 # CI - Quality Gates
 # -----------------------------------------------------------------------------
-# Controlli di qualita del codice che girano ad ogni PR e push.
+# Controlli di qualita del codice che girano sulle PR verso main e sui push a main.
 # Allineati agli script presenti in package.json (progetto alla root):
 #   - check-comments  -> verifica che ogni file abbia il commento didattico iniziale
 #   - lint            -> next lint (ESLint)
@@ -11,28 +11,18 @@
 # Job separato "postgres": applica tutte le migrazioni su un PostgreSQL effimero
 # (Docker, disponibile su ubuntu-latest) e verifica RPC, vincoli e isolamento RLS.
 #
-# Branch coperti:
-#   - main     -> produzione
-#   - preprod  -> staging / preview / preproduzione
-#   - dev      -> sviluppo isolato
+# Il gate sulle PR verso main permette solo preprod e hotfix/*.
 # =============================================================================
 
 name: CI
 
 on:
   pull_request:
-    branches:
-      - dev
-      - main
-      - preprod
+    branches: [main]
   push:
-    branches:
-      - dev
-      - main
-      - preprod
+    branches: [main]
 
-permissions:
-  contents: read
+permissions: {}
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
@@ -41,12 +31,16 @@ jobs:
   validate:
     name: Validate (comments, lint, type-check, test)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Node
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           cache: npm
@@ -70,6 +64,13 @@ jobs:
         # "vitest run" e gia il default dello script "test" -> nessun watch mode
         run: npm test
 
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
+          NEXT_PUBLIC_SITE_URL: https://example.invalid
+
   postgres:
     name: Postgres (migrations, RLS)
     runs-on: ubuntu-latest
@@ -77,9 +78,29 @@ jobs:
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Run SQL tests (all migrations, RLS isolation)
         # Applica tutte le migrazioni su PostgreSQL effimero in Docker e verifica
         # RPC, vincoli e isolamento RLS (scripts/postgres-tests/run.sh).
         run: bash scripts/postgres-tests/run.sh
+
+  source-branch:
+    name: Source branch is preprod
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions: {}
+    env:
+      PR_HEAD_REF: ${{ github.head_ref }}
+    steps:
+      - name: Enforce the protected source branch
+        run: |
+          case "$PR_HEAD_REF" in
+            preprod|hotfix/*) echo "Allowed source branch." ;;
+            *)
+              echo "::error::Pull requests to main must come from preprod or hotfix/*."
+              exit 1
+              ;;
+          esac

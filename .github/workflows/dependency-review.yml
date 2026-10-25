@@ -1,7 +1,7 @@
 # =============================================================================
 # Dependency Review — buttafuori delle dipendenze nelle PR (gratis su pubblici)
 # -----------------------------------------------------------------------------
-# Mostra in ogni PR cosa cambia nelle dipendenze e blocca se la PR introduce
+# Mostra in ogni PR verso main cosa cambia nelle dipendenze e blocca se introduce
 # vulnerabilità note con severità HIGH/CRITICAL o licenze proibite.
 # Non modifica il codice, aggiunge solo un check obbligatorio.
 # Da rendere "Required check" nel Ruleset insieme a CI / Secret Scan.
@@ -11,14 +11,9 @@ name: Dependency Review
 
 on:
   pull_request:
-    branches:
-      - dev
-      - main
-      - preprod
+    branches: [main]
 
-permissions:
-  contents: read
-  pull-requests: write
+permissions: {}
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
@@ -27,10 +22,10 @@ jobs:
   review:
     name: Dependency review
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
-      - name: Checkout codice
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
       - name: Dependency review (blocca HIGH/CRITICAL)
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
