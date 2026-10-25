@@ -38,6 +38,9 @@ function responseForRequest(input: string | URL | Request, init?: RequestInit) {
   if (url.pathname === '/api/v1/jobs/manual-job') {
     return apiResponse(200, { status: 'completed' }, requestId)
   }
+  if (url.pathname === '/api/v1/channels' && method === 'GET') {
+    return apiResponse(200, [], requestId)
+  }
   return apiResponse(200, {}, requestId)
 }
 
@@ -69,6 +72,36 @@ describe('runApiVerification', () => {
       expectedStatus: 202,
       actualStatus: 202,
       ok: true,
+    })
+  })
+
+  it('non aggiunge né rimuove il canale fixture già seguito e registra un controllo rosso', async () => {
+    vi.stubEnv('API_E2E_CHANNEL_ID', '')
+    vi.stubEnv('API_E2E_CHANNEL_URL', 'https://www.youtube.com/@fixture-channel')
+    const fetchMock = vi.mocked(fetch)
+    fetchMock.mockImplementation((input, init) => {
+      const url = new URL(input instanceof Request ? input.url : String(input))
+      const method = init?.method ?? (input instanceof Request ? input.method : 'GET')
+      const requestId = new Headers(init?.headers).get('X-Request-Id')
+
+      if (url.pathname === '/api/v1/channels' && method === 'GET') {
+        return Promise.resolve(apiResponse(200, [{
+          id: 'fixture-followed-channel',
+          youtubeChannelId: 'handle:fixture-channel',
+          handle: 'fixture-channel',
+          customUrl: 'https://www.youtube.com/@fixture-channel',
+        }], requestId))
+      }
+      return Promise.resolve(responseForRequest(input, init))
+    })
+
+    const report = await runApiVerification({ target: 'dev', mutations: true })
+
+    expect(fetchMock).not.toHaveBeenCalledWith('https://dev.utraya.com/api/v1/channels', expect.objectContaining({ method: 'POST' }))
+    expect(fetchMock).not.toHaveBeenCalledWith('https://dev.utraya.com/api/v1/channels', expect.objectContaining({ method: 'DELETE' }))
+    expect(report.checks.find((check) => check.name === 'fixture channel already followed')).toMatchObject({
+      ok: false,
+      message: expect.stringContaining('API_E2E_CHANNEL_URL'),
     })
   })
 

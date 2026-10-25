@@ -7,6 +7,7 @@
 import { randomUUID } from 'node:crypto'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { parseYouTubeChannelUrl } from '@/lib/utils/youtube-url'
 
 export const verifierTargetOrigins = {
   dev: 'https://dev.utraya.com',
@@ -34,6 +35,7 @@ export type VerifierCheck = {
   envelopeValid?: boolean
   code?: string | null
   status?: string
+  message?: string
   durationMs: number
 }
 
@@ -112,7 +114,7 @@ export async function runApiVerification(params: { target: VerifierTarget; mutat
   const startedAt = new Date().toISOString()
   await runCheck(baseUrl, token, checks, 'unauthenticated contract', '/api/v1/me', { auth: false, expectedStatus: 401 })
   await runCheck(baseUrl, token, checks, 'profile bootstrap', '/api/v1/me')
-  await runCheck(baseUrl, token, checks, 'channels list', '/api/v1/channels')
+  const channelsList = await runCheck(baseUrl, token, checks, 'channels list', '/api/v1/channels')
   await runCheck(baseUrl, token, checks, 'videos list', '/api/v1/videos?limit=1')
   await runCheck(baseUrl, token, checks, 'watchlist', '/api/v1/watchlist')
   await runCheck(baseUrl, token, checks, 'integrations status', '/api/v1/integrations')
@@ -145,17 +147,56 @@ export async function runApiVerification(params: { target: VerifierTarget; mutat
 
   const channelUrl = process.env.API_E2E_CHANNEL_URL?.trim()
   if (params.mutations && channelUrl) {
-    const added = await runCheck(baseUrl, token, checks, 'add fixture channel', '/api/v1/channels', { method: 'POST', body: { action: 'add', channelUrl, markExistingVideosAsSeen: true }, expectedStatus: 202 })
-    const addedData = added.body?.data as Record<string, unknown> | undefined
-    const addedChannelId = addedData?.channelId
-    if (typeof addedChannelId === 'string') {
-      try {
-        const scanData = addedData?.scan as Record<string, unknown> | undefined
-        if (typeof scanData?.jobId === 'string') {
-          await waitForJob(baseUrl, token, checks, scanData.jobId as string, 'fixture scan job status')
+    const followedChannels = Array.isArray(channelsList.body?.data)
+      ? channelsList.body.data as Array<Record<string, unknown>>
+      : null
+    const parsedChannel = parseYouTubeChannelUrl(channelUrl)
+
+    if (!channelsList.check.ok || !followedChannels || parsedChannel.type === 'invalid') {
+      checks.push({
+        name: 'fixture channel membership check',
+        path: '/api/v1/channels',
+        expectedStatus: 200,
+        actualStatus: channelsList.check.actualStatus,
+        ok: false,
+        status: 'fixture_channel_membership_unavailable',
+        message: 'Could not safely verify whether the fixture channel is already followed; check the channels list and API_E2E_CHANNEL_URL.',
+        durationMs: 0,
+      })
+    } else {
+      const normalizedHandle = parsedChannel.type === 'handle' ? parsedChannel.value.toLowerCase() : null
+      const alreadyFollowed = followedChannels.some((channel) => {
+        if (parsedChannel.type === 'channel_id') return channel.youtubeChannelId === parsedChannel.value
+        const channelHandle = typeof channel.handle === 'string' ? channel.handle.replace(/^@/, '').toLowerCase() : null
+        const channelId = typeof channel.youtubeChannelId === 'string' ? channel.youtubeChannelId.toLowerCase() : null
+        return channelHandle === normalizedHandle || channelId === `handle:${normalizedHandle}`
+      })
+
+      if (alreadyFollowed) {
+        checks.push({
+          name: 'fixture channel already followed',
+          path: '/api/v1/channels',
+          expectedStatus: 200,
+          actualStatus: channelsList.check.actualStatus,
+          ok: false,
+          status: 'fixture_channel_already_followed',
+          message: 'The fixture user already follows this channel; change API_E2E_CHANNEL_URL to a channel the fixture does not follow.',
+          durationMs: 0,
+        })
+      } else {
+        const added = await runCheck(baseUrl, token, checks, 'add fixture channel', '/api/v1/channels', { method: 'POST', body: { action: 'add', channelUrl, markExistingVideosAsSeen: true }, expectedStatus: 202 })
+        const addedData = added.body?.data as Record<string, unknown> | undefined
+        const addedChannelId = addedData?.channelId
+        if (typeof addedChannelId === 'string') {
+          try {
+            const scanData = addedData?.scan as Record<string, unknown> | undefined
+            if (typeof scanData?.jobId === 'string') {
+              await waitForJob(baseUrl, token, checks, scanData.jobId, 'fixture scan job status')
+            }
+          } finally {
+            await runCheck(baseUrl, token, checks, 'remove fixture channel', '/api/v1/channels', { method: 'DELETE', body: { channelId: addedChannelId } })
+          }
         }
-      } finally {
-        await runCheck(baseUrl, token, checks, 'remove fixture channel', '/api/v1/channels', { method: 'DELETE', body: { channelId: addedChannelId } })
       }
     }
   }

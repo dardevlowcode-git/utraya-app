@@ -11,12 +11,13 @@
 #   1. npm audit          -> CVE delle dipendenze (npm registry)
 #   2. Semgrep            -> analisi statica del codice (SAST)
 #   3. Gitleaks           -> ricerca segreti nella history Git
-#   4. Trivy              -> scansione filesystem (vulnerabilita librerie)
+#   4. Trivy              -> scansione filesystem (reportistica vulnerabilita librerie)
 #   5. CodeQL             -> analisi codice JavaScript/TypeScript
 #   6. zizmor             -> analisi sicurezza dei workflow
 #
-# Semgrep, Trivy e CodeQL caricano risultati SARIF nel Code Scanning. zizmor
-# annota i rilievi e blocca il job a partire dalla gravita media.
+# Semgrep, Trivy e CodeQL caricano risultati SARIF nel Code Scanning; Trivy e'
+# solo reportistico. Il gate sulle dipendenze e' npm audit --audit-level=high.
+# zizmor annota i rilievi e blocca il job a partire dalla gravita media.
 # =============================================================================
 
 name: Security Scan
@@ -176,6 +177,7 @@ jobs:
           format: 'sarif'
           output: 'trivy-fs.sarif'
           severity: 'CRITICAL,HIGH'
+          # Trivy carica il SARIF ma non blocca; il gate dipendenze e' npm audit --audit-level=high.
           exit-code: '0'
 
       - name: Upload SARIF Trivy fs
