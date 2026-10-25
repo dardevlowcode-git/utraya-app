@@ -138,7 +138,7 @@ export async function runApiVerification(params: { target: VerifierTarget; mutat
 
   const channelId = process.env.API_E2E_CHANNEL_ID?.trim()
   if (params.mutations && channelId) {
-    const scan = await runCheck(baseUrl, token, checks, 'manual channel scan', '/api/v1/channels', { method: 'POST', body: { action: 'scan_now', channelId } })
+    const scan = await runCheck(baseUrl, token, checks, 'manual channel scan', '/api/v1/channels', { method: 'POST', body: { action: 'scan_now', channelId }, expectedStatus: 202 })
     const jobId = (scan.body?.data as Record<string, unknown> | undefined)?.jobId
     if (typeof jobId === 'string') await waitForJob(baseUrl, token, checks, jobId, 'manual scan job status')
   }
@@ -148,12 +148,15 @@ export async function runApiVerification(params: { target: VerifierTarget; mutat
     const added = await runCheck(baseUrl, token, checks, 'add fixture channel', '/api/v1/channels', { method: 'POST', body: { action: 'add', channelUrl, markExistingVideosAsSeen: true }, expectedStatus: 202 })
     const addedData = added.body?.data as Record<string, unknown> | undefined
     const addedChannelId = addedData?.channelId
-    const scanData = addedData?.scan as Record<string, unknown> | undefined
-    const scanCompleted = typeof scanData?.jobId === 'string'
-      ? await waitForJob(baseUrl, token, checks, scanData.jobId as string, 'fixture scan job status')
-      : false
-    if (scanCompleted && typeof addedChannelId === 'string') {
-      await runCheck(baseUrl, token, checks, 'remove fixture channel', '/api/v1/channels', { method: 'DELETE', body: { channelId: addedChannelId } })
+    if (typeof addedChannelId === 'string') {
+      try {
+        const scanData = addedData?.scan as Record<string, unknown> | undefined
+        if (typeof scanData?.jobId === 'string') {
+          await waitForJob(baseUrl, token, checks, scanData.jobId as string, 'fixture scan job status')
+        }
+      } finally {
+        await runCheck(baseUrl, token, checks, 'remove fixture channel', '/api/v1/channels', { method: 'DELETE', body: { channelId: addedChannelId } })
+      }
     }
   }
 
