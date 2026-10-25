@@ -620,14 +620,8 @@ SELECT public.test_assert_rls(
 -- 8. Le tre verifiche testuali di api-usage.test.ts, portate in SQL reale.
 -- =========================================================================
 
--- 8a. Il provider Firecrawl è ammesso dalle CHECK reali (non dal testo della migrazione).
---     Si prova inserendo un record credenziale firecrawl (che funziona) e un evento ledger.
--- BUG: l'evento `api_usage_events` con provider `firecrawl` NON è inseribile. La migrazione
--- 20261012000000 sostituisce `api_usage_events_provider_check` (ora ammette 'firecrawl') ma
--- non aggiorna `api_usage_provider_fields_check`, che ammette solo youtube/gemini. L'app
--- costruisce per Firecrawl un evento con token/costi/quota tutti NULL, quindi la scrittura
--- viola il vincolo e il ledger perde l'evento. Il test che lo scopre resta commentato
--- (regola 6: il difetto non si corregge qui, si segnala).
+-- 8a. I provider ammessi e i rispettivi campi sono verificati sulle CHECK reali.
+--     Si prova inserendo un record credenziale Firecrawl e un evento ledger.
 SET ROLE service_role;
 INSERT INTO public.user_provider_credentials (id, user_id, provider, encrypted_key, is_configured)
 VALUES ('12000000-0000-4000-8000-0000f150c010', '00000000-0000-4000-8000-00000000c001', 'firecrawl', 'cipher-firecrawl', TRUE);
@@ -638,16 +632,68 @@ SELECT public.test_assert_rls(
   'il provider Firecrawl è ammesso dalle CHECK reali sulle credenziali'
 );
 
--- BUG: evento Firecrawl rifiutato da `api_usage_provider_fields_check` (20261004120000:23),
---      non aggiornato da 20261012000000. Da correggere in una migrazione dedicata.
--- SET ROLE service_role;
--- INSERT INTO public.api_usage_events (id, user_id, provider, operation, outcome) VALUES
---   ('1b000000-0000-4000-8000-0000f150c010', '00000000-0000-4000-8000-00000000c001', 'firecrawl', 'alexandria.find-tools', 'success');
--- RESET ROLE;
--- SELECT public.test_assert_rls(
---   (SELECT count(*) FROM public.api_usage_events WHERE provider = 'firecrawl') = 1,
---   'un evento Firecrawl è registrabile nel ledger'
--- );
+SET ROLE service_role;
+INSERT INTO public.api_usage_events (id, user_id, provider, operation, outcome) VALUES
+  ('1b000000-0000-4000-8000-0000f150c020', '00000000-0000-4000-8000-00000000c001', 'firecrawl', 'alexandria.find-tools', 'success');
+RESET ROLE;
+SELECT public.test_assert_rls(
+  (SELECT count(*) FROM public.api_usage_events WHERE provider = 'firecrawl') = 1,
+  'un evento Firecrawl è registrabile nel ledger'
+);
+
+-- I campi di consumo specifici di Firecrawl devono rimanere NULL.
+SET ROLE service_role;
+DO $$
+DECLARE
+  v_rejected BOOLEAN;
+BEGIN
+  v_rejected := FALSE;
+  BEGIN
+    INSERT INTO public.api_usage_events (id, user_id, provider, operation, outcome, input_tokens) VALUES
+      ('1b000000-0000-4000-8000-0000f150c011', '00000000-0000-4000-8000-00000000c001', 'firecrawl', 'alexandria.find-tools', 'success', 1);
+  EXCEPTION WHEN check_violation THEN
+    v_rejected := TRUE;
+  END;
+  PERFORM public.test_assert_rls(v_rejected, 'Firecrawl rifiuta eventi con token');
+
+  v_rejected := FALSE;
+  BEGIN
+    INSERT INTO public.api_usage_events (id, user_id, provider, operation, outcome, quota_units) VALUES
+      ('1b000000-0000-4000-8000-0000f150c012', '00000000-0000-4000-8000-00000000c001', 'firecrawl', 'alexandria.find-tools', 'success', 1);
+  EXCEPTION WHEN check_violation THEN
+    v_rejected := TRUE;
+  END;
+  PERFORM public.test_assert_rls(v_rejected, 'Firecrawl rifiuta eventi con quota');
+
+  v_rejected := FALSE;
+  BEGIN
+    INSERT INTO public.api_usage_events (id, user_id, provider, operation, outcome, estimated_cost_usd) VALUES
+      ('1b000000-0000-4000-8000-0000f150c013', '00000000-0000-4000-8000-00000000c001', 'firecrawl', 'alexandria.find-tools', 'success', 0.01);
+  EXCEPTION WHEN check_violation THEN
+    v_rejected := TRUE;
+  END;
+  PERFORM public.test_assert_rls(v_rejected, 'Firecrawl rifiuta eventi con costo stimato');
+
+  v_rejected := FALSE;
+  BEGIN
+    INSERT INTO public.api_usage_events (id, user_id, provider, operation, outcome, input_tokens) VALUES
+      ('1b000000-0000-4000-8000-0000f150c014', '00000000-0000-4000-8000-00000000c001', 'youtube', 'videos.list', 'success', 1);
+  EXCEPTION WHEN check_violation THEN
+    v_rejected := TRUE;
+  END;
+  PERFORM public.test_assert_rls(v_rejected, 'YouTube rifiuta eventi con token');
+
+  v_rejected := FALSE;
+  BEGIN
+    INSERT INTO public.api_usage_events (id, user_id, provider, operation, outcome, quota_units) VALUES
+      ('1b000000-0000-4000-8000-00000000c015', '00000000-0000-4000-8000-00000000c001', 'gemini', 'generateContent', 'success', 1);
+  EXCEPTION WHEN check_violation THEN
+    v_rejected := TRUE;
+  END;
+  PERFORM public.test_assert_rls(v_rejected, 'Gemini rifiuta eventi con quota');
+END;
+$$;
+RESET ROLE;
 
 -- 8b. Ownership e retention 30 giorni della policy sono provati leggendo da `authenticated`:
 --     A vede il proprio evento recente ma non quello vecchio di oltre 30 giorni, né quelli di C.
@@ -749,7 +795,7 @@ DELETE FROM public.watchlists WHERE id IN ('17000000-0000-4000-8000-0000f150a010
 DELETE FROM public.user_video_states WHERE id IN ('16000000-0000-4000-8000-0000f150a010', '16000000-0000-4000-8000-0000f150b010');
 DELETE FROM public.user_channels WHERE id IN ('14000000-0000-4000-8000-0000f150a010', '14000000-0000-4000-8000-0000f150b010');
 DELETE FROM public.legal_acceptances WHERE id IN ('19000000-0000-4000-8000-0000f150a010', '19000000-0000-4000-8000-0000f150b010');
-DELETE FROM public.api_usage_events WHERE id IN ('1b000000-0000-4000-8000-0000f150a010', '1b000000-0000-4000-8000-0000f150a020', '1b000000-0000-4000-8000-0000f150b010', '1b000000-0000-4000-8000-0000f150b020', '1b000000-0000-4000-8000-0000f150c010');
+DELETE FROM public.api_usage_events WHERE id IN ('1b000000-0000-4000-8000-0000f150a010', '1b000000-0000-4000-8000-0000f150a020', '1b000000-0000-4000-8000-0000f150b010', '1b000000-0000-4000-8000-0000f150b020', '1b000000-0000-4000-8000-0000f150c010', '1b000000-0000-4000-8000-0000f150c020');
 DELETE FROM public.job_attempts WHERE id = '21000000-0000-4000-8000-0000f150a010';
 DELETE FROM public.jobs WHERE id IN ('1c000000-0000-4000-8000-0000f150a010', '1c000000-0000-4000-8000-0000f150b010');
 DELETE FROM public.video_analysis_raw WHERE id = '1f000000-0000-4000-8000-0000f1500001';
