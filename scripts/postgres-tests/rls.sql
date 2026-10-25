@@ -96,8 +96,8 @@ INSERT INTO public.watchlist_items (id, watchlist_id, video_id) VALUES
   ('18000000-0000-4000-8000-0000f150b010', '17000000-0000-4000-8000-0000f150b010', '21000000-0000-4000-8000-0000f1500001');
 
 INSERT INTO public.legal_acceptances (id, user_id, document_kind, document_version, document_hash, locale, user_email_at_acceptance) VALUES
-  ('19000000-0000-4000-8000-0000f150a010', '00000000-0000-4000-8000-00000000a001', 'tos', '2026-10-11-1', 'hash-f15-a', 'it', 'rls-a@example.invalid'),
-  ('19000000-0000-4000-8000-0000f150b010', '00000000-0000-4000-8000-00000000b001', 'tos', '2026-10-11-1', 'hash-f15-b', 'it', 'rls-b@example.invalid');
+  ('19000000-0000-4000-8000-0000f150a010', '00000000-0000-4000-8000-00000000a001', 'tos', '2026-10-25-1', 'hash-f15-a', 'it', 'rls-a@example.invalid'),
+  ('19000000-0000-4000-8000-0000f150b010', '00000000-0000-4000-8000-00000000b001', 'tos', '2026-10-25-1', 'hash-f15-b', 'it', 'rls-b@example.invalid');
 
 INSERT INTO public.user_deletion_requests (id, user_id, scheduled_deletion_at, status) VALUES
   ('1a000000-0000-4000-8000-0000f150a010', '00000000-0000-4000-8000-00000000a001', NOW() + INTERVAL '7 days', 'pending'),
@@ -341,7 +341,7 @@ BEGIN
       ('watchlist_items', 'watchlist_id', '18000000-0000-4000-8000-0000f150ff10',
        $q$INSERT INTO public.watchlist_items (id, watchlist_id, video_id) VALUES ('18000000-0000-4000-8000-0000f150ff10', '17000000-0000-4000-8000-0000f150b010', '21000000-0000-4000-8000-0000f1500001')$q$),
       ('legal_acceptances', 'user_id', '19000000-0000-4000-8000-0000f150ff10',
-       $q$INSERT INTO public.legal_acceptances (id, user_id, document_kind, document_version, document_hash, locale, user_email_at_acceptance) VALUES ('19000000-0000-4000-8000-0000f150ff10', '00000000-0000-4000-8000-00000000b001', 'tos', '2026-10-11-1', 'hash-intruso', 'it', 'intruso@example.invalid')$q$),
+       $q$INSERT INTO public.legal_acceptances (id, user_id, document_kind, document_version, document_hash, locale, user_email_at_acceptance) VALUES ('19000000-0000-4000-8000-0000f150ff10', '00000000-0000-4000-8000-00000000b001', 'tos', '2026-10-25-1', 'hash-intruso', 'it', 'intruso@example.invalid')$q$),
       ('user_deletion_requests', 'user_id', '1a000000-0000-4000-8000-0000f150ff10',
        $q$INSERT INTO public.user_deletion_requests (id, user_id, scheduled_deletion_at) VALUES ('1a000000-0000-4000-8000-0000f150ff10', '00000000-0000-4000-8000-00000000b001', NOW() + INTERVAL '1 day')$q$),
       ('jobs', 'created_by_user_id', '1c000000-0000-4000-8000-0000f150ff10',

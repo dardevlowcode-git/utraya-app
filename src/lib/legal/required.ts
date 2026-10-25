@@ -4,8 +4,8 @@
  * Flusso: servizi e UI leggono queste costanti per enforcement accettazioni e visualizzazione metadata.
  */
 
-export const TOS_REQUIRED_VERSION = '2026-10-11-1'
-export const TOS_REQUIRED_HASH = 'sha256:cef6def57b114fb1d5fe0cdb4895f238c8065e8f456d2a27fd94281df4aa6edb'
+export const TOS_REQUIRED_VERSION = '2026-10-25-1'
+export const TOS_REQUIRED_HASH = 'sha256:a180e26c76c73721cf129808012f7549d06efc27e6e5b34c24f5180832dd7453'
 
 export const TOS_VEX_REQUIRED_VERSION = '2026-05-16-1'
 export const TOS_VEX_REQUIRED_HASH = 'sha256:563265089632d98e4cfca517db43416247221b930c9c37de9422d900d48ebbbd'
