@@ -4,12 +4,13 @@
  * Flusso: verifica validazione, target, auth OIDC, flag mutazioni e report delegato.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { verifyOidcMock, consumeJtiMock, runVerificationMock } = vi.hoisted(() => ({
+const { verifyOidcMock, consumeJtiMock, runVerificationMock, runActualVerificationMock } = vi.hoisted(() => ({
   verifyOidcMock: vi.fn(),
   consumeJtiMock: vi.fn(),
   runVerificationMock: vi.fn(),
+  runActualVerificationMock: vi.fn(),
 }))
 
 vi.mock('@/lib/security/githubOidc', () => ({
@@ -20,10 +21,11 @@ vi.mock('@/lib/security/githubOidcReplay', () => ({
   consumeGitHubOidcJti: consumeJtiMock,
 }))
 
-vi.mock('@/lib/verifier/api-verifier', () => ({
-  verifierTargetOrigins: { dev: 'https://dev.utraya.com', preview: 'https://preview.utraya.com', production: 'https://utraya.com' },
-  runApiVerification: runVerificationMock,
-}))
+vi.mock('@/lib/verifier/api-verifier', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/verifier/api-verifier')>()
+  runActualVerificationMock.mockImplementation(actual.runApiVerification)
+  return { ...actual, runApiVerification: runVerificationMock }
+})
 
 // Import statico dopo i mock: vitest solleva le factory prima dell'import.
 import { POST } from '@/app/api/internal/api-verifier/route'
@@ -37,6 +39,8 @@ function brokerRequest(body: unknown, ip: string, origin = 'https://preview.utra
 }
 
 describe('POST /api/internal/api-verifier', () => {
+  afterEach(() => vi.unstubAllEnvs())
+
   beforeEach(() => {
     vi.clearAllMocks()
     verifyOidcMock.mockResolvedValue({ jti: 'jti-broker-1', exp: 9_999_999_999 })
@@ -103,5 +107,26 @@ describe('POST /api/internal/api-verifier', () => {
     const payload = (await response.json()) as { ok: boolean; data: { target: string }; requestId: string }
     expect(payload.data.target).toBe('preview')
     expect(response.headers.get('Cache-Control')).toBe('no-store')
+  })
+
+  it('restituisce CONFIGURATION_ERROR 503 quando manca API_E2E_USER_EMAIL', async () => {
+    vi.stubEnv('API_E2E_USER_EMAIL', undefined)
+    runVerificationMock.mockImplementation(runActualVerificationMock)
+
+    const response = await POST(brokerRequest({ target: 'dev' }, '10.0.0.8', 'https://dev.utraya.com'))
+    const payload = await response.json() as { error: { code: string; message: string } }
+
+    expect(response.status).toBe(503)
+    expect(payload.error).toEqual({ code: 'CONFIGURATION_ERROR', message: 'Errore interno' })
+  })
+
+  it('mantiene INTERNAL_ERROR 500 per le eccezioni generiche', async () => {
+    runVerificationMock.mockRejectedValue(new Error('dettaglio interno'))
+
+    const response = await POST(brokerRequest({ target: 'dev' }, '10.0.0.9', 'https://dev.utraya.com'))
+    const payload = await response.json() as { error: { code: string; message: string } }
+
+    expect(response.status).toBe(500)
+    expect(payload.error).toEqual({ code: 'INTERNAL_ERROR', message: 'Errore interno' })
   })
 })

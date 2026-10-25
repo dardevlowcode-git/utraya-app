@@ -16,6 +16,15 @@ export const verifierTargetOrigins = {
 
 export type VerifierTarget = keyof typeof verifierTargetOrigins
 
+/** Rappresenta una configurazione obbligatoria assente per il verificatore API. */
+export class VerifierConfigurationError extends Error {
+  /** Crea un errore con messaggio generico, senza includere valori di configurazione. */
+  constructor() {
+    super('Fixture API verifier non configurata')
+    this.name = 'VerifierConfigurationError'
+  }
+}
+
 export type VerifierCheck = {
   name: string
   path: string
@@ -34,7 +43,7 @@ async function createFixtureAccessToken(): Promise<string> {
   const email = process.env.API_E2E_USER_EMAIL?.trim()
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim()
-  if (!email || !url || !anonKey) throw new Error('Fixture API verifier non configurata')
+  if (!email || !url || !anonKey) throw new VerifierConfigurationError()
 
   const admin = createAdminClient()
   const { data, error } = await admin.auth.admin.generateLink({ type: 'magiclink', email })
