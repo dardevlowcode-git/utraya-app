@@ -37,7 +37,7 @@
     "@types/react-dom": "^18.3.1",
     "@typescript-eslint/eslint-plugin": "^8.71.0",
     "@typescript-eslint/parser": "^8.71.0",
-    "eslint": "^9.39.5",
+    "eslint": "^10.13.0",
     "eslint-config-next": "^16.4.3",
     "fast-glob": "file:./scripts/security-contract/fast-glob",
     "happy-dom": "^21.0.4",
