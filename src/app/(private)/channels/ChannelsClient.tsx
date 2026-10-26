@@ -9,6 +9,7 @@
 import Link from 'next/link'
 import { useMemo, useState, type FormEvent } from 'react'
 import type { UserChannelListItem } from '@/lib/services/channels'
+import { getChannelScanNotice } from '@/lib/view-models/channel-scan-status'
 import { useLocale, useTranslations } from 'next-intl'
 import { useSearchParams } from 'next/navigation'
 
@@ -29,7 +30,7 @@ export default function ChannelsClient({ initialChannels }: ChannelsClientProps)
   const [channels, setChannels] = useState<UserChannelListItem[]>(initialChannels)
   const [busy, setBusy] = useState<BusyAction>(null)
   const [message, setMessage] = useState<string | null>(null)
-  const [warning, setWarning] = useState<string | null>(null)
+  const [warning, setWarning] = useState<ReturnType<typeof getChannelScanNotice>>(null)
   const [error, setError] = useState<string | null>(null)
 
   const channelsCountLabel = useMemo(
@@ -58,7 +59,7 @@ export default function ChannelsClient({ initialChannels }: ChannelsClientProps)
       })
 
       const payload = (await response.json().catch(() => null)) as
-        | { data: { message?: string; warningCode?: string | null } | null; error: string | null }
+        | { data: { message?: string; warningCode?: string | null; waitingReason?: string | null } | null; error: string | null }
         | null
 
       if (!response.ok) {
@@ -66,12 +67,9 @@ export default function ChannelsClient({ initialChannels }: ChannelsClientProps)
       }
 
       setChannelUrl('')
-      if (payload?.data?.warningCode === 'missing_youtube_api_key') {
-        setWarning(t('channels.scanPausedMissingYoutubeKey'))
-      } else {
-        setWarning(null)
-      }
-      setMessage(payload?.data?.message ?? t('channels.added'))
+      const scanNotice = getChannelScanNotice(payload?.data?.waitingReason, payload?.data?.warningCode)
+      setWarning(scanNotice)
+      setMessage(scanNotice ? t('channels.added') : payload?.data?.message ?? t('channels.added'))
       await refreshChannels()
     } catch (err) {
       const message = err instanceof Error ? err.message : t('common.error')
@@ -160,13 +158,14 @@ export default function ChannelsClient({ initialChannels }: ChannelsClientProps)
       })
 
       const payload = (await response.json().catch(() => null)) as
-        | { data: { message?: string } | null; error: string | null }
+        | { data: { message?: string; waitingReason?: string | null } | null; error: string | null }
         | null
 
       if (!response.ok) {
         throw new Error(payload?.error ?? t('channels.scanError'))
       }
 
+      setWarning(getChannelScanNotice(payload?.data?.waitingReason))
       setMessage(payload?.data?.message ?? t('channels.scanQueued'))
     } catch (err) {
       const message = err instanceof Error ? err.message : t('common.error')
@@ -242,7 +241,9 @@ export default function ChannelsClient({ initialChannels }: ChannelsClientProps)
         {message && <p className="mt-3 text-sm text-green-700">{message}</p>}
         {warning && (
           <p className="mt-3 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-            {warning}
+            {t.rich('channels.scanWaitingForYoutubeKey', {
+              integrations: (chunks) => <Link href="/integrations" className="font-semibold underline">{chunks}</Link>,
+            })}
           </p>
         )}
         {error && <p className="mt-3 text-sm text-error">{error}</p>}

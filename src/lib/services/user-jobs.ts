@@ -16,7 +16,7 @@ export async function getUserJobStatus(params: {
   const supabase = params.supabase ?? await createClient()
   const { data, error } = await supabase
     .from('jobs')
-    .select('id, job_type, status, created_at, started_at, completed_at')
+    .select('id, job_type, status, created_at, started_at, completed_at, error_message')
     .eq('id', params.jobId)
     .eq('created_by_user_id', params.userId)
     .maybeSingle()
@@ -30,5 +30,6 @@ export async function getUserJobStatus(params: {
     createdAt: data.created_at,
     startedAt: data.started_at,
     completedAt: data.completed_at,
+    errorMessage: data.error_message,
   }
 }

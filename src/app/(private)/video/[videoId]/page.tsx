@@ -101,11 +101,12 @@ export default async function VideoDetailPage({ params }: Props) {
   const transcription = await getTranscriptionViewModel({
     supabase,
     userId: session.userId,
-    video: { id: video.id, youtube_video_id: video.youtube_video_id, video_url: video.video_url },
+    video: { id: video.id, channel_id: video.channel_id, youtube_video_id: video.youtube_video_id, video_url: video.video_url },
   })
   const transcriptLabels: VideoTranscriptLabels = {
     title: t('video.transcript.title'),
     absent: t('video.transcript.absent'),
+    waitingForGeminiKey: t('video.transcript.waitingForGeminiKey'),
     running: t('video.transcript.running', { done: '{done}', total: '{total}' }),
     runningNoProgress: t('video.transcript.runningNoProgress'),
     complete: t('video.transcript.complete'),
