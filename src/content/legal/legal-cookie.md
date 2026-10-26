@@ -156,6 +156,13 @@ You can change your choices anytime via the "Cookie preferences" link in the foo
 
 ## 8-11. (See Italian version above)
 
+## Contact details
+
+For questions about cookie use or to exercise your GDPR rights, contact:
+
+- Email: privacy@utraya.com
+- Data Controller: Dario Bonini
+
 ---
 
 ## Storia versioni
