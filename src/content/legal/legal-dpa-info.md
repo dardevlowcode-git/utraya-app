@@ -18,9 +18,9 @@
 | Utente finale di Utraya | **Interessato** | GDPR art. 4 n. 1 |
 | **Utenti business** (futuro, post-apertura API) | **Titolare del trattamento** per i dati dei propri utenti finali; Utraya è loro **Responsabile** | GDPR art. 4 n. 7-8 |
 
-## 2. Sub-processors attuali (per Utraya in qualità di Titolare)
+## 2. Sub-processors attuali del servizio Utraya (Titolare: Dario Bonini)
 
-Tutti i sub-processors sotto sono soggetti a contratto di nomina ex GDPR art. 28 par. 3 (DPA), accettato da Utraya al momento dell'attivazione del servizio.
+Tutti i sub-processors sotto sono soggetti a contratto di nomina ex GDPR art. 28 par. 3 (DPA), accettato da Dario Bonini per il servizio Utraya al momento dell'attivazione del servizio.
 
 ### 2.1 Supabase Inc.
 
@@ -81,7 +81,7 @@ Esistono **due modalità operative**, da disambiguare con cura:
 L'utente fornisce la propria chiave API Gemini, cifrata AES-GCM e custodita su Supabase (vedi `SECURITY.md §4`). Quando l'utente richiede un riassunto, la chiamata a Gemini è effettuata **con la chiave dell'utente**. In questo caso:
 
 - Il rapporto contrattuale per i dati inviati a Gemini è **tra utente e Google**, non tra Utraya e Google.
-- In questo flusso, Utraya tratta esclusivamente la chiave (custodia cifrata) in qualità di **Titolare del trattamento**.
+- In questo flusso, Dario Bonini (per il servizio Utraya) tratta esclusivamente la chiave (custodia cifrata) in qualità di **Titolare del trattamento**.
 - Utraya NON sigla il DPA Google per i contenuti AI in questa modalità.
 
 **Modalità B — chiave applicativa di Utraya (per allowlist beta gratuita, fallback)**
