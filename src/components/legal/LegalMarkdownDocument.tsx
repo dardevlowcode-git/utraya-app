@@ -47,7 +47,7 @@ export default function LegalMarkdownDocument(props: {
               p: ({ children }) => <p className="text-on-surface">{children}</p>,
               li: ({ children }) => <li className="ml-5 list-disc text-on-surface">{children}</li>,
               a: ({ href, children }) => (
-                <a href={href} className="underline decoration-1 underline-offset-4 hover:text-light-signal-orange" target="_blank" rel="noreferrer">
+                <a href={href} className="break-words underline decoration-1 underline-offset-4 hover:text-light-signal-orange" target="_blank" rel="noreferrer">
                   {children}
                 </a>
               ),

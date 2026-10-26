@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "test": "vitest run",
+    "check:mobile-overflow": "node scripts/check-mobile-overflow.mjs",
     "prelint": "npm run check-next-rootdir",
     "lint": "eslint . --ext .ts,.tsx,.js,.mjs,.cjs --ignore-pattern node_modules --ignore-pattern .next",
     "check-next-rootdir": "node scripts/security-contract/check-next-rootdir.mjs",

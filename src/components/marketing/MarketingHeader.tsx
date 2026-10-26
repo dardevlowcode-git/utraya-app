@@ -47,7 +47,7 @@ export default async function MarketingHeader() {
           </div>
           <Link
             href="/login"
-            className="shell-cta-default hidden sm:inline-flex"
+            className="shell-cta-default hidden lg:inline-flex"
           >
             {t('marketing.cta.createWatchlist')}
           </Link>
