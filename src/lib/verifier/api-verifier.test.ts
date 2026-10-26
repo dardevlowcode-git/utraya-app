@@ -73,6 +73,35 @@ describe('runApiVerification', () => {
       actualStatus: 202,
       ok: true,
     })
+    expect(report.checks.find((check) => check.name === 'manual scan job status')).toMatchObject({
+      status: 'completed',
+      ok: true,
+    })
+  })
+
+  it('registra in rosso il job pending che attende una chiave YouTube', async () => {
+    vi.useFakeTimers()
+    vi.mocked(fetch).mockImplementation((input, init) => {
+      const url = new URL(input instanceof Request ? input.url : String(input))
+      const requestId = new Headers(init?.headers).get('X-Request-Id')
+      if (url.pathname === '/api/v1/jobs/manual-job') {
+        return Promise.resolve(apiResponse(200, { status: 'pending', waitingReason: 'youtube_key_missing' }, requestId))
+      }
+      return Promise.resolve(responseForRequest(input, init))
+    })
+
+    try {
+      const verification = runApiVerification({ target: 'dev', mutations: true })
+      await vi.advanceTimersByTimeAsync(30_000)
+      const report = await verification
+
+      expect(report.checks.find((check) => check.name === 'manual scan job status')).toMatchObject({
+        status: 'youtube_key_missing',
+        ok: false,
+      })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('non aggiunge né rimuove il canale fixture già seguito e registra un controllo rosso', async () => {
@@ -133,13 +162,17 @@ describe('runApiVerification', () => {
     try {
       const verification = runApiVerification({ target: 'dev', mutations: true })
       await vi.advanceTimersByTimeAsync(30_000)
-      await verification
+      const report = await verification
 
       expect(pendingPolls).toBe(15)
       expect(fetchMock).toHaveBeenCalledWith('https://dev.utraya.com/api/v1/channels', expect.objectContaining({
         method: 'DELETE',
         body: JSON.stringify({ channelId: 'fixture-added-channel' }),
       }))
+      expect(report.checks.find((check) => check.name === 'fixture scan job status')).toMatchObject({
+        status: 'timeout',
+        ok: false,
+      })
     } finally {
       vi.useRealTimers()
     }

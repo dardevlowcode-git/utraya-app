@@ -95,15 +95,44 @@ async function runCheck(baseUrl: string, token: string, checks: VerifierCheck[],
   }
 }
 
-// Attende il completamento di uno scan con polling sul job dedicato.
+// Attende il completamento di uno scan e registra nel report un esito esplicito del job.
 async function waitForJob(baseUrl: string, token: string, checks: VerifierCheck[], jobId: string, name: string): Promise<boolean> {
+  const started = Date.now()
+  const path = `/api/v1/jobs/${encodeURIComponent(jobId)}`
+  let lastResult: Awaited<ReturnType<typeof runCheck>> | null = null
+  let completed = false
+  let failureReason: string | null = null
+
   for (let attempt = 0; attempt < 15; attempt += 1) {
-    const result = await runCheck(baseUrl, token, checks, `${name} (${attempt + 1})`, `/api/v1/jobs/${encodeURIComponent(jobId)}`)
-    const status = (result.body?.data as Record<string, unknown> | undefined)?.status
-    if (status === 'completed' || status === 'failed') return status === 'completed' && result.check.ok
+    lastResult = await runCheck(baseUrl, token, checks, `${name} (${attempt + 1})`, path)
+    const data = lastResult.body?.data as Record<string, unknown> | undefined
+    const status = data?.status
+    if (status === 'completed') {
+      completed = true
+      break
+    }
+    if (typeof data?.waitingReason === 'string' && data.waitingReason.length > 0) {
+      failureReason = data.waitingReason
+      break
+    }
+    if (status === 'failed') break
     if (attempt < 14) await new Promise((resolve) => setTimeout(resolve, 2_000))
   }
-  return false
+
+  const reason = completed ? 'completed' : failureReason ?? 'timeout'
+  const outcome: VerifierCheck = {
+    name,
+    path,
+    expectedStatus: 200,
+    actualStatus: lastResult?.check.actualStatus ?? null,
+    ok: completed && Boolean(lastResult?.check.ok),
+    envelopeValid: lastResult?.check.envelopeValid,
+    status: reason,
+    ...(completed ? {} : { message: reason }),
+    durationMs: Date.now() - started,
+  }
+  checks.push(outcome)
+  return outcome.ok
 }
 
 // Esegue la suite read-only e, solo se richiesto, le mutazioni fixture con ripristino.
