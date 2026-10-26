@@ -1,10 +1,11 @@
 /* Commento didattico:
- * Scopo del file: verifica il middleware reale (`src/middleware.ts`) su sessione admin, pagine private, rotte di bypass e security header.
+ * Scopo del file: verifica il middleware reale (`src/middleware.ts`), i suoi bypass e i file statici dell'icona del sito.
  * Moduli richiamati: `vitest`, `next/server`, `@/middleware`, `@/lib/auth/admin` (firma del cookie admin), fake condiviso `@supabase/ssr`.
  * Flusso: costruisce una `NextRequest` con cookie finti e osserva redirect, status, cookie azzerati e header di sicurezza.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { existsSync, readFileSync } from 'node:fs'
 import { NextRequest } from 'next/server'
 import { adminSessionCookieName, adminUsername, setAdminEnv } from '@/__tests__/admin-route-helpers'
 import { createSupabaseSsrFake } from '@/__tests__/helpers/supabaseSsrFake'
@@ -264,8 +265,34 @@ describe('middleware', () => {
       expect(matcher.test('/_next/static/chunk.js')).toBe(false)
       expect(matcher.test('/_next/image')).toBe(false)
       expect(matcher.test('/favicon.ico')).toBe(false)
+      expect(matcher.test('/icon.svg')).toBe(false)
       expect(matcher.test('/video/demo.png')).toBe(false)
       expect(matcher.test('/video/demo.svg')).toBe(false)
+    })
+  })
+
+  describe('icone del sito', () => {
+    it('include i file metadata SVG e ICO con le dimensioni richieste', () => {
+      const svgPath = new URL('../app/icon.svg', import.meta.url)
+      const icoPath = new URL('../app/favicon.ico', import.meta.url)
+
+      expect(existsSync(svgPath)).toBe(true)
+      expect(existsSync(icoPath)).toBe(true)
+
+      const favicon = readFileSync(icoPath)
+      expect(favicon.readUInt16LE(0)).toBe(0)
+      expect(favicon.readUInt16LE(2)).toBe(1)
+      expect(favicon.readUInt16LE(4)).toBe(2)
+
+      const sizes = [0, 1]
+        .map((index) => {
+          const width = favicon.readUInt8(6 + index * 16) || 256
+          const height = favicon.readUInt8(7 + index * 16) || 256
+          return [width, height]
+        })
+        .sort(([widthA], [widthB]) => widthA - widthB)
+
+      expect(sizes).toEqual([[16, 16], [32, 32]])
     })
   })
 })
