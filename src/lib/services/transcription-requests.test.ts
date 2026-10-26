@@ -21,7 +21,7 @@ type Row = Record<string, unknown>
 type Db = Record<string, Row[]>
 
 /** Client minimale che imita la parte di PostgREST usata dai servizi (filtri, insert, upsert, update, range). */
-function createFakeClient(db: Db) {
+function createFakeClient(db: Db, eligibleChannelCredential: boolean) {
   let counter = 0
   const read = (row: Row, column: string) => {
     if (column.includes('->>')) {
@@ -98,7 +98,10 @@ function createFakeClient(db: Db) {
       })
     }
   }
-  return { from: (table: string) => new Query(table) }
+  return {
+    from: (table: string) => new Query(table),
+    rpc: async () => ({ data: eligibleChannelCredential, error: null }),
+  }
 }
 
 const USER = 'user-1'
@@ -118,9 +121,9 @@ function baseDb(overrides: Partial<Db> = {}): Db {
   }
 }
 
-function setup(overrides: Partial<Db> = {}) {
+function setup(overrides: Partial<Db> = {}, eligibleChannelCredential = true) {
   const db = baseDb(overrides)
-  const client = createFakeClient(db)
+  const client = createFakeClient(db, eligibleChannelCredential)
   return { db, supabase: client as unknown as AppSupabaseClient, admin: client as never }
 }
 
@@ -220,7 +223,7 @@ describe('stato della trascrizione per la pagina', () => {
     })
     const view = await getTranscriptionViewModel({
       supabase: ctx.supabase, admin: ctx.admin, userId: USER,
-      video: { id: VIDEO, youtube_video_id: 'abcdefghijk', video_url: '' },
+      video: { id: VIDEO, channel_id: 'channel-1', youtube_video_id: 'abcdefghijk', video_url: '' },
     })
     expect(view.state).toBe('needs_review')
     expect(view.phrases).toHaveLength(1500)
@@ -232,7 +235,7 @@ describe('stato della trascrizione per la pagina', () => {
     const ctx = setup({ user_provider_credentials: [] })
     const view = await getTranscriptionViewModel({
       supabase: ctx.supabase, admin: ctx.admin, userId: USER,
-      video: { id: VIDEO, youtube_video_id: 'abcdefghijk', video_url: '' },
+      video: { id: VIDEO, channel_id: 'channel-1', youtube_video_id: 'abcdefghijk', video_url: '' },
     })
     expect(view).toMatchObject({ state: 'absent', canRequest: false, requestBlockedReason: 'gemini_key_missing', phrases: [] })
   })
@@ -244,9 +247,40 @@ describe('stato della trascrizione per la pagina', () => {
     })
     const view = await getTranscriptionViewModel({
       supabase: ctx.supabase, admin: ctx.admin, userId: USER,
-      video: { id: VIDEO, youtube_video_id: 'abcdefghijk', video_url: '' },
+      video: { id: VIDEO, channel_id: 'channel-1', youtube_video_id: 'abcdefghijk', video_url: '' },
     })
     expect(view).toMatchObject({ state: 'running', needsResume: true, progress: { doneParts: 1, totalParts: 2 } })
+  })
+
+  it('un pending mai reclamato senza parti fatte attende una chiave eleggibile del canale', async () => {
+    const ctx = setup({
+      user_provider_credentials: [],
+      transcriptions: [{ id: 't-1', video_id: VIDEO, status: 'pending', language_code: null, doubtful_phrase_count: 0, missing_part_count: 0 }],
+      transcription_parts: [{ transcription_id: 't-1', status: 'pending' }, { transcription_id: 't-1', status: 'pending' }],
+      jobs: [{ id: 'job-1', job_type: 'transcribe_video', status: 'pending', started_at: null, lease_expires_at: null, payload: { videoId: VIDEO, channelId: 'channel-1' } }],
+    }, false)
+
+    const view = await getTranscriptionViewModel({
+      supabase: ctx.supabase, admin: ctx.admin, userId: USER,
+      video: { id: VIDEO, channel_id: 'channel-1', youtube_video_id: 'abcdefghijk', video_url: '' },
+    })
+
+    expect(view).toMatchObject({ state: 'waiting_for_key', progress: null, requestBlockedReason: 'gemini_key_missing' })
+  })
+
+  it('un pending mai reclamato resta in corso quando il canale ha una chiave eleggibile', async () => {
+    const ctx = setup({
+      transcriptions: [{ id: 't-1', video_id: VIDEO, status: 'pending', language_code: null, doubtful_phrase_count: 0, missing_part_count: 0 }],
+      transcription_parts: [{ transcription_id: 't-1', status: 'pending' }],
+      jobs: [{ id: 'job-1', job_type: 'transcribe_video', status: 'pending', started_at: null, lease_expires_at: null, payload: { videoId: VIDEO, channelId: 'channel-1' } }],
+    }, true)
+
+    const view = await getTranscriptionViewModel({
+      supabase: ctx.supabase, admin: ctx.admin, userId: USER,
+      video: { id: VIDEO, channel_id: 'channel-1', youtube_video_id: 'abcdefghijk', video_url: '' },
+    })
+
+    expect(view).toMatchObject({ state: 'running', progress: { doneParts: 0, totalParts: 1 } })
   })
 
   it('loadFollowedVideo restituisce il video quando il canale è seguito', async () => {

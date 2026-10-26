@@ -351,16 +351,18 @@ export async function addChannelForUser(params: {
 
   let initialScanError: string | null = null
   let scanBlockedReason: ScanBlockedReason | null = null
+  let waitingReason: 'youtube_key_missing' | null = null
   const shouldMarkExistingVideosAsSeen = params.markExistingVideosAsSeen ?? true
   let markedSeenCount = 0
 
   if (!params.deferInitialScan) {
     // Prima scansione immediata best-effort: il canale resta aggiunto se fallisce.
     try {
-      await requestScanNowForUser({
+      const scanResult = await requestScanNowForUser({
         userId: params.userId,
         channelId,
       }, { supabase: params.supabase })
+      waitingReason = scanResult.waitingReason
     } catch (error) {
       const blockedReason = detectScanBlockedReasonFromError(error)
       if (blockedReason) {
@@ -399,6 +401,7 @@ export async function addChannelForUser(params: {
     normalizedChannelUrl: normalized,
     initialScanError,
     scanBlockedReason,
+    waitingReason,
     markedSeenCount,
   }
 }
@@ -523,9 +526,23 @@ export async function requestScanNowForUser(
   }
 ) {
   const queued = await enqueueScanJobForUser(params, options)
-  if (queued.deduplicated || !queued.jobId) return queued
+  if (!queued.jobId) return { ...queued, waitingReason: null }
+  if (queued.deduplicated) return { ...queued, waitingReason: await getScanJobWaitingReason(queued.jobId) }
   await runScanJob({ ...params, jobId: queued.jobId, maxResults: options?.maxResults })
-  return queued
+  return { ...queued, waitingReason: await getScanJobWaitingReason(queued.jobId) }
+}
+
+/** Converte il motivo interno del job differito in un motivo pubblico sicuro per la UI. */
+async function getScanJobWaitingReason(jobId: string): Promise<'youtube_key_missing' | null> {
+  const { data } = await createAdminClient()
+    .from('jobs')
+    .select('status, error_message')
+    .eq('id', jobId)
+    .maybeSingle()
+
+  return data?.status === 'pending' && data.error_message === 'waiting_for_credential'
+    ? 'youtube_key_missing'
+    : null
 }
 
 export async function enqueueScanJobForUser(

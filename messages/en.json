@@ -423,6 +423,7 @@
     "transcript": {
       "title": "Transcript",
       "absent": "No transcript for this video yet.",
+      "waitingForGeminiKey": "Waiting for a Gemini key: transcription will start as soon as a valid key is available.",
       "running": "Transcribing: {done} of {total} parts.",
       "runningNoProgress": "Transcribing.",
       "complete": "Click a phrase to start the video from that point.",
@@ -488,7 +489,7 @@
     "removed": "Channel removed",
     "scanError": "Error during scan",
     "scanQueued": "Scan queued",
-    "scanPausedMissingYoutubeKey": "Channel added. Scan is paused: add a YouTube API key or wait for another user with a key to add/follow the same channel.",
+    "scanWaitingForYoutubeKey": "Scan waiting for a YouTube key: add one in <integrations>Integrations</integrations> to start it now; otherwise, we will try again with the daily sync.",
     "adding": "Adding...",
     "supportedFormats": "Supported formats",
     "statusLabel": "Status",

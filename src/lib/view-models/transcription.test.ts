@@ -14,6 +14,7 @@ const base: TranscriptionViewInput = {
   partStatuses: [],
   phrases: [],
   hasGeminiKey: true,
+  waitingForGeminiKey: false,
   needsResume: false,
 }
 
@@ -33,6 +34,40 @@ describe('toTranscriptionViewModel', () => {
       needsResume: true,
     })
     expect(view).toMatchObject({ state: 'running', progress: { doneParts: 1, totalParts: 3 }, needsResume: true, phrases: [], canRequest: false })
+  })
+
+  it('pending in attesa di una chiave non mostra avanzamento e suggerisce Integrazioni se manca la chiave personale', () => {
+    const view = toTranscriptionViewModel({
+      ...base,
+      hasGeminiKey: false,
+      waitingForGeminiKey: true,
+      transcription: { status: 'pending', language_code: null, doubtful_phrase_count: 0, missing_part_count: 0 },
+      partStatuses: ['pending', 'pending'],
+    })
+
+    expect(view).toMatchObject({
+      state: 'waiting_for_key',
+      progress: null,
+      needsResume: false,
+      canRequest: false,
+      requestBlockedReason: 'gemini_key_missing',
+    })
+  })
+
+  it('pending con chiave eleggibile resta in corso e complete resta invariato', () => {
+    const pending = toTranscriptionViewModel({
+      ...base,
+      waitingForGeminiKey: false,
+      transcription: { status: 'pending', language_code: null, doubtful_phrase_count: 0, missing_part_count: 0 },
+    })
+    const complete = toTranscriptionViewModel({
+      ...base,
+      waitingForGeminiKey: true,
+      transcription: { status: 'complete', language_code: 'it', doubtful_phrase_count: 0, missing_part_count: 0 },
+    })
+
+    expect(pending.state).toBe('running')
+    expect(complete.state).toBe('complete')
   })
 
   it('completa o da rivedere: frasi con minuto, link e tempo dubbio', () => {

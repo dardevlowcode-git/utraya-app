@@ -99,7 +99,7 @@ async function hasUsableGeminiKey(client: AppSupabaseClient, userId: string): Pr
 async function findActiveJob(admin: AdminClient, videoId: string) {
   const { data, error } = await admin
     .from('jobs')
-    .select('id, status, lease_expires_at')
+    .select('id, status, lease_expires_at, started_at')
     .eq('job_type', TRANSCRIPTION_JOB_TYPE)
     .eq('payload->>videoId', videoId)
     .in('status', ['pending', 'running'])
@@ -251,7 +251,7 @@ async function loadAllPhrases(supabase: AppSupabaseClient, transcriptionId: stri
 export async function getTranscriptionViewModel(params: {
   supabase: AppSupabaseClient
   userId: string
-  video: Pick<FollowedVideo, 'id' | 'youtube_video_id' | 'video_url'>
+  video: Pick<FollowedVideo, 'id' | 'channel_id' | 'youtube_video_id' | 'video_url'>
   admin?: AdminClient
 }): Promise<TranscriptionViewModel> {
   const { supabase, video } = params
@@ -265,28 +265,39 @@ export async function getTranscriptionViewModel(params: {
   if (error) throw new AppError('Impossibile leggere la trascrizione', 'unknown', 500, { cause: error.message })
 
   const isRunning = transcription?.status === 'pending' || transcription?.status === 'running'
+  const mayBeWaitingForKey = transcription?.status === 'pending'
   const isReadable = transcription?.status === 'complete' || transcription?.status === 'needs_review'
+  const admin = isRunning || mayBeWaitingForKey ? params.admin ?? createAdminClient() : undefined
 
-  const [hasGeminiKey, partsResult, phrases, needsResume] = await Promise.all([
+  const [hasGeminiKey, partsResult, phrases, activeJob] = await Promise.all([
     hasUsableGeminiKey(supabase, params.userId),
     transcription
       ? supabase.from('transcription_parts').select('status').eq('transcription_id', transcription.id)
       : Promise.resolve({ data: [], error: null }),
     transcription && isReadable ? loadAllPhrases(supabase, transcription.id) : Promise.resolve([]),
     isRunning
-      ? findActiveJob(params.admin ?? createAdminClient(), video.id).then((job) => !job || !isLeaseLive(job))
-      : Promise.resolve(false),
+      ? findActiveJob(admin!, video.id)
+      : Promise.resolve(null),
   ])
   if (partsResult.error) throw new AppError('Impossibile leggere le parti', 'unknown', 500, { cause: partsResult.error.message })
+
+  const partStatuses = (partsResult.data ?? []).map((part) => part.status)
+  const hasCompletedPart = partStatuses.includes('done')
+  const waitingForGeminiKey = mayBeWaitingForKey
+    && !hasCompletedPart
+    && activeJob?.status === 'pending'
+    && activeJob.started_at === null
+    && !(await hasEligibleChannelCredential(admin!, video.channel_id))
 
   return toTranscriptionViewModel({
     videoId: video.id,
     youtubeVideoId,
     transcription,
-    partStatuses: (partsResult.data ?? []).map((part) => part.status),
+    partStatuses,
     phrases,
     hasGeminiKey,
-    needsResume,
+    waitingForGeminiKey,
+    needsResume: isRunning && (!activeJob || !isLeaseLive(activeJob)),
   })
 }
 

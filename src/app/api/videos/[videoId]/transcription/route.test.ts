@@ -153,4 +153,14 @@ describe('GET /api/videos/[videoId]/transcription', () => {
     expect(response.status).toBe(200)
     expect(await response.json()).toMatchObject({ ok: true, data: { state: 'running' } })
   })
+
+  it('restituisce lo stato di attesa di una chiave Gemini nel contratto di stato', async () => {
+    loadVideoMock.mockResolvedValue({ id: VIDEO, channel_id: 'channel-1' })
+    viewMock.mockResolvedValue({ videoId: VIDEO, state: 'waiting_for_key' })
+
+    const response = await GET(new Request('https://app.test/x'), ctx)
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({ ok: true, data: { state: 'waiting_for_key' } })
+  })
 })

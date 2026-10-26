@@ -48,12 +48,45 @@ describe('GET /api/v1/jobs/[jobId]', () => {
   })
 
   it('restituisce lo stato del job di proprieta`', async () => {
-    getUserJobStatusMock.mockResolvedValue({ id: JOB_UUID, type: 'sync_channel_delta', status: 'completed' })
+    getUserJobStatusMock.mockResolvedValue({ id: JOB_UUID, type: 'sync_channel_delta', status: 'completed', errorMessage: null })
     const response = await GET(jobRequest(JOB_UUID), jobContext(JOB_UUID))
     expect(response.status).toBe(200)
-    const payload = (await response.json()) as { ok: boolean; data: { status: string }; requestId: string }
+    const payload = (await response.json()) as { ok: boolean; data: { status: string; waitingReason: string | null; errorMessage?: string; error_message?: string }; requestId: string }
     expect(payload.data.status).toBe('completed')
+    expect(payload.data.waitingReason).toBeNull()
+    expect(payload.data.errorMessage).toBeUndefined()
+    expect(payload.data.error_message).toBeUndefined()
     expect(getUserJobStatusMock).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user-1', jobId: JOB_UUID }))
+  })
+
+  it('espone la ragione pubblica quando il job pending attende una chiave YouTube', async () => {
+    getUserJobStatusMock.mockResolvedValue({
+      id: JOB_UUID,
+      type: 'sync_channel_delta',
+      status: 'pending',
+      errorMessage: 'waiting_for_credential',
+    })
+
+    const response = await GET(jobRequest(JOB_UUID), jobContext(JOB_UUID))
+    const payload = (await response.json()) as { data: { status: string; waitingReason: string | null; errorMessage?: string; error_message?: string } }
+
+    expect(payload.data).toMatchObject({ status: 'pending', waitingReason: 'youtube_key_missing' })
+    expect(payload.data.errorMessage).toBeUndefined()
+    expect(payload.data.error_message).toBeUndefined()
+  })
+
+  it('restituisce waitingReason null per altri errori di job pending', async () => {
+    getUserJobStatusMock.mockResolvedValue({
+      id: JOB_UUID,
+      type: 'sync_channel_delta',
+      status: 'pending',
+      errorMessage: 'provider_retry_backoff',
+    })
+
+    const response = await GET(jobRequest(JOB_UUID), jobContext(JOB_UUID))
+    const payload = (await response.json()) as { data: { status: string; waitingReason: string | null } }
+
+    expect(payload.data).toMatchObject({ status: 'pending', waitingReason: null })
   })
 
   it('nasconde i job di altri utenti con 404', async () => {

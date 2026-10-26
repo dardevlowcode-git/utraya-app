@@ -16,7 +16,8 @@ import { toTranscriptionViewModel } from '@/lib/view-models/transcription'
 import { buildPlayCommand, buildSeekCommand } from '@/lib/utils/youtube-embed-control'
 
 const labels: VideoTranscriptLabels = {
-  title: 'Trascrizione', absent: 'Nessuna trascrizione.', running: 'In corso: {done} su {total}.', runningNoProgress: 'In corso.',
+  title: 'Trascrizione', absent: 'Nessuna trascrizione.', waitingForGeminiKey: 'In attesa di una chiave Gemini.',
+  running: 'In corso: {done} su {total}.', runningNoProgress: 'In corso.',
   complete: 'Clicca una frase.', needsReview: 'Da rivedere.', unavailable: 'Non disponibile.', request: 'Trascrivi',
   requesting: 'Richiesta…', blockedGeminiKey: 'Serve una chiave Gemini: aggiungila in', integrationsLink: 'Integrazioni',
   doubtfulTime: 'Tempo da verificare', openOnYoutube: 'Apri su YouTube a {time}', jumpTo: 'Vai a {time}',
@@ -26,7 +27,8 @@ const labels: VideoTranscriptLabels = {
 
 function view(overrides: Partial<Parameters<typeof toTranscriptionViewModel>[0]> = {}) {
   return toTranscriptionViewModel({
-    videoId: 'v-1', youtubeVideoId: 'abcdefghijk', transcription: null, partStatuses: [], phrases: [], hasGeminiKey: true, needsResume: false,
+    videoId: 'v-1', youtubeVideoId: 'abcdefghijk', transcription: null, partStatuses: [], phrases: [], hasGeminiKey: true,
+    waitingForGeminiKey: false, needsResume: false,
     ...overrides,
   })
 }
@@ -64,6 +66,24 @@ describe('VideoTranscriptPanel', () => {
     expect(markup).not.toContain('>Trascrivi</button>')
     expect(markup.match(/Serve una chiave Gemini: aggiungila in/g)).toHaveLength(1)
     expect(markup.match(/href="\/integrations"/g)).toHaveLength(1)
+    expect(markup).toContain('href="/integrations"')
+  })
+
+  it('in attesa di una chiave mostra lo stato dedicato senza avanzamento', () => {
+    const markup = renderToStaticMarkup(createElement(VideoTranscriptPanel, {
+      videoId: 'v-1',
+      initial: view({
+        hasGeminiKey: false,
+        waitingForGeminiKey: true,
+        transcription: { status: 'pending', language_code: null, doubtful_phrase_count: 0, missing_part_count: 0 },
+        partStatuses: ['pending', 'pending'],
+      }),
+      labels,
+    }))
+
+    expect(markup).toContain('In attesa di una chiave Gemini.')
+    expect(markup).not.toContain('In corso')
+    expect(markup).not.toContain('0 su 2')
     expect(markup).toContain('href="/integrations"')
   })
 
