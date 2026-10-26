@@ -38,11 +38,11 @@ describe('GET /api/v1/me', () => {
     getLegalAcceptanceStatusMock.mockResolvedValue({
       needsAcceptance: false,
       missing: [],
-      tosVersion: '2026-10-11-1',
+      tosVersion: '2026-10-25-1',
       tosHash: 'sha256:current-tos',
       tosVexVersion: '2026-05-16-1',
       tosVexHash: 'sha256:current-vex',
-      privacyVersion: '2026-10-04-1',
+      privacyVersion: '2026-10-25-1',
       privacyHash: 'sha256:current-privacy',
       currentLocale: 'it',
     })
@@ -66,11 +66,11 @@ describe('GET /api/v1/me', () => {
       legal: {
         needsAcceptance: false,
         missing: [],
-        tosVersion: '2026-10-11-1',
+        tosVersion: '2026-10-25-1',
         tosHash: 'sha256:current-tos',
         tosVexVersion: '2026-05-16-1',
         tosVexHash: 'sha256:current-vex',
-        privacyVersion: '2026-10-04-1',
+        privacyVersion: '2026-10-25-1',
         privacyHash: 'sha256:current-privacy',
         currentLocale: 'it',
       },

@@ -7,36 +7,31 @@
 #   └── .github/
 #       └── workflows/
 #
-# Esegue 4 controlli in parallelo:
+# Esegue i controlli di sicurezza in parallelo:
 #   1. npm audit          -> CVE delle dipendenze (npm registry)
 #   2. Semgrep            -> analisi statica del codice (SAST)
 #   3. Gitleaks           -> ricerca segreti nella history Git
-#   4. Trivy              -> scansione filesystem (vulnerabilita librerie)
+#   4. Trivy              -> scansione filesystem (reportistica vulnerabilita librerie)
+#   5. CodeQL             -> analisi codice JavaScript/TypeScript
+#   6. zizmor             -> analisi sicurezza dei workflow
 #
-# Tutti i risultati vengono caricati nella tab "Security" del repository su GitHub
-# (Code Scanning alerts) tramite formato SARIF. Compaiono anche come annotation
-# nei Pull Request.
+# Semgrep, Trivy e CodeQL caricano risultati SARIF nel Code Scanning; Trivy e'
+# solo reportistico. Il gate sulle dipendenze e' npm audit --audit-level=high.
+# zizmor annota i rilievi e blocca il job a partire dalla gravita media.
 # =============================================================================
 
 name: Security Scan
 
 on:
   push:
-    branches:
-      - dev
-      - main
-      - preprod
+    branches: [main]
   pull_request:
-    branches:
-      - dev
-      - main
-      - preprod
+    branches: [main]
   schedule:
     - cron: '0 6 * * 1'  # ogni lunedi alle 06:00 UTC (08:00 ora italiana)
   workflow_dispatch:
 
-permissions:
-  contents: read
+permissions: {}
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
@@ -52,10 +47,12 @@ jobs:
       contents: read
     steps:
       - name: Checkout codice
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js 24
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
           cache: 'npm'
@@ -75,7 +72,7 @@ jobs:
 
       - name: Upload report npm audit
         if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: npm-audit-report
           path: npm-audit-report.json
@@ -92,10 +89,12 @@ jobs:
       contents: read
       security-events: write
     container:
-      image: returntocorp/semgrep
+      image: semgrep/semgrep@sha256:529ee8a277ec8adc5b534d7c74eea0a47e9de21d62852b6ba7ac6ba9566845c3
     steps:
       - name: Checkout codice
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Esegui Semgrep con ruleset Next.js + TypeScript + OWASP
         # Scansiona la root (il progetto Next.js sta alla root)
@@ -108,19 +107,18 @@ jobs:
             --config=p/react \
             --config=p/secrets \
             --sarif --output=semgrep-results.sarif \
-            --error || true
-        continue-on-error: true
+            --error
 
       - name: Upload SARIF su GitHub Code Scanning
         if: always()
-        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           sarif_file: semgrep-results.sarif
           category: semgrep
 
       - name: Upload report Semgrep
         if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: semgrep-results
           path: semgrep-results.sarif
@@ -134,12 +132,14 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      pull-requests: read
     steps:
       - name: Checkout completo (history necessaria)
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # fetch-depth: 0 OBBLIGATORIO per scansionare tutta la history
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Esegui Gitleaks
         # Gitleaks scansiona TUTTO il repo (incluso .git/), non serve working-directory
@@ -148,7 +148,7 @@ jobs:
         # Non prova proprietà/restrizioni di un progetto Google Cloud né riguarda una
         # credenziale privata; regole, file, commit e nuove occorrenze restano scansionati.
         # Il fingerprint ignore è sperimentale: ogni altra eccezione richiede prove proprie.
-        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}  # solo per organizzazioni
@@ -165,7 +165,9 @@ jobs:
       security-events: write
     steps:
       - name: Checkout codice
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Scansione filesystem (vulnerabilita package-lock)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -175,11 +177,12 @@ jobs:
           format: 'sarif'
           output: 'trivy-fs.sarif'
           severity: 'CRITICAL,HIGH'
+          # Trivy carica il SARIF ma non blocca; il gate dipendenze e' npm audit --audit-level=high.
           exit-code: '0'
 
       - name: Upload SARIF Trivy fs
         if: always()
-        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           sarif_file: trivy-fs.sarif
           category: trivy-fs
@@ -189,19 +192,88 @@ jobs:
   # ---------------------------------------------------------------------------
   summary:
     name: Riepilogo scansione
-    needs: [npm-audit, semgrep, gitleaks, trivy-fs]
+    needs: [npm-audit, semgrep, gitleaks, trivy-fs, codeql, zizmor]
     if: always()
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    permissions: {}
+    env:
+      NPM_AUDIT_RESULT: ${{ needs.npm-audit.result }}
+      SEMGREP_RESULT: ${{ needs.semgrep.result }}
+      GITLEAKS_RESULT: ${{ needs.gitleaks.result }}
+      TRIVY_RESULT: ${{ needs.trivy-fs.result }}
+      CODEQL_RESULT: ${{ needs.codeql.result }}
+      ZIZMOR_RESULT: ${{ needs.zizmor.result }}
     steps:
       - name: Stampa esito
         run: |
-          echo "## Riepilogo Security Scan" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- npm audit: ${{ needs.npm-audit.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Semgrep: ${{ needs.semgrep.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Gitleaks: ${{ needs.gitleaks.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Trivy fs: ${{ needs.trivy-fs.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Per i dettagli vedi la tab **Security** del repository." >> $GITHUB_STEP_SUMMARY
+          {
+            printf '%s\n' '## Riepilogo Security Scan' ''
+            printf '%s\n' "- npm audit: ${NPM_AUDIT_RESULT}" "- Semgrep: ${SEMGREP_RESULT}"
+            printf '%s\n' "- Gitleaks: ${GITLEAKS_RESULT}" "- Trivy fs: ${TRIVY_RESULT}"
+            printf '%s\n' "- CodeQL: ${CODEQL_RESULT}" "- zizmor: ${ZIZMOR_RESULT}" ''
+            printf '%s\n' 'Per i dettagli vedi la tab **Security** del repository.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fallisci se un controllo non è riuscito
+        run: |
+          failures=()
+          check_result() {
+            if [[ "$2" != success ]]; then
+              failures+=("$1 ($2)")
+            fi
+          }
+
+          check_result "npm audit" "$NPM_AUDIT_RESULT"
+          check_result "Semgrep" "$SEMGREP_RESULT"
+          check_result "Gitleaks" "$GITLEAKS_RESULT"
+          check_result "Trivy fs" "$TRIVY_RESULT"
+          check_result "CodeQL" "$CODEQL_RESULT"
+          check_result "zizmor" "$ZIZMOR_RESULT"
+
+          if (( ${#failures[@]} > 0 )); then
+            printf '::error::Controlli di sicurezza non riusciti: %s\n' "${failures[*]}"
+            exit 1
+          fi
+
+  codeql:
+    name: CodeQL (JavaScript/TypeScript)
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+      security-events: write
+    steps:
+      - name: Checkout codice
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          languages: javascript-typescript
+          queries: security-extended
+
+      - name: Analyze with CodeQL
+        uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+
+  zizmor:
+    name: Workflow analysis (zizmor)
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Checkout workflow files
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Analyze workflows with zizmor
+        uses: zizmorcore/zizmor-action@53290badfa369cb0bf7ad16342cb62c2fa47ac7b # v0.8.0
+        with:
+          inputs: .github/workflows/
+          min-severity: medium
+          advanced-security: false
+          annotations: true

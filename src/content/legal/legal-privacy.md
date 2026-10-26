@@ -1,19 +1,19 @@
 # Informativa Privacy Utraya
 
 > **Stato**: ✅ versione pubblicata
-> **Versione documento**: `2026-10-04-1`
-> **Data di entrata in vigore**: 2026-10-04
+> **Versione documento**: `2026-10-25-1`
+> **Data di entrata in vigore**: 2026-10-25
 > **Hash canonico**: calcolato da `npm run legal:hash` su questo file.
 > **Lingua sorgente**: italiano. Il testo italiano prevale in caso di discrepanza con la traduzione inglese.
 > **Riferimenti normativi**: Reg. (UE) 2016/679 (GDPR), in particolare artt. 6, 12-22, 28, 30, 32-34, 44-49, 82; D.Lgs. 196/2003 come modificato dal D.Lgs. 101/2018; Reg. (UE) 910/2014 (eIDAS); Provv. Garante 10/06/2021 n. 231; Linee guida EDPB.
 
 ---
 
-## 1. Chi è il responsabile del trattamento
+## 1. Chi è il titolare del trattamento
 
-Il responsabile del trattamento dei dati personali raccolti tramite il servizio Utraya è:
+Il titolare del trattamento dei dati personali raccolti tramite il servizio Utraya è:
 
-- **Responsabile del trattamento**: Dario Bonini
+- **Titolare del trattamento**: Dario Bonini
 - **Email di contatto per qualsiasi richiesta**: privacy@utraya.com
 
 Per ogni richiesta di informazioni o per l'esercizio dei diritti privacy, gli interessati possono scrivere esclusivamente all'indirizzo indicato sopra.
@@ -237,7 +237,7 @@ Per segnalare responsabilmente una vulnerabilità: privacy@utraya.com con oggett
 
 L'uso di cookie e altri identificatori è disciplinato da un documento separato, la **Cookie Policy**, disponibile a <https://utraya.com/legal/cookie>.
 
-In sintesi (stato versione `2026-05-16-1`):
+In sintesi (stato versione `2026-10-25-1`):
 
 - Utraya usa **esclusivamente cookie tecnici** (sessione di login, scelta lingua, memoria preferenze cookie).
 - **Nessun cookie analitico, di profilazione, di marketing o di terze parti** è attualmente in uso.
@@ -276,9 +276,9 @@ Per qualsiasi questione relativa al trattamento dei tuoi dati personali o per l'
 
 ## 1. Data Controller
 
-The data processing responsible person for personal data collected through the Utraya service is:
+The data controller for personal data collected through the Utraya service is:
 
-- **Data processing responsible person**: Dario Bonini
+- **Data Controller**: Dario Bonini
 - **Contact email for all requests**: privacy@utraya.com
 
 For any information request or privacy-rights exercise, data subjects can contact only the address above.
@@ -360,4 +360,5 @@ Email: privacy@utraya.com.
 
 | Versione | Data | Modifiche principali |
 |---|---|---|
+| `2026-10-25-1` | 2026-10-25 | Correzione della qualifica: Titolare del trattamento, non Responsabile. |
 | `2026-05-16-1` | 2026-05-16 | Prima versione pubblicata. Titolare: Dario Bonini Scope OAuth `openid email profile`. Solo cookie tecnici. No marketing, no profilazione. Conservazione 10 anni per registri TOS. Trasferimenti extra-UE coperti da DPF + SCC. |

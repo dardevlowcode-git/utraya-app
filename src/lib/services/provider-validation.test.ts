@@ -78,7 +78,7 @@ function configureAdminClient(getCredentialRow: () => Record<string, unknown> | 
   // Consenso TOS corrente richiesto dal salvataggio chiave (K5): l'utente di test ha accettato.
   const tosQuery = {
     eq: vi.fn(() => tosQuery),
-    limit: vi.fn(async () => ({ data: [{ document_kind: 'tos', document_version: '2026-10-11-1' }], error: null })),
+    limit: vi.fn(async () => ({ data: [{ document_kind: 'tos', document_version: '2026-10-25-1' }], error: null })),
   }
   createAdminClientMock.mockReturnValue({
     rpc: saveRpc,
