@@ -465,6 +465,7 @@
     "transcript": {
       "title": "Trascrizione",
       "absent": "Nessuna trascrizione per questo video.",
+      "waitingForGeminiKey": "In attesa di una chiave Gemini: la trascrizione partirà appena una chiave valida sarà disponibile.",
       "running": "Trascrizione in corso: {done} parti su {total}.",
       "runningNoProgress": "Trascrizione in corso.",
       "complete": "Clicca una frase per far partire il video da quel punto.",

@@ -14,6 +14,7 @@ import type { TranscriptionViewModel } from '@/lib/view-models/transcription'
 export interface VideoTranscriptLabels {
   title: string
   absent: string
+  waitingForGeminiKey: string
   running: string
   runningNoProgress: string
   complete: string
@@ -131,11 +132,13 @@ export default function VideoTranscriptPanel({ videoId, initial, labels }: Video
     if (seekEmbeddedPlayer(frame, seconds)) frame?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }
 
-  const statusText = view.state === 'running'
-    ? view.progress
-      ? fill(labels.running, { done: view.progress.doneParts, total: view.progress.totalParts })
-      : labels.runningNoProgress
-    : view.state === 'complete'
+  const statusText = view.state === 'waiting_for_key'
+    ? labels.waitingForGeminiKey
+    : view.state === 'running'
+      ? view.progress
+        ? fill(labels.running, { done: view.progress.doneParts, total: view.progress.totalParts })
+        : labels.runningNoProgress
+      : view.state === 'complete'
       ? labels.complete
       : view.state === 'needs_review'
         ? labels.needsReview

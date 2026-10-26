@@ -423,6 +423,7 @@
     "transcript": {
       "title": "Transcript",
       "absent": "No transcript for this video yet.",
+      "waitingForGeminiKey": "Waiting for a Gemini key: transcription will start as soon as a valid key is available.",
       "running": "Transcribing: {done} of {total} parts.",
       "runningNoProgress": "Transcribing.",
       "complete": "Click a phrase to start the video from that point.",

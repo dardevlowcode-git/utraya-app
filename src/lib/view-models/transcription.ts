@@ -6,7 +6,7 @@
 
 import { buildYoutubeTimeUrl, formatTranscriptTimestamp } from '@/lib/utils/transcript-time'
 
-export type TranscriptionViewState = 'absent' | 'running' | 'complete' | 'needs_review' | 'unavailable'
+export type TranscriptionViewState = 'absent' | 'waiting_for_key' | 'running' | 'complete' | 'needs_review' | 'unavailable'
 export type TranscriptionRequestBlockedReason = 'gemini_key_missing' | null
 
 export interface TranscriptionPhraseViewModel {
@@ -44,6 +44,7 @@ export interface TranscriptionViewInput {
   partStatuses: Array<'pending' | 'done' | 'missing'>
   phrases: Array<{ position: number; start_seconds: number; text: string; doubtful_time: boolean }>
   hasGeminiKey: boolean
+  waitingForGeminiKey: boolean
   needsResume: boolean
 }
 
@@ -52,7 +53,9 @@ export function toTranscriptionViewModel(input: TranscriptionViewInput): Transcr
   const { transcription } = input
   const state: TranscriptionViewState = !transcription
     ? 'absent'
-    : transcription.status === 'pending' || transcription.status === 'running'
+    : transcription.status === 'pending' && input.waitingForGeminiKey
+      ? 'waiting_for_key'
+      : transcription.status === 'pending' || transcription.status === 'running'
       ? 'running'
       : transcription.status
   const readable = state === 'complete' || state === 'needs_review'
@@ -76,6 +79,8 @@ export function toTranscriptionViewModel(input: TranscriptionViewInput): Transcr
     progress: state === 'running' ? { doneParts, totalParts: input.partStatuses.length } : null,
     needsResume: state === 'running' && input.needsResume,
     canRequest: state === 'absent' && input.hasGeminiKey,
-    requestBlockedReason: state === 'absent' && !input.hasGeminiKey ? 'gemini_key_missing' : null,
+    requestBlockedReason: (state === 'absent' || state === 'waiting_for_key') && !input.hasGeminiKey
+      ? 'gemini_key_missing'
+      : null,
   }
 }
