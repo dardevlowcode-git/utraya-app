@@ -1,7 +1,7 @@
 # DPA — Catena del trattamento dati Utraya
 
 > **Stato**: 🟡 bozza pre-launch — la versione "pubblica" (lista sub-processors da inserire nella Privacy Policy) deve essere validata legalmente (`tasks/SEC.md` PUBSEC-007).
-> **Versione documento**: `2026-10-04-1`
+> **Versione documento**: `2026-10-25-1`
 > **Lingua sorgente**: italiano.
 > **A cosa serve questo file**: documentare in modo unitario (a) il ruolo di Utraya nel GDPR, (b) i responsabili esterni del trattamento (sub-processors) con i rispettivi DPA, (c) i trasferimenti extra-UE e le relative garanzie, (d) il template DPA che Utraya offrirà ai clienti business quando aprirà la API.
 
@@ -18,9 +18,9 @@
 | Utente finale di Utraya | **Interessato** | GDPR art. 4 n. 1 |
 | **Utenti business** (futuro, post-apertura API) | **Titolare del trattamento** per i dati dei propri utenti finali; Utraya è loro **Responsabile** | GDPR art. 4 n. 7-8 |
 
-## 2. Sub-processors attuali (per Utraya in qualità di Titolare)
+## 2. Sub-processors attuali del servizio Utraya (Titolare: Dario Bonini)
 
-Tutti i sub-processors sotto sono soggetti a contratto di nomina ex GDPR art. 28 par. 3 (DPA), accettato da Utraya al momento dell'attivazione del servizio.
+Tutti i sub-processors sotto sono soggetti a contratto di nomina ex GDPR art. 28 par. 3 (DPA), accettato da Dario Bonini per il servizio Utraya al momento dell'attivazione del servizio.
 
 ### 2.1 Supabase Inc.
 
@@ -81,7 +81,7 @@ Esistono **due modalità operative**, da disambiguare con cura:
 L'utente fornisce la propria chiave API Gemini, cifrata AES-GCM e custodita su Supabase (vedi `SECURITY.md §4`). Quando l'utente richiede un riassunto, la chiamata a Gemini è effettuata **con la chiave dell'utente**. In questo caso:
 
 - Il rapporto contrattuale per i dati inviati a Gemini è **tra utente e Google**, non tra Utraya e Google.
-- Utraya è **responsabile del trattamento solo della chiave** (custodia cifrata).
+- In questo flusso, Dario Bonini (per il servizio Utraya) tratta esclusivamente la chiave (custodia cifrata) in qualità di **Titolare del trattamento**.
 - Utraya NON sigla il DPA Google per i contenuti AI in questa modalità.
 
 **Modalità B — chiave applicativa di Utraya (per allowlist beta gratuita, fallback)**
@@ -172,4 +172,5 @@ Per ricevere copia firmata di un DPA con Utraya (per utenti business futuri) o p
 
 | Versione | Data | Modifiche principali |
 |---|---|---|
+| `2026-10-25-1` | 2026-10-25 | Correzione della qualifica: Titolare del trattamento, non Responsabile. |
 | `2026-05-16-1` | 2026-05-16 | Prima versione operativa con sub-processors Supabase / Vercel / Google, distinzione BYOK vs chiave applicativa Gemini, registro trattamenti estratto |

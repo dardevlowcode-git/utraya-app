@@ -10,7 +10,7 @@ import { getClientIp, getRequestId } from '@/lib/security/http'
 import { consumeGitHubOidcJti } from '@/lib/security/githubOidcReplay'
 import { verifyGitHubActionsOidc } from '@/lib/security/githubOidc'
 import { checkRateLimit } from '@/lib/security/rate-limit'
-import { runApiVerification, verifierTargetOrigins, type VerifierTarget } from '@/lib/verifier/api-verifier'
+import { runApiVerification, verifierTargetOrigins, VerifierConfigurationError, type VerifierTarget } from '@/lib/verifier/api-verifier'
 
 const requestSchema = z.object({
   target: z.enum(['dev', 'preview', 'production']),
@@ -52,7 +52,10 @@ export async function POST(request: Request) {
     const report = await runApiVerification({ target: body.target, mutations: body.mutations })
     const { failedCount, ...payload } = report
     return brokerResponse(apiOk(payload, requestId, failedCount ? 207 : 200))
-  } catch {
+  } catch (error) {
+    if (error instanceof VerifierConfigurationError) {
+      return brokerResponse(apiErr('CONFIGURATION_ERROR', 'Configurazione verificatore mancante', 503, requestId))
+    }
     return brokerResponse(apiErr('INTERNAL_ERROR', 'Errore interno', 500, requestId))
   }
 }

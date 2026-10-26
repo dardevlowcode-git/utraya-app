@@ -1,7 +1,7 @@
 # Termini di Servizio Utraya
 
-> **Stato**: candidata locale `2026-10-11-1`; questa copia non attesta pubblicazione né efficacia online.
-> **Versione documento (candidata locale)**: `2026-10-11-1`
+> **Stato**: candidata locale `2026-10-25-1`; questa copia non attesta pubblicazione né efficacia online.
+> **Versione documento (candidata locale)**: `2026-10-25-1`
 > **Versione pubblicata/efficace**: non verificata da questa fonte.
 > **Data di entrata in vigore della candidata**: non determinata; da indicare solo con prova della pubblicazione autorizzata.
 > **Hash canonico**: calcolato da `npm run legal:hash` sulla rappresentazione Markdown pubblica (vedi §0).
@@ -13,7 +13,7 @@
 
 - Quando il testo pubblico cambia, si genera un **nuovo hash SHA-256** sulla rappresentazione Markdown canonica mostrata: titolo e corpo pubblico, senza intestazione metadata, questa sezione operativa o la sintesi giuridica non pubblica. Il comando `npm run legal:hash` applica la stessa trasformazione del loader; si bumpa anche la versione (formato `YYYY-MM-DD-N`). Modifiche alle sole note interne non cambiano hash né richiedono nuova accettazione.
 - Le sezioni marcate **[VESSATORIA]** richiedono accettazione specifica separata ex art. 1341 c.c. comma 2 (vedi §22 "Approvazione specifica delle clausole vessatorie").
-- Documento privo di riferimenti societari e dati identificativi aggiuntivi: il responsabile indicato è Dario Bonini con contatto privacy@utraya.com.
+- Documento privo di riferimenti societari e dati identificativi aggiuntivi: il titolare indicato è Dario Bonini con contatto privacy@utraya.com.
 
 ---
 
@@ -239,9 +239,9 @@ L'utente non può cedere i propri diritti e obblighi derivanti da questi Termini
 
 Il titolare può cedere il contratto in caso di operazioni straordinarie (cessione del ramo d'azienda, fusione, incorporazione) **previa informativa** all'utente, che potrà comunque richiedere la cancellazione dell'account (§10) se non gradisce il subentro.
 
-## 21. Responsabile del servizio
+## 21. Titolare del trattamento e contatti del servizio
 
-- **Responsabile del servizio e del trattamento dati**: Dario Bonini
+- **Titolare del trattamento**: Dario Bonini
 - **Email di contatto per ogni richiesta di informazioni**: privacy@utraya.com
 
 ## 22. Approvazione specifica delle clausole vessatorie (art. 1341 c.c. comma 2)
@@ -332,11 +332,17 @@ By entering and saving a personal API key, the user enables Utraya to use it aut
 
 Any usage, limits, and costs of external services are separate from those of Utraya and depend on the applicable provider's terms.
 
+## 21. Data controller and service contact
+
+- **Data Controller**: Dario Bonini
+- **Contact email for all information requests**: privacy@utraya.com
+
 ---
 
 ## Storia versioni
 
 | Versione | Data | Modifiche principali |
 |---|---|---|
+| `2026-10-25-1` | 2026-10-25 (preparazione candidata locale) | Candidata locale: corretta la qualifica del titolare del trattamento. Nessuna pubblicazione o efficacia è attestata. |
 | `2026-10-11-1` | 2026-10-11 (preparazione candidata locale) | Candidata locale: aggiunti Firecrawl e l'informativa approvata sulle chiavi API personali (§8); chiariti consumi, limiti e costi dei servizi esterni (§9). Nessuna pubblicazione o efficacia è attestata. |
 | `2026-05-16-1` | 2026-05-16 | Prima versione pubblicata. Titolare: Dario Bonini Vessatorie marcate (§11, §13, §15, §16, §17, §18). §12-bis su dati Google. Tetto risarcimento simbolico 1€ per natura gratuita del servizio. |

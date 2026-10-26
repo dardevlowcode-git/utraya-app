@@ -1206,7 +1206,7 @@ SELECT public.test_assert_true(
           AND pg_catalog.array_to_string(p.proconfig, ',') = 'search_path=""'
        FROM pg_catalog.pg_proc AS p JOIN pg_catalog.pg_language AS l ON l.oid = p.prolang
        WHERE p.oid = 'public.required_tos_version()'::regprocedure)
-  AND public.required_tos_version() = '2026-10-11-1',
+  AND public.required_tos_version() = '2026-10-25-1',
   'required_tos_version è SQL immutabile, isolata, restituisce la versione attesa ed è eseguibile solo da service_role'
 );
 SELECT public.test_assert_true(
@@ -1245,10 +1245,10 @@ WHERE NOT EXISTS (SELECT 1 FROM auth.users au WHERE au.id = u.id);
 -- K5: b9 è sospeso e ba non ha accettato i TOS correnti, quindi le loro chiavi non sono eleggibili.
 UPDATE public.users SET status = 'suspended' WHERE id = '00000000-0000-4000-8000-0000000000b9';
 INSERT INTO public.legal_acceptances (user_id, document_kind, document_version, document_hash, locale, user_email_at_acceptance) VALUES
-  ('00000000-0000-4000-8000-0000000000b1', 'tos', '2026-10-11-1', 'hash-tos-test', 'it', 'g1@example.invalid'),
-  ('00000000-0000-4000-8000-0000000000b2', 'tos', '2026-10-11-1', 'hash-tos-test', 'it', 'g2@example.invalid'),
-  ('00000000-0000-4000-8000-0000000000b3', 'tos', '2026-10-11-1', 'hash-tos-test', 'it', 'g3@example.invalid'),
-  ('00000000-0000-4000-8000-0000000000b9', 'tos', '2026-10-11-1', 'hash-tos-test', 'it', 'suspended@example.invalid');
+  ('00000000-0000-4000-8000-0000000000b1', 'tos', '2026-10-25-1', 'hash-tos-test', 'it', 'g1@example.invalid'),
+  ('00000000-0000-4000-8000-0000000000b2', 'tos', '2026-10-25-1', 'hash-tos-test', 'it', 'g2@example.invalid'),
+  ('00000000-0000-4000-8000-0000000000b3', 'tos', '2026-10-25-1', 'hash-tos-test', 'it', 'g3@example.invalid'),
+  ('00000000-0000-4000-8000-0000000000b9', 'tos', '2026-10-25-1', 'hash-tos-test', 'it', 'suspended@example.invalid');
 -- ba ha accettato solo una versione precedente: non vale per l'eleggibilità corrente.
 INSERT INTO public.legal_acceptances (user_id, document_kind, document_version, document_hash, locale, user_email_at_acceptance)
 VALUES ('00000000-0000-4000-8000-0000000000ba', 'tos', '2026-05-16-1', 'hash-tos-old', 'it', 'no-tos@example.invalid');

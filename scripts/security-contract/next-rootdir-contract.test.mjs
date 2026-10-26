@@ -4,7 +4,6 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import crypto from 'node:crypto'
 import { createRequire } from 'node:module'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -14,7 +13,61 @@ import { ESLint } from 'eslint'
 const require = createRequire(import.meta.url)
 const { getRootDirs } = require('@next/eslint-plugin-next/dist/utils/get-root-dirs')
 const { getUrlFromAppDirectory, getUrlFromPagesDirectories } = require('@next/eslint-plugin-next/dist/utils/url')
-const BASELINE_ROUTE_DIGEST = '233df4b22ddcd92b713f5927565fa877548cf4b509c3fb1f969eb5351bd80cf7'
+const ROUTE_BASELINE_PATH = new URL('./route-baseline.json', import.meta.url)
+
+/** Confronta due elenchi ordinati senza mutarli e restituisce route aggiunte e rimosse. */
+function diffRoutes(baseline, current) {
+  const baselineRoutes = new Set(baseline)
+  const currentRoutes = new Set(current)
+
+  return {
+    added: current.filter((route) => !baselineRoutes.has(route)),
+    removed: baseline.filter((route) => !currentRoutes.has(route)),
+  }
+}
+
+/** Crea l'errore leggibile per una baseline diversa dalle route attualmente scoperte. */
+function formatRouteBaselineMismatch(baseline, current) {
+  const { added, removed } = diffRoutes(baseline, current)
+  /** Rende ogni route visibile su una riga, anche nei messaggi di errore Vitest. */
+  const formatRoutes = (routes) =>
+    routes.length > 0 ? routes.map((route) => `  ${route}`).join('\n') : '  (nessuna)'
+
+  return [
+    `Baseline route diversa: conteggio baseline: ${baseline.length}; scoperte: ${current.length}.`,
+    'Route aggiunte:',
+    formatRoutes(added),
+    'Route tolte:',
+    formatRoutes(removed),
+    'Per aggiornare dopo aver revisionato le modifiche: UPDATE_ROUTE_BASELINE=1 npx vitest run scripts/security-contract',
+  ].join('\n')
+}
+
+describe('baseline delle route Next', () => {
+  it('riporta le route aggiunte e tolte senza modificare gli elenchi', () => {
+    const baseline = ['^\\/kept$', '^\\/removed$']
+    const current = ['^\\/added$', '^\\/kept$']
+
+    expect(diffRoutes(baseline, current)).toEqual({
+      added: ['^\\/added$'],
+      removed: ['^\\/removed$'],
+    })
+    expect(baseline).toEqual(['^\\/kept$', '^\\/removed$'])
+    expect(current).toEqual(['^\\/added$', '^\\/kept$'])
+  })
+
+  it('spiega conteggi, route modificate e comando di aggiornamento', () => {
+    const message = formatRouteBaselineMismatch(
+      ['^\\/removed$'],
+      ['^\\/added$', '^\\/new$'],
+    )
+
+    expect(message).toContain('baseline: 1; scoperte: 2')
+    expect(message).toContain('Route aggiunte:\n  ^\\/added$\n  ^\\/new$')
+    expect(message).toContain('Route tolte:\n  ^\\/removed$')
+    expect(message).toContain('UPDATE_ROUTE_BASELINE=1 npx vitest run scripts/security-contract')
+  })
+})
 
 /** Converte rootDirs Next nei medesimi path app/pages controllati dalla regola upstream. */
 function findNextRouteDirectories(rootDirs, relativeDirectories) {
@@ -63,14 +116,23 @@ describe('contratto rootDir nelle route Next', () => {
     fs.rmSync(fixtureRoot, { recursive: true, force: true })
   })
 
-  it('mantiene il default Utraya e verifica tutte le 122 route regex della baseline', async () => {
+  it('mantiene il default Utraya e confronta le route regex con la baseline versionata', async () => {
     const effectiveConfig = await new ESLint().calculateConfigForFile('eslint.config.mjs')
     const settings = effectiveConfig?.settings ?? {}
     const { rootDirs, routes } = discoverNextRoutes(settings)
 
     expect(rootDirs).toEqual([process.cwd()])
-    expect(routes).toHaveLength(122)
-    expect(crypto.createHash('sha256').update(JSON.stringify(routes)).digest('hex')).toBe(BASELINE_ROUTE_DIGEST)
+
+    if (process.env.UPDATE_ROUTE_BASELINE === '1') {
+      fs.writeFileSync(ROUTE_BASELINE_PATH, `${JSON.stringify(routes, null, 2)}\n`)
+      expect(JSON.parse(fs.readFileSync(ROUTE_BASELINE_PATH, 'utf8'))).toEqual(routes)
+      return
+    }
+
+    const baseline = JSON.parse(fs.readFileSync(ROUTE_BASELINE_PATH, 'utf8'))
+    const differences = diffRoutes(baseline, routes)
+
+    expect(differences, formatRouteBaselineMismatch(baseline, routes)).toEqual({ added: [], removed: [] })
   })
 
   it('scopre le stesse route per root letterali relativi e assoluti', () => {

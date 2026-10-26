@@ -67,7 +67,7 @@ describe('legal TOS document', () => {
 
     expect(document.version).toBe(TOS_REQUIRED_VERSION)
     expect(document.hash).toBe(TOS_REQUIRED_HASH)
-    expect(TOS_REQUIRED_VERSION).not.toBe('2026-05-16-1')
+    expect(TOS_REQUIRED_VERSION).toBe('2026-10-25-1')
     expect(document.markdown).not.toContain('Stato**: candidata locale')
     expect(document.markdown).not.toContain('Versione pubblicata/efficace**: non verificata')
     expect(document.markdown).not.toContain('Data di entrata in vigore della candidata**:')
@@ -99,10 +99,10 @@ describe('legal TOS document', () => {
   it('localizza le etichette di versione e hash documento in italiano e inglese', async () => {
     const document = await loadLegalDocument('tos')
 
-    expect(renderLegalDocument('it', document)).toContain('Versione 2026-10-11-1')
-    expect(renderLegalDocument('it', document)).toContain('Hash documento: cef6def57b114fb1… (SHA-256)')
-    expect(renderLegalDocument('en', document)).toContain('Version 2026-10-11-1')
-    expect(renderLegalDocument('en', document)).toContain('Document hash: cef6def57b114fb1… (SHA-256)')
+    expect(renderLegalDocument('it', document)).toContain('Versione 2026-10-25-1')
+    expect(renderLegalDocument('it', document)).toContain('Hash documento: a180e26c76c73721… (SHA-256)')
+    expect(renderLegalDocument('en', document)).toContain('Version 2026-10-25-1')
+    expect(renderLegalDocument('en', document)).toContain('Document hash: a180e26c76c73721… (SHA-256)')
   })
 
   it('mantiene le note §0 nella fonte ma le esclude dal documento pubblico renderizzato', async () => {
@@ -129,7 +129,7 @@ describe('legal TOS document', () => {
     expect(document.hash).not.toBe(hashLegalDocumentContent(source))
 
     const internalNoteRevision = source
-      .replace('candidata locale `2026-10-11-1`; questa copia non attesta pubblicazione né efficacia online.', 'metadata locale aggiornato solo internamente.')
+      .replace('candidata locale `2026-10-25-1`; questa copia non attesta pubblicazione né efficacia online.', 'metadata locale aggiornato solo internamente.')
       .replace('Modifiche alle sole note interne non cambiano hash né richiedono nuova accettazione.', 'Nota operativa interna aggiornata.')
     expect(toPublicTosMarkdown(internalNoteRevision)).toBe(publicMarkdown)
 

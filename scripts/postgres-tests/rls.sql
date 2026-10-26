@@ -96,8 +96,8 @@ INSERT INTO public.watchlist_items (id, watchlist_id, video_id) VALUES
   ('18000000-0000-4000-8000-0000f150b010', '17000000-0000-4000-8000-0000f150b010', '21000000-0000-4000-8000-0000f1500001');
 
 INSERT INTO public.legal_acceptances (id, user_id, document_kind, document_version, document_hash, locale, user_email_at_acceptance) VALUES
-  ('19000000-0000-4000-8000-0000f150a010', '00000000-0000-4000-8000-00000000a001', 'tos', '2026-10-11-1', 'hash-f15-a', 'it', 'rls-a@example.invalid'),
-  ('19000000-0000-4000-8000-0000f150b010', '00000000-0000-4000-8000-00000000b001', 'tos', '2026-10-11-1', 'hash-f15-b', 'it', 'rls-b@example.invalid');
+  ('19000000-0000-4000-8000-0000f150a010', '00000000-0000-4000-8000-00000000a001', 'tos', '2026-10-25-1', 'hash-f15-a', 'it', 'rls-a@example.invalid'),
+  ('19000000-0000-4000-8000-0000f150b010', '00000000-0000-4000-8000-00000000b001', 'tos', '2026-10-25-1', 'hash-f15-b', 'it', 'rls-b@example.invalid');
 
 INSERT INTO public.user_deletion_requests (id, user_id, scheduled_deletion_at, status) VALUES
   ('1a000000-0000-4000-8000-0000f150a010', '00000000-0000-4000-8000-00000000a001', NOW() + INTERVAL '7 days', 'pending'),
@@ -128,6 +128,66 @@ INSERT INTO public.job_attempts (id, job_id, attempt_number, status) VALUES
   ('21000000-0000-4000-8000-0000f150a010', '1c000000-0000-4000-8000-0000f150a010', 1, 'running');
 
 RESET ROLE;
+
+-- =========================================================================
+-- Hardening funzioni advisory: il trigger resta utilizzabile, la RPC no; le
+-- funzioni con effetti collaterali hanno un search_path vuoto.
+-- =========================================================================
+SELECT public.test_assert_rls(
+  NOT pg_catalog.has_function_privilege('anon', 'public.initialize_user_provider_credential_retry_limit()', 'EXECUTE')
+  AND NOT pg_catalog.has_function_privilege('authenticated', 'public.initialize_user_provider_credential_retry_limit()', 'EXECUTE'),
+  'anon e authenticated non possono invocare direttamente la funzione trigger'
+);
+
+SET ROLE service_role;
+INSERT INTO public.user_provider_credentials (id, user_id, provider, encrypted_key, is_configured)
+VALUES ('00000000-0000-4000-8000-00000000f001', '00000000-0000-4000-8000-00000000c001', 'gemini', 'cipher-trigger-test', TRUE);
+RESET ROLE;
+
+SELECT public.test_assert_rls(
+  (SELECT retry_limit = 0 FROM public.user_provider_credential_retry_limits
+   WHERE credential_id = '00000000-0000-4000-8000-00000000f001'),
+  'l inserimento credenziale inizializza comunque il limite retry via trigger'
+);
+
+SELECT public.test_assert_rls(
+  (SELECT EXISTS (
+     SELECT 1 FROM pg_catalog.unnest(p.proconfig) AS config
+     WHERE config = 'search_path=""'
+   ) FROM pg_catalog.pg_proc p
+   WHERE p.oid = 'public.update_updated_at_column()'::pg_catalog.regprocedure)
+  AND (SELECT EXISTS (
+     SELECT 1 FROM pg_catalog.unnest(p.proconfig) AS config
+     WHERE config = 'search_path=""'
+   ) FROM pg_catalog.pg_proc p
+   WHERE p.oid = 'public.cleanup_old_logs()'::pg_catalog.regprocedure),
+  'le funzioni update_updated_at_column e cleanup_old_logs fissano search_path vuoto'
+);
+
+INSERT INTO public.app_logs (id, level, message, created_at)
+VALUES ('13000000-0000-4000-8000-0000f150f010', 'info', 'cleanup test', NOW() - INTERVAL '8 days');
+INSERT INTO public.audit_logs (id, action, resource_type, created_at)
+VALUES ('13000000-0000-4000-8000-0000f150f011', 'cleanup test', 'test', NOW() - INTERVAL '8 days');
+INSERT INTO public.job_locks (id, lock_key, locked_by, expires_at)
+VALUES ('13000000-0000-4000-8000-0000f150f012', 'cleanup-test', 'test', NOW() - INTERVAL '1 minute');
+SELECT public.cleanup_old_logs();
+
+SELECT public.test_assert_rls(
+  NOT EXISTS (SELECT 1 FROM public.app_logs WHERE id = '13000000-0000-4000-8000-0000f150f010')
+  AND NOT EXISTS (SELECT 1 FROM public.audit_logs WHERE id = '13000000-0000-4000-8000-0000f150f011')
+  AND NOT EXISTS (SELECT 1 FROM public.job_locks WHERE id = '13000000-0000-4000-8000-0000f150f012'),
+  'cleanup_old_logs continua a eliminare log scaduti e lock scaduti'
+);
+
+UPDATE public.user_provider_credentials
+SET updated_at = '2000-01-01 00:00:00+00'
+WHERE id = '12000000-0000-4000-8000-0000f150a010';
+
+SELECT public.test_assert_rls(
+  (SELECT updated_at > '2000-01-01 00:00:00+00'::TIMESTAMPTZ
+   FROM public.user_provider_credentials WHERE id = '12000000-0000-4000-8000-0000f150a010'),
+  'update_updated_at_column imposta updated_at all aggiornamento'
+);
 
 -- =========================================================================
 -- Helper di sessione: gli stessi due usati dal resto del file.
@@ -281,7 +341,7 @@ BEGIN
       ('watchlist_items', 'watchlist_id', '18000000-0000-4000-8000-0000f150ff10',
        $q$INSERT INTO public.watchlist_items (id, watchlist_id, video_id) VALUES ('18000000-0000-4000-8000-0000f150ff10', '17000000-0000-4000-8000-0000f150b010', '21000000-0000-4000-8000-0000f1500001')$q$),
       ('legal_acceptances', 'user_id', '19000000-0000-4000-8000-0000f150ff10',
-       $q$INSERT INTO public.legal_acceptances (id, user_id, document_kind, document_version, document_hash, locale, user_email_at_acceptance) VALUES ('19000000-0000-4000-8000-0000f150ff10', '00000000-0000-4000-8000-00000000b001', 'tos', '2026-10-11-1', 'hash-intruso', 'it', 'intruso@example.invalid')$q$),
+       $q$INSERT INTO public.legal_acceptances (id, user_id, document_kind, document_version, document_hash, locale, user_email_at_acceptance) VALUES ('19000000-0000-4000-8000-0000f150ff10', '00000000-0000-4000-8000-00000000b001', 'tos', '2026-10-25-1', 'hash-intruso', 'it', 'intruso@example.invalid')$q$),
       ('user_deletion_requests', 'user_id', '1a000000-0000-4000-8000-0000f150ff10',
        $q$INSERT INTO public.user_deletion_requests (id, user_id, scheduled_deletion_at) VALUES ('1a000000-0000-4000-8000-0000f150ff10', '00000000-0000-4000-8000-00000000b001', NOW() + INTERVAL '1 day')$q$),
       ('jobs', 'created_by_user_id', '1c000000-0000-4000-8000-0000f150ff10',
@@ -560,14 +620,8 @@ SELECT public.test_assert_rls(
 -- 8. Le tre verifiche testuali di api-usage.test.ts, portate in SQL reale.
 -- =========================================================================
 
--- 8a. Il provider Firecrawl è ammesso dalle CHECK reali (non dal testo della migrazione).
---     Si prova inserendo un record credenziale firecrawl (che funziona) e un evento ledger.
--- BUG: l'evento `api_usage_events` con provider `firecrawl` NON è inseribile. La migrazione
--- 20261012000000 sostituisce `api_usage_events_provider_check` (ora ammette 'firecrawl') ma
--- non aggiorna `api_usage_provider_fields_check`, che ammette solo youtube/gemini. L'app
--- costruisce per Firecrawl un evento con token/costi/quota tutti NULL, quindi la scrittura
--- viola il vincolo e il ledger perde l'evento. Il test che lo scopre resta commentato
--- (regola 6: il difetto non si corregge qui, si segnala).
+-- 8a. I provider ammessi e i rispettivi campi sono verificati sulle CHECK reali.
+--     Si prova inserendo un record credenziale Firecrawl e un evento ledger.
 SET ROLE service_role;
 INSERT INTO public.user_provider_credentials (id, user_id, provider, encrypted_key, is_configured)
 VALUES ('12000000-0000-4000-8000-0000f150c010', '00000000-0000-4000-8000-00000000c001', 'firecrawl', 'cipher-firecrawl', TRUE);
@@ -578,16 +632,68 @@ SELECT public.test_assert_rls(
   'il provider Firecrawl è ammesso dalle CHECK reali sulle credenziali'
 );
 
--- BUG: evento Firecrawl rifiutato da `api_usage_provider_fields_check` (20261004120000:23),
---      non aggiornato da 20261012000000. Da correggere in una migrazione dedicata.
--- SET ROLE service_role;
--- INSERT INTO public.api_usage_events (id, user_id, provider, operation, outcome) VALUES
---   ('1b000000-0000-4000-8000-0000f150c010', '00000000-0000-4000-8000-00000000c001', 'firecrawl', 'alexandria.find-tools', 'success');
--- RESET ROLE;
--- SELECT public.test_assert_rls(
---   (SELECT count(*) FROM public.api_usage_events WHERE provider = 'firecrawl') = 1,
---   'un evento Firecrawl è registrabile nel ledger'
--- );
+SET ROLE service_role;
+INSERT INTO public.api_usage_events (id, user_id, provider, operation, outcome) VALUES
+  ('1b000000-0000-4000-8000-0000f150c020', '00000000-0000-4000-8000-00000000c001', 'firecrawl', 'alexandria.find-tools', 'success');
+RESET ROLE;
+SELECT public.test_assert_rls(
+  (SELECT count(*) FROM public.api_usage_events WHERE provider = 'firecrawl') = 1,
+  'un evento Firecrawl è registrabile nel ledger'
+);
+
+-- I campi di consumo specifici di Firecrawl devono rimanere NULL.
+SET ROLE service_role;
+DO $$
+DECLARE
+  v_rejected BOOLEAN;
+BEGIN
+  v_rejected := FALSE;
+  BEGIN
+    INSERT INTO public.api_usage_events (id, user_id, provider, operation, outcome, input_tokens) VALUES
+      ('1b000000-0000-4000-8000-0000f150c011', '00000000-0000-4000-8000-00000000c001', 'firecrawl', 'alexandria.find-tools', 'success', 1);
+  EXCEPTION WHEN check_violation THEN
+    v_rejected := TRUE;
+  END;
+  PERFORM public.test_assert_rls(v_rejected, 'Firecrawl rifiuta eventi con token');
+
+  v_rejected := FALSE;
+  BEGIN
+    INSERT INTO public.api_usage_events (id, user_id, provider, operation, outcome, quota_units) VALUES
+      ('1b000000-0000-4000-8000-0000f150c012', '00000000-0000-4000-8000-00000000c001', 'firecrawl', 'alexandria.find-tools', 'success', 1);
+  EXCEPTION WHEN check_violation THEN
+    v_rejected := TRUE;
+  END;
+  PERFORM public.test_assert_rls(v_rejected, 'Firecrawl rifiuta eventi con quota');
+
+  v_rejected := FALSE;
+  BEGIN
+    INSERT INTO public.api_usage_events (id, user_id, provider, operation, outcome, estimated_cost_usd) VALUES
+      ('1b000000-0000-4000-8000-0000f150c013', '00000000-0000-4000-8000-00000000c001', 'firecrawl', 'alexandria.find-tools', 'success', 0.01);
+  EXCEPTION WHEN check_violation THEN
+    v_rejected := TRUE;
+  END;
+  PERFORM public.test_assert_rls(v_rejected, 'Firecrawl rifiuta eventi con costo stimato');
+
+  v_rejected := FALSE;
+  BEGIN
+    INSERT INTO public.api_usage_events (id, user_id, provider, operation, outcome, input_tokens) VALUES
+      ('1b000000-0000-4000-8000-0000f150c014', '00000000-0000-4000-8000-00000000c001', 'youtube', 'videos.list', 'success', 1);
+  EXCEPTION WHEN check_violation THEN
+    v_rejected := TRUE;
+  END;
+  PERFORM public.test_assert_rls(v_rejected, 'YouTube rifiuta eventi con token');
+
+  v_rejected := FALSE;
+  BEGIN
+    INSERT INTO public.api_usage_events (id, user_id, provider, operation, outcome, quota_units) VALUES
+      ('1b000000-0000-4000-8000-00000000c015', '00000000-0000-4000-8000-00000000c001', 'gemini', 'generateContent', 'success', 1);
+  EXCEPTION WHEN check_violation THEN
+    v_rejected := TRUE;
+  END;
+  PERFORM public.test_assert_rls(v_rejected, 'Gemini rifiuta eventi con quota');
+END;
+$$;
+RESET ROLE;
 
 -- 8b. Ownership e retention 30 giorni della policy sono provati leggendo da `authenticated`:
 --     A vede il proprio evento recente ma non quello vecchio di oltre 30 giorni, né quelli di C.
@@ -682,14 +788,14 @@ DELETE FROM public.user_deletion_requests WHERE id IN ('1a000000-0000-4000-8000-
 DELETE FROM public.user_roles WHERE user_id IN ('00000000-0000-4000-8000-00000000a001', '00000000-0000-4000-8000-00000000b001', '00000000-0000-4000-8000-00000000c001');
 DELETE FROM public.user_identities WHERE id IN ('11000000-0000-4000-8000-0000f150a010', '11000000-0000-4000-8000-0000f150b010');
 DELETE FROM public.credential_checks WHERE id IN ('13000000-0000-4000-8000-0000f150a010', '13000000-0000-4000-8000-0000f150b010');
-DELETE FROM public.user_provider_credentials WHERE id IN ('12000000-0000-4000-8000-0000f150a010', '12000000-0000-4000-8000-0000f150b010', '12000000-0000-4000-8000-0000f150c010');
+DELETE FROM public.user_provider_credentials WHERE id IN ('12000000-0000-4000-8000-0000f150a010', '12000000-0000-4000-8000-0000f150b010', '12000000-0000-4000-8000-0000f150c010', '00000000-0000-4000-8000-00000000f001');
 DELETE FROM public.user_channel_preferences WHERE id IN ('15000000-0000-4000-8000-0000f150a010', '15000000-0000-4000-8000-0000f150b010');
 DELETE FROM public.watchlist_items WHERE id IN ('18000000-0000-4000-8000-0000f150a010', '18000000-0000-4000-8000-0000f150b010');
 DELETE FROM public.watchlists WHERE id IN ('17000000-0000-4000-8000-0000f150a010', '17000000-0000-4000-8000-0000f150b010');
 DELETE FROM public.user_video_states WHERE id IN ('16000000-0000-4000-8000-0000f150a010', '16000000-0000-4000-8000-0000f150b010');
 DELETE FROM public.user_channels WHERE id IN ('14000000-0000-4000-8000-0000f150a010', '14000000-0000-4000-8000-0000f150b010');
 DELETE FROM public.legal_acceptances WHERE id IN ('19000000-0000-4000-8000-0000f150a010', '19000000-0000-4000-8000-0000f150b010');
-DELETE FROM public.api_usage_events WHERE id IN ('1b000000-0000-4000-8000-0000f150a010', '1b000000-0000-4000-8000-0000f150a020', '1b000000-0000-4000-8000-0000f150b010', '1b000000-0000-4000-8000-0000f150b020', '1b000000-0000-4000-8000-0000f150c010');
+DELETE FROM public.api_usage_events WHERE id IN ('1b000000-0000-4000-8000-0000f150a010', '1b000000-0000-4000-8000-0000f150a020', '1b000000-0000-4000-8000-0000f150b010', '1b000000-0000-4000-8000-0000f150b020', '1b000000-0000-4000-8000-0000f150c010', '1b000000-0000-4000-8000-0000f150c020');
 DELETE FROM public.job_attempts WHERE id = '21000000-0000-4000-8000-0000f150a010';
 DELETE FROM public.jobs WHERE id IN ('1c000000-0000-4000-8000-0000f150a010', '1c000000-0000-4000-8000-0000f150b010');
 DELETE FROM public.video_analysis_raw WHERE id = '1f000000-0000-4000-8000-0000f1500001';
