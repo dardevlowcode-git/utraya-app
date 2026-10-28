@@ -11,7 +11,7 @@ import IntegrationsClient from './IntegrationsClient'
 
 export const metadata: Metadata = {
   title: 'Integrazioni',
-  description: 'Configura le tue chiavi API YouTube, Gemini e Firecrawl.',
+  description: 'Configura le tue chiavi API YouTube e Gemini.',
 }
 
 export default async function IntegrationsPage() {

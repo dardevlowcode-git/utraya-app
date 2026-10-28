@@ -195,144 +195,6 @@ describe('performCredentialValidationAttempt', () => {
     }
   })
 
-  it('verifica Firecrawl solo con Alexandria Find Tools e registra la richiesta per il proprietario', async () => {
-    const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
-    const ownerId = 'firecrawl-attempt-owner'
-    const credentialId = '00000000-0000-4000-8000-000000000030'
-    const keyVersion = '00000000-0000-4000-8000-000000000031'
-    const apiKey = 'test-firecrawl-provider-key'
-    const { client, getRow, saveRpc } = createCredentialClient(credentialId, keyVersion)
-    const discoveryResponse = {
-      success: true,
-      data: {
-        alexandria: [{
-          provider: 'firecrawl',
-          capability: 'find-tools',
-          data: {
-            level: 'tools',
-            items: [{ provider: 'youtube', capability: 'read', description: 'Read video metadata' }],
-          },
-        }],
-        creditsCost: 0,
-      },
-    }
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(discoveryResponse), { status: 200 }))
-    process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
-    configureAdminClient(getRow, keyVersion, saveRpc)
-    await saveApiKey({
-      userId: ownerId,
-      provider: 'firecrawl',
-      apiKey,
-      validateNow: false,
-      supabase: client as unknown as AppSupabaseClient,
-    })
-    vi.stubGlobal('fetch', fetchMock)
-
-    try {
-      const result = await performCredentialValidationAttempt({
-        userId: ownerId,
-        credentialId,
-        provider: 'firecrawl',
-        keyVersion,
-        retryLimit: 0,
-      })
-      const [url, init] = fetchMock.mock.calls[0] ?? []
-      const requestBody = JSON.parse(String(init?.body))
-
-      expect(result).toMatchObject({ isValid: true, retryable: false, errorType: null, credentialChanged: false })
-      expect(fetchMock).toHaveBeenCalledOnce()
-      expect(new URL(String(url)).pathname).toBe('/v2/scrape')
-      expect(new URL(String(url)).search).toBe('')
-      expect(init).toMatchObject({
-        method: 'POST',
-        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      })
-      expect(requestBody).toEqual({
-        alexandria: {
-          provider: 'firecrawl',
-          capability: 'find-tools',
-          options: {
-            providers: ['youtube'],
-            capabilities: ['read'],
-            level: 'tools',
-            expand: ['options', 'response'],
-            limit: 1,
-          },
-        },
-      })
-      expect(JSON.stringify(usageInsertMock.mock.calls)).not.toContain(apiKey)
-      expect(usageInsertMock).toHaveBeenCalledWith(expect.objectContaining({
-        user_id: ownerId,
-        provider: 'firecrawl',
-        operation: 'alexandria.find-tools',
-        outcome: 'success',
-        http_status: 200,
-        estimated_cost_usd: null,
-        quota_units: null,
-      }))
-
-      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
-        success: true,
-        data: { alexandria: [{ provider: 'firecrawl', capability: 'find-tools', data: { level: 'tools', items: [] } }], creditsCost: 0 },
-      }), { status: 200 }))
-      const missingTool = await performCredentialValidationAttempt({
-        userId: ownerId,
-        credentialId,
-        provider: 'firecrawl',
-        keyVersion,
-        retryLimit: 0,
-      })
-
-      expect(missingTool).toMatchObject({ isValid: false, retryable: false, errorType: 'structural' })
-      expect(fetchMock).toHaveBeenCalledTimes(2)
-    } finally {
-      vi.unstubAllGlobals()
-      if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY
-      else process.env.CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey
-    }
-  })
-
-  it('non ritenta 429 Firecrawl né espone body/chiave nel risultato', async () => {
-    const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
-    const ownerId = 'firecrawl-rate-limit-owner'
-    const credentialId = '00000000-0000-4000-8000-000000000040'
-    const keyVersion = '00000000-0000-4000-8000-000000000041'
-    const apiKey = 'test-firecrawl-rate-limit-key'
-    const { client, getRow, saveRpc } = createCredentialClient(credentialId, keyVersion)
-    process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
-    configureAdminClient(getRow, keyVersion, saveRpc)
-    await saveApiKey({ userId: ownerId, provider: 'firecrawl', apiKey, validateNow: false, supabase: client as unknown as AppSupabaseClient })
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: `private ${apiKey}` }), { status: 429 }))
-    vi.stubGlobal('fetch', fetchMock)
-
-    try {
-      const result = await performCredentialValidationAttempt({
-        userId: ownerId,
-        credentialId,
-        provider: 'firecrawl',
-        keyVersion,
-        retryLimit: 10,
-      })
-
-      expect(result).toMatchObject({ isValid: false, retryable: false, errorType: 'structural' })
-      expect(result.message).not.toContain(apiKey)
-      expect(result.message).not.toContain('private')
-      expect(fetchMock).toHaveBeenCalledOnce()
-      expect(usageInsertMock).toHaveBeenCalledWith(expect.objectContaining({
-        user_id: ownerId,
-        provider: 'firecrawl',
-        operation: 'alexandria.find-tools',
-        outcome: 'http_error',
-        http_status: 429,
-      }))
-      expect(JSON.stringify(usageInsertMock.mock.calls)).not.toContain(apiKey)
-    } finally {
-      vi.unstubAllGlobals()
-      if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY
-      else process.env.CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey
-    }
-  })
-
   it('rifiuta il salvataggio di una chiave senza accettazione TOS corrente', async () => {
     const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
     const ownerId = 'no-tos-owner'
@@ -366,26 +228,26 @@ describe('performCredentialValidationAttempt', () => {
     }
   })
 
-  it('non invia discovery quando la chiave Firecrawl viene rimossa prima del lease', async () => {
+  it('non invia la verifica quando la chiave Gemini viene rimossa prima del lease', async () => {
     const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
-    const ownerId = 'firecrawl-removed-owner'
+    const ownerId = 'gemini-removed-owner'
     const credentialId = '00000000-0000-4000-8000-000000000050'
     const keyVersion = '00000000-0000-4000-8000-000000000051'
-    const apiKey = 'test-firecrawl-key-removed-before-lease'
+    const apiKey = 'test-gemini-key-removed-before-lease'
     const { client, getRow, saveRpc } = createCredentialClient(credentialId, keyVersion)
     const fetchMock = vi.fn()
     process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
 
     try {
       configureAdminClient(getRow, keyVersion, saveRpc)
-      await saveApiKey({ userId: ownerId, provider: 'firecrawl', apiKey, validateNow: false, supabase: client as unknown as AppSupabaseClient })
-      await removeApiKey({ userId: ownerId, provider: 'firecrawl', supabase: client as unknown as AppSupabaseClient })
+      await saveApiKey({ userId: ownerId, provider: 'gemini', apiKey, validateNow: false, supabase: client as unknown as AppSupabaseClient })
+      await removeApiKey({ userId: ownerId, provider: 'gemini', supabase: client as unknown as AppSupabaseClient })
       vi.stubGlobal('fetch', fetchMock)
 
       const result = await performCredentialValidationAttempt({
         userId: ownerId,
         credentialId,
-        provider: 'firecrawl',
+        provider: 'gemini',
         keyVersion,
         retryLimit: 0,
       })

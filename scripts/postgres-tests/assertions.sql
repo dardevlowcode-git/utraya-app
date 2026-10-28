@@ -11,6 +11,33 @@ BEGIN
 END;
 $$;
 
+SELECT public.test_assert_true(
+  NOT EXISTS (SELECT 1 FROM public.cron_settings WHERE schedule_key = 'transcripts')
+  AND EXISTS (SELECT 1 FROM public.cron_settings WHERE schedule_key = 'other-job'),
+  'rimozione del solo cron legacy trascrizioni'
+);
+
+-- La migrazione elimina i dati del provider rimosso lasciando intatti gli altri.
+SELECT public.test_assert_true(
+  NOT EXISTS (SELECT 1 FROM public.user_provider_credentials WHERE id = 'aaaaaaaa-0000-4000-8000-000000000011')
+  AND NOT EXISTS (SELECT 1 FROM public.credential_checks WHERE credential_id = 'aaaaaaaa-0000-4000-8000-000000000011')
+  AND NOT EXISTS (SELECT 1 FROM public.user_provider_credential_retry_limits WHERE credential_id = 'aaaaaaaa-0000-4000-8000-000000000011')
+  AND NOT EXISTS (SELECT 1 FROM public.api_usage_events WHERE id = 'aaaaaaaa-0000-4000-8000-000000000021')
+  AND NOT EXISTS (SELECT 1 FROM public.jobs WHERE id = 'aaaaaaaa-0000-4000-8000-000000000031')
+  AND NOT EXISTS (SELECT 1 FROM public.job_attempts WHERE id = 'aaaaaaaa-0000-4000-8000-000000000041')
+  AND NOT EXISTS (SELECT 1 FROM public.channel_scan_provider_attempts WHERE request_key = repeat('a', 64)),
+  'dati del provider rimosso eliminati'
+);
+SELECT public.test_assert_true(
+  (SELECT count(*) = 2 FROM public.user_provider_credentials WHERE user_id = 'aaaaaaaa-0000-4000-8000-000000000001')
+  AND EXISTS (SELECT 1 FROM public.api_usage_events WHERE id = 'aaaaaaaa-0000-4000-8000-000000000022')
+  AND EXISTS (SELECT 1 FROM public.jobs WHERE id = 'aaaaaaaa-0000-4000-8000-000000000032')
+  AND (SELECT count(*) = 1 FROM public.channel_scan_key_rotation_cursors WHERE channel_id = 'aaaaaaaa-0000-4000-8000-000000000051')
+  AND (SELECT count(*) = 1 FROM public.channel_scan_job_credentials WHERE job_id = 'aaaaaaaa-0000-4000-8000-000000000032')
+  AND (SELECT count(*) = 1 FROM public.channel_scan_provider_requests WHERE job_id = 'aaaaaaaa-0000-4000-8000-000000000032'),
+  'dati YouTube e Gemini conservati'
+);
+
 -- Dati di test: le tabelle sono create dalle migrazioni reali, quindi qui si inseriscono
 -- solo le righe. Le credenziali preesistenti vengono inserite `service_role` e servono a
 -- provare che la migrazione del limite retry defaulta a 0 le righe già presenti.
@@ -36,8 +63,9 @@ SELECT public.test_assert_true(
   'il limite YouTube condiviso resta 10'
 );
 SELECT public.test_assert_true(
-  (SELECT enabled = FALSE FROM public.firecrawl_transcript_recovery_settings WHERE id = TRUE),
-  'il gate Firecrawl nasce chiuso'
+  to_regclass('public.video_transcripts') IS NULL
+  AND to_regclass('public.transcript_fetch_diagnostics') IS NULL,
+  'le tabelle delle trascrizioni legacy sono state rimosse'
 );
 SELECT public.test_assert_true(
   NOT has_function_privilege('authenticated', 'public.save_user_provider_credential_atomic(uuid,uuid,text,text,text,uuid,boolean)', 'EXECUTE')
@@ -70,7 +98,6 @@ INSERT INTO public.channels (id, youtube_channel_id, title) VALUES
 
 INSERT INTO public.user_provider_credentials (id, user_id, provider, encrypted_key, is_configured) VALUES
   ('10000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000002', 'youtube', 'cipher-owner-b', TRUE),
-  ('10000000-0000-4000-8000-000000000003', '00000000-0000-4000-8000-000000000001', 'firecrawl', 'cipher-firecrawl', TRUE),
   ('10000000-0000-4000-8000-000000000004', '00000000-0000-4000-8000-000000000001', 'gemini', 'cipher-gemini', TRUE);
 
 INSERT INTO public.user_channels (user_id, channel_id, is_active, added_at) VALUES
@@ -81,7 +108,7 @@ INSERT INTO public.user_channels (user_id, channel_id, is_active, added_at) VALU
   ('00000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000003', TRUE, '2020-01-01T00:00:00Z'),
   ('00000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000004', TRUE, '2020-01-01T00:00:00Z');
 
--- L'import canonico non crea placeholder transcript né target di recupero (gate storico chiuso).
+-- L'import canonico resta funzionante dopo la rimozione delle tabelle legacy.
 INSERT INTO public.jobs (id, job_type, status, payload, lease_id, lease_expires_at)
 VALUES (
   '30000000-0000-4000-8000-000000000008', 'sync_channel_delta', 'running',
@@ -98,12 +125,6 @@ BEGIN
     '[{"youtube_video_id":"yt-new-gate-off","title":"New gated video","published_at":"2026-01-02T00:00:00Z","video_url":"https://youtube.invalid/watch?v=yt-new-gate-off","video_type":"standard","availability_status":"available"}]'::JSONB,
     'success', 1
   );
-  IF EXISTS (SELECT 1 FROM public.video_transcripts WHERE youtube_video_id = 'yt-new-gate-off') THEN
-    RAISE EXCEPTION 'import_created_legacy_transcript_placeholder';
-  END IF;
-  IF EXISTS (SELECT 1 FROM public.channel_scan_firecrawl_transcript_targets WHERE youtube_video_id = 'yt-new-gate-off') THEN
-    RAISE EXCEPTION 'import_created_recovery_target';
-  END IF;
 END;
 $$;
 RESET ROLE;
@@ -758,15 +779,11 @@ END;
 $$;
 RESET ROLE;
 
--- Dopo la rimozione del recupero Firecrawl l'import canonico non accoda target, nemmeno con il gate storico aperto.
+-- L'import canonico resta idempotente dopo la rimozione del recupero legacy.
 INSERT INTO public.videos (id, channel_id, youtube_video_id, title, published_at, video_url)
 VALUES (
   '21000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000004',
   'yt-existing', 'Existing video', '2025-01-01T00:00:00Z', 'https://youtube.invalid/watch?v=yt-existing'
-);
-INSERT INTO public.video_transcripts (video_id, youtube_video_id, language_code, transcript_status, transcript_text, source, fetched_at)
-VALUES (
-  '21000000-0000-4000-8000-000000000001', 'yt-existing', 'unknown', 'fetched', 'previously canonical', 'fixture', clock_timestamp()
 );
 INSERT INTO public.jobs (id, job_type, status, payload, lease_id, lease_expires_at)
 VALUES (
@@ -774,8 +791,6 @@ VALUES (
   jsonb_build_object('channelId', '20000000-0000-4000-8000-000000000004'),
   '50000000-0000-4000-8000-000000000030', clock_timestamp() + INTERVAL '5 minutes'
 );
-
-UPDATE public.firecrawl_transcript_recovery_settings SET enabled = TRUE WHERE id = TRUE;
 
 SET ROLE service_role;
 DO $$
@@ -800,22 +815,9 @@ BEGIN
      OR (SELECT count(*) FROM public.videos WHERE youtube_video_id = 'yt-new') <> 1 THEN
     RAISE EXCEPTION 'canonical_import_did_not_upsert_videos';
   END IF;
-  IF EXISTS (SELECT 1 FROM public.channel_scan_firecrawl_transcript_targets
-             WHERE job_id = '30000000-0000-4000-8000-000000000006') THEN
-    RAISE EXCEPTION 'canonical_import_enqueued_firecrawl_target';
-  END IF;
-  IF EXISTS (SELECT 1 FROM public.video_transcripts WHERE youtube_video_id = 'yt-new') THEN
-    RAISE EXCEPTION 'canonical_import_created_transcript_row';
-  END IF;
 END;
 $$;
 RESET ROLE;
-
-UPDATE public.firecrawl_transcript_recovery_settings SET enabled = FALSE WHERE id = TRUE;
-SELECT public.test_assert_true(
-  (SELECT enabled = FALSE FROM public.firecrawl_transcript_recovery_settings WHERE id = TRUE),
-  'il test lascia il gate Firecrawl chiuso'
-);
 
 -- La chiusura terminale cancella risposta/owner dal ledger canonico sotto service_role.
 INSERT INTO public.job_attempts (id, job_id, attempt_number, status, started_at)

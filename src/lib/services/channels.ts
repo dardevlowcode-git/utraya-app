@@ -1,6 +1,6 @@
 /* Commento didattico:
  * Scopo del file: incapsula la logica di accesso ai dati e le operazioni di dominio, separandole dalla UI.
- * Moduli richiamati: `@/lib/supabase/server`, `@/lib/supabase/admin`, `@/lib/utils/errors`, `@/lib/utils/youtube-url`, `@/lib/types/database`, YouTube/Firecrawl scan services
+ * Moduli richiamati: `@/lib/supabase/server`, `@/lib/supabase/admin`, `@/lib/utils/errors`, `@/lib/utils/youtube-url`, `@/lib/types/database`, servizi scansione YouTube
  * Flusso: Le funzioni del servizio vengono chiamate da API route o pagine server: qui avviene l'orchestrazione delle query e delle trasformazioni dati.
  */
 

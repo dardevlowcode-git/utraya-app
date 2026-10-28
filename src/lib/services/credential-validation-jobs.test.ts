@@ -264,7 +264,7 @@ describe('credential validation job lifecycle', () => {
     expect(insertCount).toBe(2)
   })
 
-  it('accoda discovery Firecrawl con la stessa policy key-version e senza segreto nel payload', async () => {
+  it('accoda Gemini con la stessa policy key-version e senza segreto nel payload', async () => {
     let savedPayload: Record<string, unknown> | null = null
     const activeQuery = {
       eq: vi.fn(() => activeQuery),
@@ -277,70 +277,27 @@ describe('credential validation job lifecycle', () => {
         select: vi.fn(() => activeQuery),
         insert: vi.fn((values: Record<string, unknown>) => {
           savedPayload = values.payload as Record<string, unknown>
-          return { select: vi.fn(() => ({ single: vi.fn(async () => ({ data: { id: 'firecrawl-job', status: 'pending' }, error: null })) })) }
+          return { select: vi.fn(() => ({ single: vi.fn(async () => ({ data: { id: 'gemini-job', status: 'pending' }, error: null })) })) }
         }),
       })),
     } as unknown as ReturnType<typeof createAdminClient>
 
     const result = await enqueueCredentialValidation({
       ...payload,
-      provider: 'firecrawl',
-      keyVersion: 'firecrawl-key-version',
+      provider: 'gemini',
+      keyVersion: 'gemini-key-version',
       retryLimit: 0,
     }, admin)
 
-    expect(result).toEqual({ jobId: 'firecrawl-job', status: 'pending' })
+    expect(result).toEqual({ jobId: 'gemini-job', status: 'pending' })
     expect(savedPayload).toMatchObject({
       credentialId: payload.credentialId,
       userId: payload.userId,
-      provider: 'firecrawl',
-      keyVersion: 'firecrawl-key-version',
+      provider: 'gemini',
+      keyVersion: 'gemini-key-version',
       retryLimit: 0,
     })
     expect(Object.keys(savedPayload ?? {}).sort()).toEqual(['credentialId', 'keyVersion', 'provider', 'retryLimit', 'userId'])
-  })
-
-  it('sospende e riprende Firecrawl sulla stessa key-version con un singolo attempt per invocazione', async () => {
-    const firecrawlPayload: CredentialValidationJobPayload = {
-      ...payload,
-      provider: 'firecrawl',
-      keyVersion: 'firecrawl-key-version',
-      retryLimit: 1,
-    }
-    let attemptNumber = 0
-    const finishes: Array<Record<string, unknown>> = []
-    const rpc = vi.fn(async (name: string, args: Record<string, unknown> = {}) => {
-      if (name === 'claim_credential_validation_job_with_attempt') {
-        attemptNumber += 1
-        return {
-          data: [{
-            job_id: 'firecrawl-persisted-job',
-            lease_id: args.p_lease_id,
-            attempt_id: `firecrawl-attempt-${attemptNumber}`,
-            attempt_number: attemptNumber,
-            payload: firecrawlPayload,
-          }],
-          error: null,
-        }
-      }
-      finishes.push(args)
-      return { data: true, error: null }
-    })
-    const attemptProvider = vi.fn<(jobPayload: CredentialValidationJobPayload) => Promise<CredentialValidationAttemptResult>>()
-      .mockResolvedValueOnce({ isValid: false, retryable: true, message: 'Firecrawl discovery unavailable', errorType: 'temporary', credentialChanged: false })
-      .mockResolvedValueOnce({ isValid: true, retryable: false, message: null, errorType: null, credentialChanged: false })
-    const adminClient = { rpc } as unknown as ReturnType<typeof createAdminClient>
-    const now = new Date('2026-10-11T12:00:00.000Z')
-
-    const pending = await processCredentialValidationJob({ jobId: 'firecrawl-persisted-job', attemptProvider, adminClient, now })
-    const completed = await processCredentialValidationJob({ jobId: 'firecrawl-persisted-job', attemptProvider, adminClient, now })
-
-    expect(pending).toMatchObject({ claimed: true, status: 'pending', attemptNumber: 1 })
-    expect(completed).toMatchObject({ claimed: true, status: 'completed', attemptNumber: 2 })
-    expect(attemptProvider.mock.calls).toEqual([[firecrawlPayload], [firecrawlPayload]])
-    expect(finishes.map((finish) => finish.p_status)).toEqual(['pending', 'completed'])
-    expect(finishes.map((finish) => finish.p_attempt_number)).toEqual([1, 2])
-    expect(finishes.every((finish) => finish.p_retry_limit === 1)).toBe(true)
   })
 
   it('espone pending solo per la versione corrente della chiave proprietaria', async () => {

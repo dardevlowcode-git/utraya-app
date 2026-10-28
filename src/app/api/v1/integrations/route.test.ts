@@ -1,5 +1,5 @@
 /* Commento didattico:
- * Scopo: verifica che l'API v1 accetti Firecrawl e restituisca pending senza esporre la chiave.
+ * Scopo: verifica che l'API v1 accetti i provider supportati e non esponga la chiave.
  * Moduli richiamati: route integrazioni, parser API v1 e service integrazioni mockati.
  * Flusso: esercita lo schema Zod reale senza chiamare provider o database.
  */
@@ -52,10 +52,10 @@ import { AppError } from '@/lib/utils/errors'
 describe('POST /api/v1/integrations', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    requireApiUserMock.mockResolvedValue({ user: { id: 'firecrawl-owner' }, supabase: {} })
+    requireApiUserMock.mockResolvedValue({ user: { id: 'youtube-owner' }, supabase: {} })
     requireApiRateLimitMock.mockReturnValue(null)
     saveApiKeyMock.mockResolvedValue({
-      provider: 'firecrawl',
+      provider: 'youtube',
       jobId: 'validation-job-1',
       maskedKey: '********abcd',
       isValid: null,
@@ -63,21 +63,32 @@ describe('POST /api/v1/integrations', () => {
       validationStatus: 'pending',
     })
     removeApiKeyMock.mockResolvedValue(undefined)
-    getStatusesMock.mockResolvedValue([{ provider: 'firecrawl', isConfigured: false, isValid: null, validationStatus: 'idle', lastValidatedAt: null, lastUsedAt: null, lastError: null, maskedKey: null }])
+    getStatusesMock.mockResolvedValue([{ provider: 'youtube', isConfigured: false, isValid: null, validationStatus: 'idle', lastValidatedAt: null, lastUsedAt: null, lastError: null, maskedKey: null }])
+  })
+
+  it('rifiuta il provider rimosso prima di accedere ai servizi', async () => {
+    const response = await POST(new Request('http://localhost/api/v1/integrations', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ provider: 'firecrawl', action: 'save', apiKey: 'key' }),
+    }))
+
+    expect(response.status).toBe(400)
+    expect(saveApiKeyMock).not.toHaveBeenCalled()
   })
 
   it('lavora il job di salvataggio e validazione con after() restituendo la Promise del worker', async () => {
     const workerPromise = Promise.resolve('worker-done')
     runValidationJobMock.mockReturnValue(workerPromise)
-    validateApiKeyMock.mockResolvedValue({ provider: 'firecrawl', jobId: 'validation-job-2', isValid: null, message: null, validationStatus: 'pending' })
+    validateApiKeyMock.mockResolvedValue({ provider: 'youtube', jobId: 'validation-job-2', isValid: null, message: null, validationStatus: 'pending' })
     const post = (body: unknown) => POST(new Request('http://localhost/api/v1/integrations', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
     }))
 
-    expect((await post({ provider: 'firecrawl', action: 'save', apiKey: 'test-firecrawl-api-key-secret' })).status).toBe(202)
-    expect((await post({ provider: 'firecrawl', action: 'validate' })).status).toBe(202)
+    expect((await post({ provider: 'youtube', action: 'save', apiKey: 'test-youtube-api-key-secret' })).status).toBe(202)
+    expect((await post({ provider: 'youtube', action: 'validate' })).status).toBe(202)
 
     expect(afterMock).toHaveBeenCalledTimes(2)
     expect((afterMock.mock.calls[0]?.[0] as () => unknown)()).toBe(workerPromise)
@@ -86,22 +97,22 @@ describe('POST /api/v1/integrations', () => {
     expect(runValidationJobMock).toHaveBeenNthCalledWith(2, 'validation-job-2')
   })
 
-  it('accetta Firecrawl, accoda la verifica e non restituisce il segreto', async () => {
-    const secret = 'test-firecrawl-api-key-secret'
+  it('accetta YouTube, accoda la verifica e non restituisce il segreto', async () => {
+    const secret = 'test-youtube-api-key-secret'
     const response = await POST(new Request('http://localhost/api/v1/integrations', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ provider: 'firecrawl', action: 'save', apiKey: secret }),
+      body: JSON.stringify({ provider: 'youtube', action: 'save', apiKey: secret }),
     }))
     const payload = await response.json()
 
     expect(response.status).toBe(202)
-    expect(payload.data).toMatchObject({ provider: 'firecrawl', jobId: 'validation-job-1', isValid: null, validationStatus: 'pending', validationError: null })
+    expect(payload.data).toMatchObject({ provider: 'youtube', jobId: 'validation-job-1', isValid: null, validationStatus: 'pending', validationError: null })
     expect(payload.data).not.toHaveProperty('apiKey')
     expect(JSON.stringify(payload)).not.toContain(secret)
     expect(saveApiKeyMock).toHaveBeenCalledWith({
-      userId: 'firecrawl-owner',
-      provider: 'firecrawl',
+      userId: 'youtube-owner',
+      provider: 'youtube',
       apiKey: secret,
       validateNow: true,
       supabase: {},
@@ -111,7 +122,7 @@ describe('POST /api/v1/integrations', () => {
 
   it('restituisce HTTP 202 e jobId quando una validazione viene accodata', async () => {
     validateApiKeyMock.mockResolvedValue({
-      provider: 'firecrawl',
+      provider: 'youtube',
       jobId: 'validation-job-2',
       isValid: null,
       message: null,
@@ -121,19 +132,19 @@ describe('POST /api/v1/integrations', () => {
     const response = await POST(new Request('http://localhost/api/v1/integrations', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ provider: 'firecrawl', action: 'validate' }),
+      body: JSON.stringify({ provider: 'youtube', action: 'validate' }),
     }))
     const payload = await response.json()
 
     expect(response.status).toBe(202)
-    expect(payload.data).toMatchObject({ provider: 'firecrawl', jobId: 'validation-job-2', validationStatus: 'pending' })
-    expect(validateApiKeyMock).toHaveBeenCalledWith({ userId: 'firecrawl-owner', provider: 'firecrawl', supabase: {} })
+    expect(payload.data).toMatchObject({ provider: 'youtube', jobId: 'validation-job-2', validationStatus: 'pending' })
+    expect(validateApiKeyMock).toHaveBeenCalledWith({ userId: 'youtube-owner', provider: 'youtube', supabase: {} })
   })
 
   it('non segnala una mutazione asincrona riuscita se il service non restituisce jobId', async () => {
-    const secret = 'test-firecrawl-key-without-job'
+    const secret = 'test-youtube-key-without-job'
     saveApiKeyMock.mockResolvedValueOnce({
-      provider: 'firecrawl',
+      provider: 'youtube',
       jobId: null,
       maskedKey: '********with',
       isValid: null,
@@ -144,7 +155,7 @@ describe('POST /api/v1/integrations', () => {
     const response = await POST(new Request('http://localhost/api/v1/integrations', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ provider: 'firecrawl', action: 'save', apiKey: secret }),
+      body: JSON.stringify({ provider: 'youtube', action: 'save', apiKey: secret }),
     }))
     const payload = await response.json()
 
@@ -155,20 +166,20 @@ describe('POST /api/v1/integrations', () => {
 
   it('protegge GET e DELETE con autenticazione e user scope', async () => {
     const userSupabase = {}
-    requireApiUserMock.mockResolvedValue({ user: { id: 'firecrawl-owner' }, supabase: userSupabase })
+    requireApiUserMock.mockResolvedValue({ user: { id: 'youtube-owner' }, supabase: userSupabase })
 
     const statusResponse = await GET(new Request('http://localhost/api/v1/integrations'))
     expect(statusResponse.status).toBe(200)
-    expect((await statusResponse.json()).data).toMatchObject([{ provider: 'firecrawl', isConfigured: false }])
-    expect(getStatusesMock).toHaveBeenCalledWith('firecrawl-owner', userSupabase)
+    expect((await statusResponse.json()).data).toMatchObject([{ provider: 'youtube', isConfigured: false }])
+    expect(getStatusesMock).toHaveBeenCalledWith('youtube-owner', userSupabase)
 
     const removeResponse = await DELETE(new Request('http://localhost/api/v1/integrations', {
       method: 'DELETE',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ provider: 'firecrawl' }),
+      body: JSON.stringify({ provider: 'youtube' }),
     }))
     expect(removeResponse.status).toBe(200)
-    expect(removeApiKeyMock).toHaveBeenCalledWith({ userId: 'firecrawl-owner', provider: 'firecrawl', supabase: userSupabase })
+    expect(removeApiKeyMock).toHaveBeenCalledWith({ userId: 'youtube-owner', provider: 'youtube', supabase: userSupabase })
   })
 
   it('valida POST e DELETE prima del Bearer e non accede a servizi con payload invalidi', async () => {
@@ -190,7 +201,7 @@ describe('POST /api/v1/integrations', () => {
     const missingKeyResponse = await POST(new Request('http://localhost/api/v1/integrations', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ provider: 'firecrawl', action: 'save' }),
+      body: JSON.stringify({ provider: 'youtube', action: 'save' }),
     }))
     expect(missingKeyResponse.status).toBe(400)
     expect(requireApiUserMock).not.toHaveBeenCalled()
@@ -214,12 +225,12 @@ describe('POST /api/v1/integrations', () => {
         ? await POST(new Request('http://localhost/api/v1/integrations', {
           method,
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ provider: 'firecrawl', apiKey: 'test-firecrawl-key' }),
+          body: JSON.stringify({ provider: 'youtube', apiKey: 'test-youtube-key' }),
         }))
         : await DELETE(new Request('http://localhost/api/v1/integrations', {
           method,
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ provider: 'firecrawl' }),
+          body: JSON.stringify({ provider: 'youtube' }),
         }))
 
     expect(response.status).toBe(401)

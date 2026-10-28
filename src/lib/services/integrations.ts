@@ -27,7 +27,6 @@ const AES_GCM_IV_LENGTH = 12
 const AES_GCM_AUTH_TAG_LENGTH = 16
 const YOUTUBE_VALIDATION_TIMEOUT_MS = 10_000
 const GEMINI_VALIDATION_TIMEOUT_MS = 5_000
-const FIRECRAWL_DISCOVERY_TIMEOUT_MS = 10_000
 const MAX_CREDENTIAL_SAVE_CAS_ATTEMPTS = 3
 
 /**
@@ -449,75 +448,6 @@ export async function performCredentialValidationAttempt(
   }
 
   try {
-    if (payload.provider === 'firecrawl') {
-      const response = await fetchAndRecordProviderRequest({
-        userId: payload.userId,
-        provider: 'firecrawl',
-        operation: 'alexandria.find-tools',
-        url: 'https://api.firecrawl.dev/v2/scrape',
-        init: {
-          method: 'POST',
-          headers: {
-            Accept: 'application/json',
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            alexandria: {
-              provider: 'firecrawl',
-              capability: 'find-tools',
-              options: {
-                providers: ['youtube'],
-                capabilities: ['read'],
-                level: 'tools',
-                expand: ['options', 'response'],
-                limit: 1,
-              },
-            },
-          }),
-          cache: 'no-store',
-          signal: AbortSignal.timeout(FIRECRAWL_DISCOVERY_TIMEOUT_MS),
-        },
-      })
-
-      if (!response.ok) {
-        await response.body?.cancel().catch(() => undefined)
-        const retryable = response.status >= 500 && response.status <= 599
-        return {
-          isValid: false,
-          retryable,
-          message: `Firecrawl discovery request failed (HTTP ${response.status})`,
-          errorType: retryable ? 'temporary' : 'structural',
-          credentialChanged: false,
-        }
-      }
-
-      const result = await response.json().catch(() => null) as {
-        success?: unknown
-        data?: { alexandria?: Array<{
-          provider?: unknown
-          capability?: unknown
-          data?: { items?: Array<{ provider?: unknown; capability?: unknown }> }
-        }> }
-      } | null
-      const findTools = result?.data?.alexandria?.find(
-        (item) => item.provider === 'firecrawl' && item.capability === 'find-tools'
-      )
-      const hasYoutubeRead = findTools?.data?.items?.some(
-        (item) => item.provider === 'youtube' && item.capability === 'read'
-      )
-      if (result?.success === true && hasYoutubeRead) {
-        return { isValid: true, retryable: false, message: null, errorType: null, credentialChanged: false }
-      }
-      return {
-        isValid: false,
-        retryable: false,
-        message: 'Firecrawl discovery access could not be confirmed',
-        errorType: 'structural',
-        credentialChanged: false,
-      }
-    }
-
     const url = payload.provider === 'youtube'
       ? new URL('https://www.googleapis.com/youtube/v3/search')
       : new URL('https://generativelanguage.googleapis.com/v1beta/models')

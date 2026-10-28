@@ -621,27 +621,6 @@ SELECT public.test_assert_rls(
 -- =========================================================================
 
 -- 8a. I provider ammessi e i rispettivi campi sono verificati sulle CHECK reali.
---     Si prova inserendo un record credenziale Firecrawl e un evento ledger.
-SET ROLE service_role;
-INSERT INTO public.user_provider_credentials (id, user_id, provider, encrypted_key, is_configured)
-VALUES ('12000000-0000-4000-8000-0000f150c010', '00000000-0000-4000-8000-00000000c001', 'firecrawl', 'cipher-firecrawl', TRUE);
-RESET ROLE;
-
-SELECT public.test_assert_rls(
-  (SELECT count(*) FROM public.user_provider_credentials WHERE provider = 'firecrawl') >= 1,
-  'il provider Firecrawl è ammesso dalle CHECK reali sulle credenziali'
-);
-
-SET ROLE service_role;
-INSERT INTO public.api_usage_events (id, user_id, provider, operation, outcome) VALUES
-  ('1b000000-0000-4000-8000-0000f150c020', '00000000-0000-4000-8000-00000000c001', 'firecrawl', 'alexandria.find-tools', 'success');
-RESET ROLE;
-SELECT public.test_assert_rls(
-  (SELECT count(*) FROM public.api_usage_events WHERE provider = 'firecrawl') = 1,
-  'un evento Firecrawl è registrabile nel ledger'
-);
-
--- I campi di consumo specifici di Firecrawl devono rimanere NULL.
 SET ROLE service_role;
 DO $$
 DECLARE
@@ -649,30 +628,21 @@ DECLARE
 BEGIN
   v_rejected := FALSE;
   BEGIN
-    INSERT INTO public.api_usage_events (id, user_id, provider, operation, outcome, input_tokens) VALUES
-      ('1b000000-0000-4000-8000-0000f150c011', '00000000-0000-4000-8000-00000000c001', 'firecrawl', 'alexandria.find-tools', 'success', 1);
+    INSERT INTO public.user_provider_credentials (id, user_id, provider, encrypted_key, is_configured) VALUES
+      ('12000000-0000-4000-8000-0000f150c010', '00000000-0000-4000-8000-00000000c001', 'firecrawl', 'cipher', TRUE);
   EXCEPTION WHEN check_violation THEN
     v_rejected := TRUE;
   END;
-  PERFORM public.test_assert_rls(v_rejected, 'Firecrawl rifiuta eventi con token');
+  PERFORM public.test_assert_rls(v_rejected, 'la credenziale del provider rimosso è rifiutata');
 
   v_rejected := FALSE;
   BEGIN
-    INSERT INTO public.api_usage_events (id, user_id, provider, operation, outcome, quota_units) VALUES
-      ('1b000000-0000-4000-8000-0000f150c012', '00000000-0000-4000-8000-00000000c001', 'firecrawl', 'alexandria.find-tools', 'success', 1);
+    INSERT INTO public.api_usage_events (id, user_id, provider, operation, outcome) VALUES
+      ('1b000000-0000-4000-8000-0000f150c020', '00000000-0000-4000-8000-00000000c001', 'firecrawl', 'test', 'success');
   EXCEPTION WHEN check_violation THEN
     v_rejected := TRUE;
   END;
-  PERFORM public.test_assert_rls(v_rejected, 'Firecrawl rifiuta eventi con quota');
-
-  v_rejected := FALSE;
-  BEGIN
-    INSERT INTO public.api_usage_events (id, user_id, provider, operation, outcome, estimated_cost_usd) VALUES
-      ('1b000000-0000-4000-8000-0000f150c013', '00000000-0000-4000-8000-00000000c001', 'firecrawl', 'alexandria.find-tools', 'success', 0.01);
-  EXCEPTION WHEN check_violation THEN
-    v_rejected := TRUE;
-  END;
-  PERFORM public.test_assert_rls(v_rejected, 'Firecrawl rifiuta eventi con costo stimato');
+  PERFORM public.test_assert_rls(v_rejected, 'il ledger rifiuta il provider rimosso');
 
   v_rejected := FALSE;
   BEGIN

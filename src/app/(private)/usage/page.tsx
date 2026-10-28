@@ -35,7 +35,6 @@ export default async function ApiUsagePage({
   const usage = await getApiUsageDashboard(session.userId, requestedPage)
   const gemini = usage.summaries.find((summary) => summary.provider === 'gemini')!
   const youtube = usage.summaries.find((summary) => summary.provider === 'youtube')!
-  const firecrawl = usage.summaries.find((summary) => summary.provider === 'firecrawl')!
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-8 md:px-8">
@@ -58,7 +57,7 @@ export default async function ApiUsagePage({
         {t('usage.bestEffortWarning')}
       </aside>
 
-      <section aria-label={t('usage.title')} className="mb-8 grid gap-4 md:grid-cols-3">
+      <section aria-label={t('usage.title')} className="mb-8 grid gap-4 md:grid-cols-2">
         <article className="rounded-2xl bg-surface-container-lowest p-6 shadow-ambient">
           <h2 className="font-headline text-lg font-bold text-on-surface">{t('usage.gemini')}</h2>
           <p className="mt-4 text-3xl font-extrabold text-on-surface">
@@ -144,27 +143,6 @@ export default async function ApiUsagePage({
           )}
         </article>
 
-        <article className="rounded-2xl bg-surface-container-lowest p-6 shadow-ambient">
-          <h2 className="font-headline text-lg font-bold text-on-surface">{t('usage.firecrawl')}</h2>
-          <p className="mt-4 text-3xl font-extrabold text-on-surface">
-            {format.number(firecrawl.requestCount)}{' '}
-            <span className="text-base font-semibold text-on-surface-variant">{t('usage.requests')}</span>
-          </p>
-          <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
-            <div>
-              <dt className="text-on-surface-variant">{t('usage.estimatedCost')}</dt>
-              <dd className="font-semibold text-on-surface">{t('usage.notAvailable')}</dd>
-            </div>
-          </dl>
-          <p className="mt-4 text-xs leading-relaxed text-on-surface-variant">
-            {t('usage.firecrawlUsageDetail')}
-          </p>
-          {firecrawl.usageQuality === 'unknown' && (
-            <p className="mt-3 text-xs leading-relaxed text-on-surface-variant">
-              {t('usage.summaryUnknown', { count: firecrawl.unknownUsageCount })}
-            </p>
-          )}
-        </article>
       </section>
 
       <section className="overflow-hidden rounded-2xl bg-surface-container-lowest shadow-ambient">
@@ -210,7 +188,7 @@ export default async function ApiUsagePage({
                 {usage.events.map((event) => {
                   const provider = event.provider === 'gemini'
                     ? t('usage.gemini')
-                    : event.provider === 'youtube' ? t('usage.youtube') : t('usage.firecrawl')
+                    : t('usage.youtube')
                   const outcome = event.outcome === 'success'
                     ? t('usage.success')
                     : event.httpStatus
@@ -226,9 +204,7 @@ export default async function ApiUsagePage({
                         `${event.outputTokens === null ? t('usage.notAvailable') : format.number(event.outputTokens)} ${t('usage.outputShort')}`,
                         `${event.totalTokens === null ? t('usage.notAvailable') : format.number(event.totalTokens)} ${t('usage.totalShort')}`,
                       ].join(' · ')
-                    : event.provider === 'youtube'
-                      ? `${event.quotaUnits === null ? t('usage.notAvailable') : format.number(event.quotaUnits)} ${t('usage.quotaUnitsShort')}${event.quotaBucket === 'search' ? ` · ${t('usage.searchBucket')}` : ''}`
-                      : t('usage.firecrawlUsageDetail')
+                    : `${event.quotaUnits === null ? t('usage.notAvailable') : format.number(event.quotaUnits)} ${t('usage.quotaUnitsShort')}${event.quotaBucket === 'search' ? ` · ${t('usage.searchBucket')}` : ''}`
 
                   return (
                     <tr key={event.id} className="align-top odd:bg-surface-container-lowest even:bg-surface-container-low">

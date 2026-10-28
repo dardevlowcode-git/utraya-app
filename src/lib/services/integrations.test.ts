@@ -247,7 +247,7 @@ describe('credential save and validation enqueue', () => {
 
   it('salva la chiave senza contattare il provider né accodare il segreto in chiaro', async () => {
     const userId = 'service-save-owner'
-    const apiKey = 'test-secret-firecrawl-service-key'
+    const apiKey = 'test-secret-gemini-service-key'
     const keyVersion = 'service-save-key-version'
     const { supabase } = createCredentialSupabase('credential-service-save')
     const fetchMock = vi.fn()
@@ -258,13 +258,13 @@ describe('credential save and validation enqueue', () => {
     try {
       const saved = await saveApiKey({
         userId,
-        provider: 'firecrawl',
+        provider: 'gemini',
         apiKey,
         supabase: supabase as unknown as AppSupabaseClient,
       })
 
       expect(saved).toMatchObject({
-        provider: 'firecrawl',
+        provider: 'gemini',
         validationStatus: 'pending',
         jobId: 'validation-job-1',
       })
@@ -272,7 +272,7 @@ describe('credential save and validation enqueue', () => {
       expect(enqueueCredentialValidationMock).toHaveBeenCalledWith({
         credentialId: 'credential-service-save',
         userId,
-        provider: 'firecrawl',
+        provider: 'gemini',
         keyVersion,
         retryLimit: 0,
       })
@@ -313,11 +313,11 @@ describe('credential save and validation enqueue', () => {
     errorSpy.mockRestore()
   })
 
-  it('accoda la discovery Firecrawl con owner, key-version e limite snapshot senza eseguire youtube/read', async () => {
-    const userId = 'firecrawl-validation-owner'
-    const keyVersion = 'firecrawl-key-version-1'
-    const apiKey = 'test-firecrawl-key-for-queue'
-    const { supabase } = createCredentialSupabase('credential-firecrawl-pending')
+  it('accoda la validazione Gemini con owner, key-version e limite snapshot', async () => {
+    const userId = 'gemini-validation-owner'
+    const keyVersion = 'gemini-key-version-1'
+    const apiKey = 'test-gemini-key-for-queue'
+    const { supabase } = createCredentialSupabase('credential-gemini-pending')
     const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
     const fetchMock = vi.fn()
     configureRetryLimitClient(0, keyVersion)
@@ -330,16 +330,16 @@ describe('credential save and validation enqueue', () => {
       const response = await postIntegrations(new Request('http://localhost/api/integrations', {
         method: 'POST',
         headers: { origin: 'http://localhost', 'content-type': 'application/json' },
-        body: JSON.stringify({ provider: 'firecrawl', apiKey, action: 'save' }),
+        body: JSON.stringify({ provider: 'gemini', apiKey, action: 'save' }),
       }))
       const result = await response.json()
 
       expect(response.status).toBe(202)
-      expect(result.data).toMatchObject({ provider: 'firecrawl', jobId: 'validation-job-1', isValid: null, validationStatus: 'pending' })
+      expect(result.data).toMatchObject({ provider: 'gemini', jobId: 'validation-job-1', isValid: null, validationStatus: 'pending' })
       expect(enqueueCredentialValidationMock).toHaveBeenCalledWith({
-        credentialId: 'credential-firecrawl-pending',
+        credentialId: 'credential-gemini-pending',
         userId,
-        provider: 'firecrawl',
+        provider: 'gemini',
         keyVersion,
         retryLimit: 0,
       })
@@ -353,68 +353,28 @@ describe('credential save and validation enqueue', () => {
     }
   })
 
-  it('rimuove Firecrawl solo per owner/provider e azzera il segreto', async () => {
-    const userId = 'firecrawl-removal-owner'
-    const apiKey = 'test-firecrawl-key-to-remove'
-    const { supabase, getCredentialRow, updateFilters, updateMock } = createCredentialSupabase('credential-firecrawl-remove')
+  it('rimuove Gemini solo per owner/provider e azzera il segreto', async () => {
+    const userId = 'gemini-removal-owner'
+    const apiKey = 'test-gemini-key-to-remove'
+    const { supabase, getCredentialRow, updateFilters, updateMock } = createCredentialSupabase('credential-gemini-remove')
     const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
     process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
 
     try {
       await saveApiKey({
         userId,
-        provider: 'firecrawl',
+        provider: 'gemini',
         apiKey,
         validateNow: false,
         supabase: supabase as unknown as AppSupabaseClient,
       })
 
-      await removeApiKey({ userId, provider: 'firecrawl', supabase: supabase as unknown as AppSupabaseClient })
+      await removeApiKey({ userId, provider: 'gemini', supabase: supabase as unknown as AppSupabaseClient })
 
       expect(updateMock).toHaveBeenCalledWith(expect.objectContaining({ encrypted_key: null, is_configured: false }))
-      expect(updateFilters).toEqual([['user_id', userId], ['provider', 'firecrawl']])
+      expect(updateFilters).toEqual([['user_id', userId], ['provider', 'gemini']])
       expect(getCredentialRow()).toMatchObject({ encrypted_key: null, is_configured: false })
       expect(JSON.stringify(getCredentialRow())).not.toContain(apiKey)
-    } finally {
-      if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY
-      else process.env.CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey
-    }
-  })
-
-  it('tratta una chiave Firecrawl sostituita come nuova versione e mantiene l’override sul risalvataggio identico', async () => {
-    const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
-    const { supabase, state } = createCredentialSupabase('credential-firecrawl-replaced')
-    const { retryLimitUpsert, rpcMock: replacementRpc } = configureRetryLimitClient(5, 'previous-firecrawl-key-version')
-    process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
-
-    try {
-      await saveApiKey({ userId: 'firecrawl-replacement-owner', provider: 'firecrawl', apiKey: 'test-firecrawl-key-before', validateNow: false, supabase: supabase as unknown as AppSupabaseClient })
-      state.setRetryPolicy(5, state.keyVersion)
-      const originalVersion = state.keyVersion
-      await saveApiKey({ userId: 'firecrawl-replacement-owner', provider: 'firecrawl', apiKey: 'test-firecrawl-key-after', validateNow: false, supabase: supabase as unknown as AppSupabaseClient })
-      expect(retryLimitUpsert).not.toHaveBeenCalled()
-      expect(replacementRpc).toHaveBeenCalledWith('save_user_provider_credential_atomic', expect.objectContaining({
-        p_credential_id: 'credential-firecrawl-replaced',
-        p_user_id: 'firecrawl-replacement-owner',
-        p_provider: 'firecrawl',
-        p_encrypted_key: expect.any(String),
-        p_expected_encrypted_key: expect.any(String),
-        p_expected_key_version: originalVersion,
-        p_reset_retry_policy: true,
-      }))
-      expect(state.retryLimit).toBe(0)
-      expect(state.keyVersion).not.toBe(originalVersion)
-
-      state.setRetryPolicy(4, state.keyVersion)
-      const replacementVersion = state.keyVersion
-      replacementRpc.mockClear()
-      await saveApiKey({ userId: 'firecrawl-replacement-owner', provider: 'firecrawl', apiKey: 'test-firecrawl-key-after', validateNow: false, supabase: supabase as unknown as AppSupabaseClient })
-      expect(replacementRpc).toHaveBeenCalledWith('save_user_provider_credential_atomic', expect.objectContaining({
-        p_reset_retry_policy: false,
-        p_expected_key_version: replacementVersion,
-      }))
-      expect(state.retryLimit).toBe(4)
-      expect(state.keyVersion).toBe(replacementVersion)
     } finally {
       if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY
       else process.env.CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey
@@ -542,44 +502,15 @@ describe('credential save and validation enqueue', () => {
 
       expect(statuses.find((status) => status.provider === 'youtube')).toMatchObject({
         isConfigured: true,
+        isValid: null,
         validationStatus: 'pending',
+        maskedKey: expect.stringMatching(/atus$/),
       })
       expect(getCredentialValidationStatusesForUserMock).toHaveBeenCalledWith(
         'validation-owner',
         supabase,
         new Map([['credential-pending', 'version-default']])
       )
-    } finally {
-      if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY
-      else process.env.CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey
-    }
-  })
-
-  it('mostra lo stato pending Firecrawl soltanto per la versione corrente della chiave', async () => {
-    const { supabase } = createCredentialSupabase('credential-pending')
-    const originalEncryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY
-    process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-only-encryption-key'
-
-    try {
-      await saveApiKey({
-        userId: 'firecrawl-status-owner',
-        provider: 'firecrawl',
-        apiKey: 'test-firecrawl-key-status',
-        validateNow: false,
-        supabase: supabase as unknown as AppSupabaseClient,
-      })
-      getCredentialValidationStatusesForUserMock.mockResolvedValueOnce(
-        new Map([['credential-pending', 'pending']])
-      )
-
-      const statuses = await getCredentialStatusesForUser('firecrawl-status-owner', supabase as unknown as AppSupabaseClient)
-
-      expect(statuses.find((status) => status.provider === 'firecrawl')).toMatchObject({
-        isConfigured: true,
-        isValid: null,
-        validationStatus: 'pending',
-        maskedKey: expect.stringMatching(/atus$/),
-      })
     } finally {
       if (originalEncryptionKey === undefined) delete process.env.CREDENTIAL_ENCRYPTION_KEY
       else process.env.CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey

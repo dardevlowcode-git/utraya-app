@@ -7,6 +7,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import type { Database } from '@/lib/types/database'
+import { isIntegrationProvider } from '@/lib/types/domain'
 import type { AppSupabaseClient } from '@/lib/supabase/types'
 import { toApiUsageEventViewModel } from '@/lib/view-models/api-usage'
 import type {
@@ -210,11 +211,11 @@ export async function cleanupExpiredApiUsageEvents(
 const EMPTY_SUMMARY = (provider: ApiUsageProvider): ApiUsageSummaryViewModel => ({
   provider,
   requestCount: 0,
-  inputTokens: provider === 'firecrawl' ? null : 0,
-  outputTokens: provider === 'firecrawl' ? null : 0,
-  totalTokens: provider === 'firecrawl' ? null : 0,
-  estimatedCostUsd: provider === 'firecrawl' ? null : 0,
-  quotaUnits: provider === 'firecrawl' ? null : 0,
+  inputTokens: 0,
+  outputTokens: 0,
+  totalTokens: 0,
+  estimatedCostUsd: 0,
+  quotaUnits: 0,
   unknownUsageCount: 0,
   usageQuality: 'none',
 })
@@ -239,11 +240,10 @@ export async function getApiUsageDashboard(
   const summaries = new Map<ApiUsageProvider, ApiUsageSummary>([
     ['gemini', EMPTY_SUMMARY('gemini')],
     ['youtube', EMPTY_SUMMARY('youtube')],
-    ['firecrawl', EMPTY_SUMMARY('firecrawl')],
   ])
   for (const row of summaryRows ?? []) {
-    const provider = row.provider as ApiUsageProvider
-    if (provider !== 'gemini' && provider !== 'youtube' && provider !== 'firecrawl') continue
+    const provider = row.provider
+    if (!isIntegrationProvider(provider)) continue
     const requestCount = Number(row.request_count)
     const inputTokens = nullableNumber(row.input_tokens)
     const outputTokens = nullableNumber(row.output_tokens)
@@ -253,9 +253,7 @@ export async function getApiUsageDashboard(
     const unknownUsageCount = Number(row.unknown_usage_count)
     const hasKnownUsage = provider === 'gemini'
       ? inputTokens !== null || outputTokens !== null || totalTokens !== null || estimatedCostUsd !== null
-      : provider === 'youtube'
-        ? quotaUnits !== null
-        : false
+      : quotaUnits !== null
 
     summaries.set(provider, {
       provider,
@@ -299,7 +297,7 @@ export async function getApiUsageDashboard(
     pageSize: API_USAGE_PAGE_SIZE,
     totalEvents,
     totalPages,
-    summaries: [summaries.get('gemini')!, summaries.get('youtube')!, summaries.get('firecrawl')!],
+    summaries: [summaries.get('gemini')!, summaries.get('youtube')!],
     events: (eventRows ?? []).map(toApiUsageEventViewModel),
   }
 }

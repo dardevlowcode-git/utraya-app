@@ -43,7 +43,6 @@ const emptyDashboard = {
   summaries: [
     { provider: 'gemini', requestCount: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCostUsd: 0, quotaUnits: 0, unknownUsageCount: 0, usageQuality: 'none' },
     { provider: 'youtube', requestCount: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCostUsd: 0, quotaUnits: 0, unknownUsageCount: 0, usageQuality: 'none' },
-    { provider: 'firecrawl', requestCount: 0, inputTokens: null, outputTokens: null, totalTokens: null, estimatedCostUsd: null, quotaUnits: null, unknownUsageCount: 0, usageQuality: 'none' },
   ],
   events: [],
 }
@@ -342,64 +341,6 @@ describe('pagina utilizzo API', () => {
     expect(html).toContain('$0.000080')
   })
 
-  it('mostra le verifiche Firecrawl senza attribuire loro crediti o un costo stimato', async () => {
-    mockTranslations({
-      'usage.title': 'API usage',
-      'usage.subtitle': 'Requests from personal keys.',
-      'usage.firecrawl': 'Firecrawl',
-      'usage.firecrawlUsageDetail': 'Discovery is recorded for the key owner; costs and credits are not estimated here.',
-      'usage.requests': 'requests',
-      'usage.estimatedCost': 'Estimated cost',
-      'usage.notAvailable': 'Not available',
-      'usage.summaryUnknown': 'Usage metadata is unavailable for {count} recorded requests.',
-      'usage.recent': 'Recent requests',
-      'usage.manageKeys': 'Manage API keys',
-      'usage.date': 'Date (UTC)',
-      'usage.providerMethod': 'Provider / method',
-      'usage.result': 'Result',
-      'usage.consumption': 'Usage',
-      'usage.estimate': 'Estimate',
-      'usage.success': 'Success',
-    })
-    mockFormatter('en')
-    getApiUsageDashboardMock.mockResolvedValue({
-      ...emptyDashboard,
-      totalEvents: 1,
-      summaries: [
-        emptyDashboard.summaries[0],
-        emptyDashboard.summaries[1],
-        { provider: 'firecrawl', requestCount: 1, inputTokens: null, outputTokens: null, totalTokens: null, estimatedCostUsd: null, quotaUnits: null, unknownUsageCount: 1, usageQuality: 'unknown' },
-      ],
-      events: [{
-        id: 'firecrawl-discovery-1',
-        provider: 'firecrawl',
-        operation: 'alexandria.find-tools',
-        occurredAt: '2026-10-05T12:00:00.000Z',
-        outcome: 'success',
-        httpStatus: 200,
-        errorCategory: null,
-        model: null,
-        inputTokens: null,
-        outputTokens: null,
-        totalTokens: null,
-        estimatedCostUsd: null,
-        quotaUnits: null,
-        quotaBucket: null,
-      }],
-    })
-
-    const page = await ApiUsagePage({ searchParams: Promise.resolve({}) })
-    const html = renderToStaticMarkup(page!)
-    const firecrawlCard = html.match(/<article\b[^>]*><h2[^>]*>Firecrawl<\/h2>[\s\S]*?<\/article>/)?.[0] ?? ''
-
-    expect(firecrawlCard).not.toBe('')
-    expect(firecrawlCard).toContain('1')
-    expect(firecrawlCard).toContain('Not available')
-    expect(firecrawlCard).toContain('costs and credits are not estimated')
-    expect(firecrawlCard).not.toContain('$0.000000')
-    expect(html).toContain('alexandria.find-tools')
-    expect(html).not.toContain('firecrawl-discovery-1')
-  })
   it('mostra modello, token e costo salvato per un evento di trascrizione', async () => {
     mockFormatter('en')
     getApiUsageDashboardMock.mockResolvedValue({

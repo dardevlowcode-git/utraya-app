@@ -8,6 +8,8 @@ import { randomUUID } from 'node:crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { computeRetryAt } from '@/lib/utils/retry-backoff'
 import { AppError } from '@/lib/utils/errors'
+import { isIntegrationProvider } from '@/lib/types/domain'
+import type { IntegrationProvider } from '@/lib/types/domain'
 import type { AppSupabaseClient } from '@/lib/supabase/types'
 
 export const CREDENTIAL_VALIDATION_JOB_TYPE = 'validate_provider_credential'
@@ -21,7 +23,7 @@ const CREDENTIAL_VALIDATION_INLINE_CLAIM_MARGIN_MS = 250
 
 
 type AdminClient = ReturnType<typeof createAdminClient>
-export type ValidationProvider = 'youtube' | 'gemini' | 'firecrawl'
+export type ValidationProvider = IntegrationProvider
 export type CredentialValidationStatus = 'pending' | 'running' | 'completed' | 'failed'
 
 export interface CredentialValidationJobPayload {
@@ -134,7 +136,7 @@ function parseCredentialValidationPayload(value: unknown): CredentialValidationJ
   if (
     typeof payload.credentialId !== 'string'
     || typeof payload.userId !== 'string'
-    || (payload.provider !== 'youtube' && payload.provider !== 'gemini' && payload.provider !== 'firecrawl')
+    || !isIntegrationProvider(payload.provider)
     || typeof payload.keyVersion !== 'string'
     || typeof payload.retryLimit !== 'number'
     || !Number.isSafeInteger(payload.retryLimit)
@@ -147,7 +149,7 @@ function parseCredentialValidationPayload(value: unknown): CredentialValidationJ
   return {
     credentialId: payload.credentialId,
     userId: payload.userId,
-    provider: payload.provider as ValidationProvider,
+    provider: payload.provider,
     keyVersion: payload.keyVersion,
     retryLimit: payload.retryLimit,
   }

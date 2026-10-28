@@ -6,7 +6,7 @@
 
 const MAX_RETRY_DELAY_MS = 60_000
 
-/** Calcola una scadenza deterministica compatibile tra i worker YouTube e Firecrawl. */
+/** Calcola una scadenza deterministica per i worker. */
 export function computeRetryAt(attemptNumber: number, retryAfter: string | null, now = Date.now()): string {
   const retryAfterSeconds = retryAfter ? Number(retryAfter) : Number.NaN
   const retryAfterDate = retryAfter ? Date.parse(retryAfter) : Number.NaN

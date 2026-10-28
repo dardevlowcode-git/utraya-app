@@ -61,22 +61,6 @@ describe('api usage accounting', () => {
     })
   })
 
-  it('registra discovery Firecrawl per owner senza inventare crediti o costi', () => {
-    expect(buildApiUsageEventInsert({
-      userId: 'firecrawl-key-owner',
-      provider: 'firecrawl',
-      operation: 'alexandria.find-tools',
-      outcome: 'success',
-      httpStatus: 200,
-    })).toMatchObject({
-      user_id: 'firecrawl-key-owner',
-      provider: 'firecrawl',
-      operation: 'alexandria.find-tools',
-      estimated_cost_usd: null,
-      quota_units: null,
-    })
-  })
-
   it('adatta i token effettivi restituiti da Gemini al registro privato', async () => {
     await recordGeminiUsage({
       userId: 'credential-owner',

@@ -2,6 +2,11 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+removal_migration='supabase/migrations/20261028150000_remove_firecrawl.sql'
+if [[ ! -f "$repo_root/$removal_migration" ]]; then
+  printf 'Migrazione per la fixture assente: %s\n' "$removal_migration" >&2
+  exit 1
+fi
 
 tar -C "$repo_root" -cf - \
   --exclude='./.git' --exclude='./.git/**' --exclude='**/.git' --exclude='**/.git/**' \
@@ -28,6 +33,9 @@ tar -C "$repo_root" -cf - \
     # Tutte le migrazioni, in ordine lessicografico: i prefissi numerici (001..009)
     # e i timestamp (2026...) ordinano correttamente come vuole Supabase.
     for migration in $(ls supabase/migrations/*.sql | sort); do
+      if [ "$migration" = supabase/migrations/20261028150000_remove_firecrawl.sql ]; then
+        psql -X -v ON_ERROR_STOP=1 -f scripts/postgres-tests/firecrawl-removal-fixture.sql
+      fi
       psql -X -v ON_ERROR_STOP=1 -f "$migration"
     done
     psql -X -v ON_ERROR_STOP=1 -f scripts/postgres-tests/assertions.sql

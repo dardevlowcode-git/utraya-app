@@ -156,7 +156,7 @@ export type Database = {
         Row: {
           id: string
           user_id: string
-          provider: 'youtube' | 'gemini' | 'firecrawl'
+          provider: 'youtube' | 'gemini'
           encrypted_key: string | null
           is_configured: boolean
           is_valid: boolean | null
@@ -169,7 +169,7 @@ export type Database = {
         Insert: {
           id?: string
           user_id: string
-          provider: 'youtube' | 'gemini' | 'firecrawl'
+          provider: 'youtube' | 'gemini'
           encrypted_key?: string | null
           is_configured?: boolean
           is_valid?: boolean | null
@@ -251,7 +251,7 @@ export type Database = {
         Row: {
           id: string
           user_id: string
-          provider: 'youtube' | 'gemini' | 'firecrawl'
+          provider: 'youtube' | 'gemini'
           operation: string
           occurred_at: string
           outcome: 'success' | 'http_error' | 'network_error' | 'timeout'
@@ -270,7 +270,7 @@ export type Database = {
         Insert: {
           id?: string
           user_id: string
-          provider: 'youtube' | 'gemini' | 'firecrawl'
+          provider: 'youtube' | 'gemini'
           operation: string
           occurred_at?: string
           outcome: 'success' | 'http_error' | 'network_error' | 'timeout'
@@ -469,53 +469,6 @@ export type Database = {
         }
         Relationships: []
       }
-      video_transcripts: {
-        Row: {
-          id: string
-          video_id: string
-          youtube_video_id: string
-          language_code: string
-          kind: 'standard' | 'asr' | 'unknown'
-          is_asr: boolean | null
-          transcript_status: 'pending' | 'fetched' | 'missing' | 'failed' | 'legacy_missing'
-          transcript_text: string | null
-          segments: Json | null
-          source: string
-          fetched_at: string | null
-          error_details: string | null
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          video_id: string
-          youtube_video_id: string
-          language_code?: string
-          kind?: 'standard' | 'asr' | 'unknown'
-          is_asr?: boolean | null
-          transcript_status?: 'pending' | 'fetched' | 'missing' | 'failed' | 'legacy_missing'
-          transcript_text?: string | null
-          segments?: Json | null
-          source?: string
-          fetched_at?: string | null
-          error_details?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          language_code?: string
-          kind?: 'standard' | 'asr' | 'unknown'
-          is_asr?: boolean | null
-          transcript_status?: 'pending' | 'fetched' | 'missing' | 'failed' | 'legacy_missing'
-          transcript_text?: string | null
-          segments?: Json | null
-          source?: string
-          fetched_at?: string | null
-          error_details?: string | null
-          updated_at?: string
-        }
-        Relationships: []
-      }
       transcription_profile_audit: {
         Row: {
           id: string
@@ -701,48 +654,6 @@ export type Database = {
           status?: 'pending' | 'done' | 'missing'
           attempts?: number
           last_error?: string | null
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      channel_scan_firecrawl_transcript_targets: {
-        Row: {
-          job_id: string
-          channel_id: string
-          video_id: string
-          youtube_video_id: string
-          status: 'pending' | 'fetched' | 'missing' | 'skipped' | 'disabled'
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          job_id: string
-          channel_id: string
-          video_id: string
-          youtube_video_id: string
-          status?: 'pending' | 'fetched' | 'missing' | 'skipped' | 'disabled'
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          status?: 'pending' | 'fetched' | 'missing' | 'skipped' | 'disabled'
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      firecrawl_transcript_recovery_settings: {
-        Row: {
-          id: boolean
-          enabled: boolean
-          updated_at: string
-        }
-        Insert: {
-          id?: boolean
-          enabled?: boolean
-          updated_at?: string
-        }
-        Update: {
-          enabled?: boolean
           updated_at?: string
         }
         Relationships: []
@@ -1116,118 +1027,6 @@ export type Database = {
         }
         Relationships: []
       }
-      transcript_fetch_diagnostics: {
-        Row: {
-          id: string
-          fetch_run_id: string
-          video_id: string
-          request_id: string | null
-          attempt_no: number
-          client_name: 'ANDROID' | 'TVHTML5' | null
-          stage: 'configuration' | 'player' | 'timedtext'
-          outcome:
-            | 'configuration_error'
-            | 'http_error'
-            | 'playability_blocked'
-            | 'no_usable_track'
-            | 'timeout'
-            | 'network_error'
-            | 'invalid_json'
-            | 'timedtext_empty'
-            | 'timedtext_error'
-            | 'fetched'
-            | 'unknown_error'
-          player_http_status: number | null
-          player_status_text: string | null
-          player_content_type: string | null
-          playability_status: string | null
-          player_reason: string | null
-          player_subreason: string | null
-          player_error_code: string | null
-          player_error_message: string | null
-          track_count: number | null
-          usable_track_count: number | null
-          selected_track_language: string | null
-          selected_track_kind: string | null
-          timedtext_http_status: number | null
-          timedtext_status_text: string | null
-          timedtext_content_type: string | null
-          player_duration_ms: number | null
-          timedtext_duration_ms: number | null
-          error_type: string | null
-          error_code: string | null
-          error_message: string | null
-          attempt_started_at: string
-          completed_at: string
-          runtime_environment: string | null
-          runtime_region: string | null
-          deployment_id: string | null
-          git_commit_sha: string | null
-          git_commit_ref: string | null
-          node_version: string | null
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          fetch_run_id: string
-          video_id: string
-          request_id?: string | null
-          attempt_no: number
-          client_name?: 'ANDROID' | 'TVHTML5' | null
-          stage: 'configuration' | 'player' | 'timedtext'
-          outcome:
-            | 'configuration_error'
-            | 'http_error'
-            | 'playability_blocked'
-            | 'no_usable_track'
-            | 'timeout'
-            | 'network_error'
-            | 'invalid_json'
-            | 'timedtext_empty'
-            | 'timedtext_error'
-            | 'fetched'
-            | 'unknown_error'
-          player_http_status?: number | null
-          player_status_text?: string | null
-          player_content_type?: string | null
-          playability_status?: string | null
-          player_reason?: string | null
-          player_subreason?: string | null
-          player_error_code?: string | null
-          player_error_message?: string | null
-          track_count?: number | null
-          usable_track_count?: number | null
-          selected_track_language?: string | null
-          selected_track_kind?: string | null
-          timedtext_http_status?: number | null
-          timedtext_status_text?: string | null
-          timedtext_content_type?: string | null
-          player_duration_ms?: number | null
-          timedtext_duration_ms?: number | null
-          error_type?: string | null
-          error_code?: string | null
-          error_message?: string | null
-          attempt_started_at: string
-          completed_at: string
-          runtime_environment?: string | null
-          runtime_region?: string | null
-          deployment_id?: string | null
-          git_commit_sha?: string | null
-          git_commit_ref?: string | null
-          node_version?: string | null
-          created_at?: string
-        }
-        Update: Record<string, never>
-        Relationships: [
-          {
-            foreignKeyName: 'transcript_fetch_diagnostics_video_id_fkey'
-            columns: ['video_id']
-            isOneToOne: false
-            referencedRelation: 'videos'
-            referencedColumns: ['id']
-          },
-        ]
-      }
     }
     Views: Record<string, never>
     Functions: {
@@ -1367,7 +1166,7 @@ export type Database = {
         Args: {
           p_credential_id: string | null
           p_user_id: string
-          p_provider: 'youtube' | 'gemini' | 'firecrawl'
+          p_provider: 'youtube' | 'gemini'
           p_encrypted_key: string
           p_expected_encrypted_key: string | null
           p_expected_key_version: string | null
@@ -1386,7 +1185,7 @@ export type Database = {
           p_lease_id: string
           p_channel_id: string
           p_request_key: string
-          p_provider?: 'youtube' | 'firecrawl'
+          p_provider?: 'youtube'
         }
         Returns: {
           status: 'assigned' | 'cached' | 'waiting' | 'exhausted' | 'backoff' | 'disabled'
@@ -1398,18 +1197,6 @@ export type Database = {
           retry_at: string | null
           response: Json
         }[]
-      }
-      complete_firecrawl_transcript_recovery_target: {
-        Args: {
-          p_job_id: string
-          p_lease_id: string
-          p_video_id: string
-          p_youtube_video_id: string
-          p_status: 'fetched' | 'missing' | 'skipped'
-          p_language_code: string | null
-          p_transcript_text: string | null
-        }
-        Returns: Json
       }
       finish_channel_scan_provider_attempt: {
         Args: {

@@ -30,14 +30,6 @@ const initialRetryLimits: AdminRetryLimitsViewModel = {
       retryLimit: 1,
       maxAttempts: 2,
     },
-    {
-      credentialId: 'firecrawl-credential-safe',
-      provider: 'firecrawl',
-      owner: 'Firecrawl owner',
-      isConfigured: true,
-      retryLimit: 0,
-      maxAttempts: 1,
-    },
   ],
   sharedYoutube: {
     providerKey: 'youtube_innertube',
@@ -68,8 +60,6 @@ describe('AdminRetryLimitsClient', () => {
 
     expect(html).toContain('Owner name')
     expect(html).toContain('credential-id-safe')
-    expect(html).toContain('Firecrawl — Firecrawl owner')
-    expect(html).toContain('firecrawl-credential-safe')
     expect(html).toContain('Retry aggiuntivi')
     expect(html).toContain('Massimo tentativi: 2')
     expect(html).toContain('YOUTUBEI_API_KEY')

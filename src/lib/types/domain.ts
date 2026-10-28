@@ -25,8 +25,13 @@ export type ApiUsageEventRow = Database['public']['Tables']['api_usage_events'][
 
 // --- Domain types (enriched / composed) ---
 
-export const INTEGRATION_PROVIDERS = ['youtube', 'gemini', 'firecrawl'] as const
+export const INTEGRATION_PROVIDERS = ['youtube', 'gemini'] as const
 export type IntegrationProvider = (typeof INTEGRATION_PROVIDERS)[number]
+
+/** Verifica se un valore sconosciuto identifica un provider supportato. */
+export function isIntegrationProvider(value: unknown): value is IntegrationProvider {
+  return typeof value === 'string' && (INTEGRATION_PROVIDERS as readonly string[]).includes(value)
+}
 
 /**
  * Video with its AI analysis content (localized), user state, and channel info.

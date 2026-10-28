@@ -4,9 +4,9 @@
  * Flusso: il service converte le righe Supabase in dati camelCase adatti alla UI.
  */
 
-import type { ApiUsageEventRow } from '@/lib/types/domain'
+import type { ApiUsageEventRow, IntegrationProvider } from '@/lib/types/domain'
 
-export type ApiUsageProvider = 'youtube' | 'gemini' | 'firecrawl'
+export type ApiUsageProvider = IntegrationProvider
 
 export type ApiUsageEventRowInput = Pick<
   ApiUsageEventRow,
