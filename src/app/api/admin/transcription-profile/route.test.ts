@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica il confine HTTP admin del profilo di trascrizione.
- * Moduli richiamati: route admin, auth admin, service transcription-profile e vitest.
- * Flusso: prova autorizzazione, validazioni di payload e di dominio, salvataggio con username admin per l'audit.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { sessionMock, getProfileMock, listModelsMock, updateMock } = vi.hoisted(() => ({

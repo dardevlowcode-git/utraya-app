@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: gestisce le azioni rapide visto/non visto e nascosto nella lista tracker.
- * Moduli richiamati: `react`
- * Flusso: al click invia la richiesta API e aggiorna lo stato locale per riflettere subito i filtri selezionati.
- */
-
 'use client'
 
 import { useState } from 'react'

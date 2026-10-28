@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: pulsante client per avviare scansione immediata da console super-admin.
- * Moduli richiamati: `react`, `next-intl`
- * Flusso: invia POST all'endpoint admin scan-now e mostra feedback locale.
- */
-
 'use client'
 
 import { useState } from 'react'

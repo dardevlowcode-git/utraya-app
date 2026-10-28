@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: endpoint pubblico (tokenizzato) per annullare una richiesta cancellazione account entro il grace period.
- * Moduli richiamati: service account deletion e helper envelope API.
- * Flusso: valida token firmato, ripristina lo stato precedente se ancora coerente e risponde con esito standard.
- */
-
 import { apiErr, apiOk } from '@/lib/http/apiResponse'
 import { getRequestId } from '@/lib/security/http'
 import { cancelDeletion } from '@/lib/services/account-deletion'

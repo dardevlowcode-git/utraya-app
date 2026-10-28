@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: gestisce le richieste HTTP v1 per lista video e mutazioni utente.
- * Moduli richiamati: `@/lib/http/apiV1`, `@/lib/services/videos`, `@/lib/services/channels`.
- * Flusso: applica filtri bounded, delega ownership e restituisce view model senza row o transcript interni.
- */
-
 import { apiOk } from '@/lib/http/apiResponse'
 import { after } from 'next/server'
 import { apiV1Error, apiV1Validation, getApiRequestId, readApiJson, requireApiJson, requireApiRateLimit, requireApiUser } from '@/lib/http/apiV1'

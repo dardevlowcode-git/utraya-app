@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica parsing e formattazione dei tempi delle frasi di trascrizione.
- * Moduli richiamati: `vitest`, `./transcript-time`.
- * Flusso: copre MM:SS, H:MM:SS, minuti oltre 59, valori non validi, etichette e link `&t=`.
- */
-
 import { describe, expect, it } from 'vitest'
 import { buildYoutubeTimeUrl, formatTranscriptTimestamp, parseTranscriptTimestamp } from './transcript-time'
 

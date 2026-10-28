@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: centralizza parsing, formattazione e classificazione della durata video.
- * Moduli richiamati: nessuno.
- * Flusso: i service usano il parser ISO-8601 YouTube; la UI usa formatter e bucket coerenti.
- */
-
 export type VideoDurationBucket = 'under_2m' | 'between_2m_30m' | 'over_30m' | 'unknown'
 
 /**

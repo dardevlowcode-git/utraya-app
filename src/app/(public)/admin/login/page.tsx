@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: definisce una pagina o layout pubblico, visibile prima dell'accesso o senza permessi riservati.
- * Moduli richiamati: `react`, `next-intl`, `next/navigation`
- * Flusso: Questa pagina/layout richiama componenti e servizi: i dati arrivano da API o funzioni server, poi vengono passati alla UI per il rendering.
- */
-
 'use client'
 
 import { FormEvent, useState } from 'react'

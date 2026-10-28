@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo: definisce il Markdown TOS pubblico canonico e calcola hash SHA-256 con line-ending stabili.
- * Moduli richiamati: `node:crypto`, `node:fs`, `node:path`.
- * Flusso: loader e CLI condividono la trasformazione TOS prima di calcolare il codice documento accettato.
- */
-
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'

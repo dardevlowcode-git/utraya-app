@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo: verifica che il layout admin protegga i figli con la sessione amministrativa.
- * Moduli richiamati: layout admin, sessione admin controllata e renderer React server-side.
- * Flusso: senza sessione osserva il redirect al login; con sessione verifica il rendering dei figli.
- */
-
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeEach, describe, expect, it, vi } from 'vitest'

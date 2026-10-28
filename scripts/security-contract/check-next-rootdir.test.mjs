@@ -1,8 +1,3 @@
-/* Commento didattico:
- * Scopo: protegge il contratto rootDir del plugin Next tramite la configurazione ESLint effettiva.
- * Flusso: applica config flat reali e verifica che i path letterali passino e i pattern falliscano.
- */
-
 import { describe, expect, it } from 'vitest'
 import path from 'node:path'
 import { ESLint } from 'eslint'

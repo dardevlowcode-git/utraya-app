@@ -1,8 +1,4 @@
-/* Commento didattico:
- * Scopo del file: comandi `postMessage` verso l'iframe YouTube incorporato, senza caricare lo script IFrame API.
- * Moduli richiamati: nessuno (la CSP `script-src 'self'` vieta lo script esterno; basta `enablejsapi=1` sull'iframe).
- * Flusso: la lista di frasi chiama `seekEmbeddedPlayer`, che invia `seekTo` e poi `playVideo` all'origine dell'iframe.
- */
+// La CSP vieta lo script IFrame API esterno; basta enablejsapi=1 sull’iframe.
 
 /** Id DOM dell'iframe del lettore incorporato nella pagina video. */
 export const EMBED_PLAYER_ELEMENT_ID = 'utraya-video-player'

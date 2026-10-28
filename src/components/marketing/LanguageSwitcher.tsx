@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: selettore lingua dedicato alle superfici marketing pubbliche.
- * Moduli richiamati: `next/navigation`, `next-intl`, `@/lib/i18n/config`
- * Flusso: aggiorna il cookie locale, poi forza un refresh della pagina server-rendered.
- */
-
 'use client'
 
 import { useRouter } from 'next/navigation'

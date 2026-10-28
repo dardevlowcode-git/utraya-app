@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: testa helper puri del daily sync (due-date e prossima esecuzione).
- * Moduli richiamati: `vitest`, `@/lib/services/daily-sync`
- * Flusso: usa date deterministiche e verifica output previsto delle utility.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { processPendingCredentialValidationJobsMock, performCredentialValidationAttemptMock } = vi.hoisted(() => ({

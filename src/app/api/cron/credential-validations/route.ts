@@ -1,8 +1,4 @@
-/* Commento didattico:
- * Scopo del file: endpoint manuale protetto (non schedulato in vercel.json) che avanza job persistenti di verifica credenziali; il recovery automatico è nel daily-sync.
- * Moduli richiamati: timingSafeEqual, service job validation e attempt provider same-key.
- * Flusso: valida CRON_SECRET e processa un batch tecnico di lease, una richiesta provider per lease.
- */
+// Endpoint manuale non schedulato: il recupero automatico è nel daily-sync.
 
 import { timingSafeEqual } from 'node:crypto'
 import { apiErr, apiOk } from '@/lib/http/apiResponse'

@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: endpoint per registrare accettazioni TOS/clausole vessatorie con envelope standard e requestId.
- * Moduli richiamati: auth abstraction, service legal acceptance, helper HTTP/security.
- * Flusso: valida input, legge utente corrente, salva accettazioni mancanti e restituisce esito API uniforme.
- */
-
 import { getCurrentUser } from '@/lib/auth/getCurrentUser'
 import { apiErr, apiOk } from '@/lib/http/apiResponse'
 import { mapAppErrorTypeToCode } from '@/lib/http/errorCodes'

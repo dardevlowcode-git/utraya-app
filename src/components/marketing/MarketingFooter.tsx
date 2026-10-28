@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: footer marketing con colonne navigazione e azione client per riaprire preferenze cookie.
- * Moduli richiamati: `next/link`, `next-intl/server`, componenti lingua/tema/cookie.
- * Flusso: compone link pubblici fissi e azioni UI condivise su tutte le pagine marketing.
- */
-
 import Link from 'next/link'
 import { getTranslations } from 'next-intl/server'
 import MarketingLanguageSwitcher from './LanguageSwitcher'

@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: guida l'utente nella creazione e nel salvataggio della chiave YouTube Data API.
- * Moduli richiamati: `next-intl` per il testo IT/EN e collegamenti alle fonti ufficiali Google.
- * Flusso: disclosure nativa, istruzioni console, limiti quota e indicazioni di sicurezza.
- */
-
 'use client'
 
 import { useTranslations } from 'next-intl'

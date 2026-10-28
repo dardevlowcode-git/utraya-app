@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo: verifica il comportamento pubblico della pagina autenticata di utilizzo API.
- * Moduli richiamati: pagina `/usage`, sessione, dashboard, next-intl e Vitest.
- * Flusso: simula i confini server-side e controlla la richiesta della pagina selezionata.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import enMessages from '../../../../messages/en.json'

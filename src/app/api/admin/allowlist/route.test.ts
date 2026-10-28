@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica il confine HTTP dell'allowlist admin (sessione, origin, validazione email, DB normalizzato, audit).
- * Moduli richiamati: route `admin/allowlist` reale, `@/lib/auth/admin` e `@/lib/security/http` reali, DB admin finto, `next/headers` finto.
- * Flusso: invoca POST/DELETE reali con env admin impostata e cookie sessione vero, controllando chiamate DB e risposte.
- */
-
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {

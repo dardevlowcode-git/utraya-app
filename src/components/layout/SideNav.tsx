@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: sidebar privata con modalita` pinnata desktop e drawer mobile collassabile.
- * Moduli richiamati: routing Next, traduzioni, utility classnames e tipo sessione.
- * Flusso: mostra un pulsante flottante per apertura menu, consente pin/unpin e chiude automaticamente la modalita` overlay dopo navigazione.
- */
-
 'use client'
 
 import Link from 'next/link'

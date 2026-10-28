@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: testa ownership e contratto della route v1 stato job senza database.
- * Moduli richiamati: route `v1/jobs/[jobId]`, auth e service mockati, `vitest`.
- * Flusso: simula Bearer user e service per happy-path, 404, 403 ownership e validazione.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AppError } from '@/lib/utils/errors'
 import type { ApiUserContext } from '@/lib/auth/apiUser'

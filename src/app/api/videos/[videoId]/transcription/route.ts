@@ -1,8 +1,4 @@
-/* Commento didattico:
- * Scopo del file: route sottile per richiedere (POST) e leggere (GET) la trascrizione di un video seguito.
- * Moduli richiamati: auth unica, servizi di trascrizione, envelope API standard, guardie same-origin/JSON.
- * Flusso: valida origin e payload Zod, autentica, delega al servizio e avvia il worker con `after()` restituendo la Promise (ADR-014).
- */
+// Il callback di after() deve restituire la Promise del worker (ADR-014).
 
 import { after } from 'next/server'
 import { z } from 'zod'

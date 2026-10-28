@@ -1,8 +1,3 @@
-/* Commento didattico:
- * Scopo: verifica il confine provider dei job YouTube con limiti e chiavi persistenti.
- * Flusso: il database assegna una credenziale eleggibile; ogni richiesta usa e registra il proprietario effettivo.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { createAdminClientMock, resolveApiKeyMock, credentialPolicyMock, rpcMock, usageInsertMock } = vi.hoisted(() => ({

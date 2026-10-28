@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica la route interna di continuazione dei job di trascrizione.
- * Moduli richiamati: `vitest`, route, runner del job mockato.
- * Flusso: controlla CRON_SECRET (assente, errato, corretto), validazione del payload e che after() riceva la Promise del worker.
- */
-
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 
 const { runJobMock, afterMock } = vi.hoisted(() => ({ runJobMock: vi.fn(), afterMock: vi.fn() }))

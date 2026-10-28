@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: gestisce il profilo di trascrizione amministrativo (modello, ragionamento, prezzi) e l'elenco modelli Google.
- * Moduli richiamati: client Supabase service-role, registro uso API, lettura chiavi Gemini dei follower.
- * Flusso: l'elenco si legge con la prima chiave Gemini valida e si registra come uso del proprietario; il salvataggio e' atomico con audit.
- */
-
 import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchAndRecordProviderRequest } from '@/lib/services/api-usage'
 import { getProviderApiKeyForUserAsAdmin } from '@/lib/services/integrations'

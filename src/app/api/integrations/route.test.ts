@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo: verifica il contratto HTTP standard delle operazioni integrazioni web.
- * Moduli richiamati: route integrations, servizi mockati e Vitest.
- * Flusso: controlla envelope e request ID per lettura, salvataggio e rimozione senza provider.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { getCurrentSessionMock, getStatusesMock, saveApiKeyMock, validateApiKeyMock, removeApiKeyMock, runValidationJobMock, afterMock } = vi.hoisted(() => ({

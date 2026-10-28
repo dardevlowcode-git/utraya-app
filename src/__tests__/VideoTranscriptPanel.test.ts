@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica la pagina video lato trascrizione: elenco frasi, link `&t=`, tempo dubbio, avviso chiave, salto nel lettore.
- * Moduli richiamati: `VideoTranscriptPanel`, `VideoEmbedPlayer`, React SSR/hydration, view model sintetico.
- * Flusso: renderizza ogni stato visibile e simula il clic su una frase controllando il comando postMessage.
- */
-
 // @vitest-environment happy-dom
 
 import { act, createElement } from 'react'

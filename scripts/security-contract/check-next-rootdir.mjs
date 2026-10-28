@@ -1,8 +1,3 @@
-/* Commento didattico:
- * Scopo: blocca configurazioni ESLint Next che richiedono glob non supportati dall'adapter locale.
- * Flusso: calcola la config effettiva ESLint dei file lintabili e accetta solo rootDir letterali.
- */
-
 import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'

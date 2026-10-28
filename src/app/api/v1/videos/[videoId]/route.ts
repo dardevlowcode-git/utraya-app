@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: restituisce il dettaglio di un video solo se il canale è seguito dall'utente Bearer.
- * Moduli richiamati: `@/lib/http/apiV1`, `@/lib/services/videos`.
- * Flusso: autentica, applica ownership nel service e serializza il contesto video pubblico.
- */
-
 import { apiOk } from '@/lib/http/apiResponse'
 import { apiV1Error, apiV1NotFound, apiV1Validation, getApiRequestId, requireApiUser } from '@/lib/http/apiV1'
 import { getVideoForUser } from '@/lib/services/videos'

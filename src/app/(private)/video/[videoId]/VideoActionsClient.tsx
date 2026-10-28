@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: gestisce le azioni utente sul video (visto/non visto, watchlist) lato client.
- * Moduli richiamati: `react`
- * Flusso: invia richieste all'API `/api/videos`, aggiorna stato locale bottoni e mostra feedback minimale.
- */
-
 'use client'
 
 import { useState } from 'react'

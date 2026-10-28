@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: definisce una pagina o layout amministrativo, usato per operazioni di controllo e gestione avanzata.
- * Moduli richiamati: `@/components/layout/TopNav`, `@/components/layout/AdminSideNav`, `@/components/layout/Footer`, `@/lib/auth/admin`, `next/navigation`
- * Flusso: Questa pagina/layout richiama componenti e servizi: i dati arrivano da API o funzioni server, poi vengono passati alla UI per il rendering.
- */
-
 import TopNav from '@/components/layout/TopNav'
 import AdminSideNav from '@/components/layout/AdminSideNav'
 import Footer from '@/components/layout/Footer'

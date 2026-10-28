@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica il contratto asincrono dell'import video API v1.
- * Moduli richiamati: route video, autenticazione e coda scan mockate, `vitest`.
- * Flusso: controlla che il callback registrato con `after` restituisca il lavoro background.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { requireApiUserMock, readApiJsonMock, queueChannelScanMock, afterMock } = vi.hoisted(() => ({

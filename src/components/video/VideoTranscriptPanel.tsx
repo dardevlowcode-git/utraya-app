@@ -1,10 +1,3 @@
-/* Commento didattico:
- * Scopo del file: pannello client della trascrizione nella pagina video (stato, richiesta, elenco frasi cliccabili).
- * Moduli richiamati: `react`, comandi postMessage del lettore YouTube, tipi del view model.
- * Flusso: mostra lo stato iniziale ricevuto dal server, richiede/riprende la trascrizione via API e fa polling finché è in corso;
- * un clic su una frase sposta il lettore incorporato a quel secondo, il link apre YouTube allo stesso punto.
- */
-
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'

@@ -1,10 +1,3 @@
-/* Commento didattico:
- * Scopo del file: casi d'uso della trascrizione su richiesta (richiesta, stato per la pagina, recupero job).
- * Moduli richiamati: client Supabase utente (RLS) e admin, servizio di trascrizione, view model.
- * Flusso: la route valida e autentica, qui si applicano le regole (follower, chiave Gemini personale, riuso canonico),
- * si crea trascrizione+parti+job e si lascia al chiamante il lavoro in `after()` tramite `runTranscriptionJobNow`.
- */
-
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { AppSupabaseClient } from '@/lib/supabase/types'
 import {

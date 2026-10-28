@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo: smoke-test dei metodi API senza test dedicato, verificando le guardie HTTP pubbliche.
- * Moduli richiamati: route handlers, auth mockata, filesystem e vitest.
- * Flusso: invoca ogni metodo con sessione assente o input minimo e controlla risposta JSON/status.
- */
-
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'

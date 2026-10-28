@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: fornisce impalcatura condivisa per i test delle route admin (env, hash scrypt, sessione, DB finto).
- * Moduli richiamati: `node:crypto`, `vitest`, `@/lib/auth/admin`.
- * Flusso: i test delle route admin usano queste funzioni per impostare l'ambiente super-admin e iniettare cookie senza rete.
- */
-
 import { randomBytes, scryptSync } from 'node:crypto'
 import { vi } from 'vitest'
 import {

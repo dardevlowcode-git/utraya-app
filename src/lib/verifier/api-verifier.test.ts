@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica i contratti mutativi del verificatore API senza servizi reali.
- * Moduli richiamati: `runApiVerification`, Supabase isolato e `vitest`.
- * Flusso: simula le risposte API e controlla gli esiti pubblici del report.
- */
-
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { createAdminClientMock, createSupabaseClientMock } = vi.hoisted(() => ({

@@ -1,8 +1,3 @@
-/* Commento didattico:
- * Scopo del file: pagina FAQ pubblica con ritmo editoriale e accordion accessibile.
- * Moduli richiamati: `next-intl/server`, template sezioni marketing.
- */
-
 import { getTranslations } from 'next-intl/server'
 import { SplitHeroSection } from '@/components/marketing/SectionTemplates'
 

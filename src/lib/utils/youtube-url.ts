@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: fornisce funzioni di utilita` riusabili in piu` punti del progetto.
- * Moduli richiamati: `@/lib/types/domain`
- * Flusso: Le utility vengono richiamate da moduli diversi per evitare duplicazioni e standardizzare comportamenti comuni.
- */
-
 import type { ParsedYouTubeUrl } from '@/lib/types/domain'
 
 /**

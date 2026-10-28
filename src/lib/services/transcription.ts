@@ -1,9 +1,4 @@
-/* Commento didattico:
- * Scopo del file: servizio di trascrizione Gemini a blocchi da 120 s (ADR-019), indipendente dal database.
- * Moduli richiamati: `node:crypto`, registratore uso API, helper dei tempi; la persistenza arriva dal `TranscriptionStore`.
- * Flusso: il worker reclama il job, chiama Gemini per ogni parte con la ricetta fissa, controlla i tempi senza scartare
- * testo, salva ogni parte subito e, se il budget di durata finisce, rilascia la lease per la continuazione.
- */
+// Trascrizione Gemini a blocchi da 120 secondi: ADR-019.
 
 import { randomUUID } from 'node:crypto'
 import { fetchAndRecordProviderRequest, type ProviderResponseUsage } from '@/lib/services/api-usage'

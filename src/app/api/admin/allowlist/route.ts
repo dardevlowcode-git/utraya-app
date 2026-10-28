@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: gestisce una API route: riceve richieste HTTP, valida i dati e restituisce una risposta al frontend.
- * Moduli richiamati: `next/server`, `@/lib/supabase/admin`, `@/lib/auth/admin`
- * Flusso: La route viene richiamata dal client (o da altre parti server), usa servizi/utilita` in `src/lib` e poi ritorna JSON/HTTP status.
- */
-
 import { z } from 'zod'
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'

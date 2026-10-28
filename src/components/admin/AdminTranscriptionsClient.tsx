@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: pagina admin delle trascrizioni da rivedere (filtri, frequenza, elenco con parti mancanti, rilancio).
- * Moduli richiamati: React, next-intl e tipi del view model admin.
- * Flusso: i filtri e la paginazione sono link alla stessa pagina; il rilancio chiama la route admin e mostra l'esito per riga.
- */
-
 'use client'
 
 import { useState } from 'react'

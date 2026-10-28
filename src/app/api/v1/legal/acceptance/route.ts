@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: restituisce al client mobile lo stato delle accettazioni legali richieste.
- * Moduli richiamati: `@/lib/http/apiV1`, `@/lib/services/legal-acceptance`.
- * Flusso: l'utente è identificato dal Bearer e il service usa versioni/hash canonici server-side.
- */
-
 import { apiOk } from '@/lib/http/apiResponse'
 import { apiV1Error, getApiRequestId, requireApiUser } from '@/lib/http/apiV1'
 import { getLegalAcceptanceStatus } from '@/lib/services/legal-acceptance'

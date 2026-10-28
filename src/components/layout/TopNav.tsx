@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: top navigation condivisa per superfici pubblica, privata e admin con menu utente touch-safe.
- * Moduli richiamati: `next/link`, `next-intl`, supabase client, routing client.
- * Flusso: mostra nav contestuale, azioni utente e gestione logout in base al variant corrente.
- */
-
 'use client'
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'

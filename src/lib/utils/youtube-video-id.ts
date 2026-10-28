@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: estrarre in modo robusto un video id YouTube da id/raw value o URL.
- * Moduli richiamati: API URL native.
- * Flusso: chiamanti passano valore potenzialmente eterogeneo (id, watch URL, embed URL) e ricevono id normalizzato o null.
- */
-
 const YOUTUBE_VIDEO_ID_REGEX = /^[a-zA-Z0-9_-]{11}$/
 
 /**

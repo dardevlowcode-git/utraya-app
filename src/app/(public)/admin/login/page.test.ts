@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo: verifica gli attributi pubblici dei campi del login admin.
- * Moduli richiamati: pagina login admin, React e Vitest.
- * Flusso: renderizza il form e controlla autocomplete, mascheramento e tipo dei campi.
- */
-
 // @vitest-environment happy-dom
 
 import { createElement } from 'react'

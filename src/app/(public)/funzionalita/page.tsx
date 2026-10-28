@@ -1,8 +1,3 @@
-/* Commento didattico:
- * Scopo del file: pagina pubblica "Funzionalità" con template editoriali condivisi.
- * Moduli richiamati: `next/link`, `next-intl/server`, template sezioni marketing.
- */
-
 import Link from 'next/link'
 import { getTranslations } from 'next-intl/server'
 import { EditorialGridSection, SplitHeroSection, StatementBand } from '@/components/marketing/SectionTemplates'

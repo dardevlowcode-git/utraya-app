@@ -1,10 +1,4 @@
-/* Commento didattico:
- * Scopo del file: esecuzione dei job di trascrizione automatici (video nuovi fino a 90 minuti) subito dopo uno scan.
- * Moduli richiamati: client admin, servizio richieste (esecuzione e controllo chiavi), continuazione interna.
- * Flusso: dopo lo scan si lavora UN job del canale con budget ridotto; a job concluso si chiede la continuazione
- * interna per il successivo, così i video si trascrivono uno alla volta senza cron al minuto. Senza chiave eleggibile
- * i job restano pending e li riprende il daily-sync.
- */
+// I video si trascrivono uno alla volta senza cron al minuto; senza chiave eleggibile interviene il daily-sync.
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import {

@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: bottone client nel footer per riaprire il banner preferenze cookie in qualsiasi momento.
- * Moduli richiamati: `@/lib/consent/ConsentProvider`, `next-intl`.
- * Flusso: richiama `openBanner` dal context consenso senza refresh o navigazioni aggiuntive.
- */
-
 'use client'
 
 import { useTranslations } from 'next-intl'

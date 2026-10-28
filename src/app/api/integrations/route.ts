@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo: gestisce le credenziali integrazione dell'utente tramite API web.
- * Moduli: sessione, provider/servizi integrazioni, guardie HTTP ed envelope API standard.
- * Flusso: valida origin/body Zod, autentica, chiama il servizio e restituisce apiOk/apiErr con request ID.
- */
-
 import { after } from 'next/server'
 import { getCurrentSession } from '@/lib/auth/provider'
 import {

@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: view model serializzabile della trascrizione di un video per pagina e API di stato.
- * Moduli richiamati: helper dei tempi di trascrizione.
- * Flusso: il servizio passa righe minime già lette; qui si calcolano stato visibile, etichette e link al minuto.
- */
-
 import { buildYoutubeTimeUrl, formatTranscriptTimestamp } from '@/lib/utils/transcript-time'
 
 export type TranscriptionViewState = 'absent' | 'waiting_for_key' | 'running' | 'complete' | 'needs_review' | 'unavailable'

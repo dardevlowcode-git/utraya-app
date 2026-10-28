@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: definisce il layout pubblico marketing e collega provider consenso cookie + analytics gating.
- * Moduli richiamati: componenti marketing, `@/lib/consent/ConsentProvider`, `next-intl/server`.
- * Flusso: avvolge tutte le pagine pubbliche con shell marketing e controlli cookie centralizzati.
- */
-
 import MarketingHeader from '@/components/marketing/MarketingHeader'
 import MarketingFooter from '@/components/marketing/MarketingFooter'
 import { ConsentProvider } from '@/lib/consent/ConsentProvider'

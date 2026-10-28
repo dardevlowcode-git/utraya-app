@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: implementa flusso cancellazione account con grace period, annullamento token e esecuzione cron/admin.
- * Moduli richiamati: `node:crypto`, `@/lib/supabase/admin`, `@/lib/view-models/deletion`, `@/lib/env/getSiteUrl`.
- * Flusso: route utente/admin/cron delegano qui per request/cancel/execute/force-delete e audit coerente.
- */
-
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buildSiteUrl } from '@/lib/env/getSiteUrl'

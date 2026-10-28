@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: orchestra job persistenti di verifica credenziali usando lease e job_attempts esistenti.
- * Moduli richiamati: client Supabase admin, UUID e errori applicativi.
- * Flusso: una lease esegue al massimo una richiesta provider; retry e backoff restano salvati nel job.
- */
-
 import { randomUUID } from 'node:crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { computeRetryAt } from '@/lib/utils/retry-backoff'

@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica filtro modelli, scelta chiave, registro uso e salvataggio del profilo di trascrizione.
- * Moduli richiamati: service transcription-profile, client admin finto, fetcher finto e vitest.
- * Flusso: simula solo i confini database e Google; controlla risultati osservabili e rispetto dei vincoli.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { getKeyMock, createAdminClientMock } = vi.hoisted(() => ({ getKeyMock: vi.fn(), createAdminClientMock: vi.fn() }))

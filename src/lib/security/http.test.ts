@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica le utility HTTP di sicurezza (`@/lib/security/http`) usate dalle route prima delle mutazioni.
- * Moduli richiamati: `vitest`, `@/lib/security/http`, `@/lib/utils/errors`.
- * Flusso: costruisce `Request` con header controllati e osserva esito, status e messaggi di `AppError`.
- */
-
 import { describe, expect, it } from 'vitest'
 import { ensureJsonRequest, ensureSameOrigin, getClientIp, getRequestId } from './http'
 import { AppError } from '@/lib/utils/errors'

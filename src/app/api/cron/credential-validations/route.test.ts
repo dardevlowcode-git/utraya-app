@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica la guardia cron e il dispatch del worker persistente delle verifiche API.
- * Moduli richiamati: route cron, service job validation e vitest.
- * Flusso: rifiuta chiamate non autorizzate e usa la secret solo per il trigger, mai nel risultato.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { processPendingCredentialValidationJobsMock, performCredentialValidationAttemptMock } = vi.hoisted(() => ({

@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica token OIDC GitHub Actions per il broker interno del verificatore, senza secret statici.
- * Moduli richiamati: `node:crypto` e fetch JWKS GitHub.
- * Flusso: valida firma RS256, issuer/audience, repository, workflow e branch prima di autorizzare il broker.
- */
-
 import { createPublicKey, verify } from 'node:crypto'
 
 const issuer = 'https://token.actions.githubusercontent.com'

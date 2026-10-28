@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: pagina admin delle trascrizioni da rivedere con filtro per stato, frequenza e rilancio parti mancanti.
- * Moduli richiamati: Zod per i parametri di query, client Supabase admin, service admin-transcriptions e client della pagina.
- * Flusso: la pagina protetta dall'AdminLayout valida `status` e `page`, legge elenco e statistiche e li passa alla UI.
- */
-
 import type { Metadata } from 'next'
 import { z } from 'zod'
 import AdminTranscriptionsClient from '@/components/admin/AdminTranscriptionsClient'

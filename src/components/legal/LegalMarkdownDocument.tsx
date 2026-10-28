@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: componente presentazionale condiviso per pagine legali markdown con header metadata e stile coerente.
- * Moduli richiamati: `react-markdown`, `remark-gfm`, `next-intl`.
- * Flusso: riceve markdown + metadata e rende il documento con label e data efficacia localizzate.
- */
-
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useFormatter, useTranslations } from 'next-intl'

@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo: presenta i collegamenti di consultazione per una sezione del contenuto canonico.
- * Moduli richiamati: `next/link` e il view model della tabella admin.
- * Flusso: rende link per valori disponibili e placeholder non interattivi per quelli mancanti.
- */
-
 import Link from 'next/link'
 import type { AdminCanonicalContentLinkViewModel } from '@/lib/view-models/admin-canonical-content'
 

@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: rate limiting minimale in-memory per le API esposte senza nuove dipendenze.
- * Moduli richiamati: nessuno.
- * Flusso: le route contano le richieste per chiave in una finestra fissa e rifiutano con 429 oltre la soglia.
- */
-
 type Bucket = {
   count: number
   resetAt: number

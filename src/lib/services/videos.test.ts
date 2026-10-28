@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica che il servizio rispetti perimetro canali e dati privati di ciascun utente.
- * Moduli richiamati: `videos`, fake Supabase con filtri applicati e `vitest`.
- * Flusso: due utenti condividono righe in memoria; le query reali devono restituire solo il sottoinsieme di A.
- */
-
 import { describe, expect, it } from 'vitest'
 import { createFilteringSupabase } from '@/__tests__/helpers/filteringSupabase'
 import { getVideosForUser } from '@/lib/services/videos'

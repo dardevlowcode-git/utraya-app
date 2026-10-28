@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: pagina admin di lettura di un singolo testo canonico persistito.
- * Moduli richiamati: servizio admin, Next navigation e collegamento alla tabella video.
- * Flusso: verifica il tipo richiesto, carica solo video/sezione/lingua e mostra i campi vuoti come «—».
- */
-
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import {

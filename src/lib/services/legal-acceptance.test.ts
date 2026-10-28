@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: testa i service legal acceptance per stato richiesto e persistenza accettazioni probatorie.
- * Moduli richiamati: service legal-acceptance, costanti version/hash, mock createAdminClient.
- * Flusso: simula query/insert su Supabase e verifica mapping missing/rows e gestione duplicate key.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   PRIVACY_VISIBLE_HASH,

@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica il confine HTTP admin per leggere e salvare i limiti retry.
- * Moduli richiamati: route admin, auth admin, service retry-limits e vitest.
- * Flusso: prova autorizzazione admin, limiti validi/invalidi e separazione della chiave YouTube condivisa.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { getAdminSessionMock, getAdminRetryLimitsMock, setCredentialRetryLimitMock, setSharedYoutubeRetryLimitMock } = vi.hoisted(() => ({

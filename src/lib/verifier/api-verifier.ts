@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: orchestrazione del verificatore API-first senza Bearer secret statici in GitHub Actions.
- * Moduli richiamati: `@/lib/supabase/admin`, `@supabase/supabase-js`.
- * Flusso: genera OTP fixture server-side, collauda `/api/v1` in memoria e compone il report sanitizzato.
- */
-
 import { randomUUID } from 'node:crypto'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'

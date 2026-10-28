@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica il confine HTTP admin del rilancio delle parti mancanti.
- * Moduli richiamati: route admin, auth admin, service admin-transcriptions, job chain e vitest.
- * Flusso: prova autorizzazione, validazioni, esiti del servizio e avvio del job in `after()` con Promise restituita.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { sessionMock, relaunchMock, chainMock, afterMock } = vi.hoisted(() => ({

@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: pagina comparazioni in stato "In arrivo a breve".
- * Moduli richiamati: `next-intl/server`
- * Flusso: mostra placeholder senza citare competitor reali in V1.6.
- */
-
 import { getTranslations } from 'next-intl/server'
 
 export default async function ComparisonsPage() {

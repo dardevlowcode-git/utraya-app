@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica la resa dell'editor admin del profilo di trascrizione e della pagina che lo alimenta.
- * Moduli richiamati: AdminTranscriptionProfileClient, pagina admin, next-intl e renderer React server-side.
- * Flusso: controlla valori correnti, elenco modelli, stato senza chiave/errore e testi IT/EN.
- */
-
 import * as React from 'react'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'

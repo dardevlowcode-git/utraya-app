@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: endpoint cron giornaliero compatibile Vercel per avviare il daily sync dei canali.
- * Moduli richiamati: `next/server`, `@/lib/services/daily-sync`, `@/lib/utils/errors`
- * Flusso: valida Authorization Bearer con CRON_SECRET, delega al service e restituisce un riepilogo JSON.
- */
-
 import { NextResponse } from 'next/server'
 import { timingSafeEqual } from 'node:crypto'
 import { runDailyChannelSync } from '@/lib/services/daily-sync'

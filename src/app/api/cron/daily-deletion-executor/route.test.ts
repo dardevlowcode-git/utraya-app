@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica autorizzazione e riepilogo HTTP del cron di esecuzione cancellazioni.
- * Moduli richiamati: handler cron reale e service account-deletion simulato.
- * Flusso: prova i rifiuti Bearer senza eseguire il job e il successo con secret di test.
- */
-
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { processPendingDeletionRequestsMock } = vi.hoisted(() => ({

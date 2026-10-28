@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: tabella client ridimensionabile per la sezione operazioni/job falliti.
- * Moduli richiamati: `react`, `@/components/admin/useResizableColumns`
- * Flusso: riceve righe pronte dal server e gestisce solo rendering + resize colonne.
- */
-
 'use client'
 
 import { useResizableColumns } from '@/components/admin/useResizableColumns'

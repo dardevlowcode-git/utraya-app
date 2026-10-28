@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica l'adapter provider di un singolo attempt same-key e il relativo ledger.
- * Moduli richiamati: saveApiKey, attempt di validazione, client Supabase mock e vitest.
- * Flusso: usa chiavi sintetiche cifrate dal service e mocka solo fetch e persistenza esterna.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppSupabaseClient } from '@/lib/supabase/types'
 

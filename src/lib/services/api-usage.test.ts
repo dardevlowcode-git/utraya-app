@@ -1,9 +1,4 @@
-/* Commento didattico:
- * Scopo: verifica i dati osservabili del registro utilizzo API e i calcoli mostrati all'utente.
- * Moduli richiamati: `vitest`, `./api-usage`.
- * Flusso: usa tariffe e costi quota fissati nella spec per controllare insert allowlistati.
- * La policy RLS e la RPC summary sono provate in SQL reale (`scripts/postgres-tests/rls.sql`).
- */
+// Policy RLS e RPC summary sono verificate su PostgreSQL in scripts/postgres-tests/rls.sql.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppSupabaseClient } from '@/lib/supabase/types'

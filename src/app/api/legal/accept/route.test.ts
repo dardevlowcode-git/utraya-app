@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica autenticazione, input e identità della route cookie di accettazione legale.
- * Moduli richiamati: handler HTTP, auth di sessione e service legal acceptance simulati.
- * Flusso: invoca il POST reale e osserva status e dati passati al service senza database.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { getCurrentUserMock, recordLegalAcceptanceMock } = vi.hoisted(() => ({

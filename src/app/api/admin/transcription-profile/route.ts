@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: espone le operazioni admin per leggere e salvare il profilo di trascrizione.
- * Moduli richiamati: Zod, sessione admin, envelope HTTP, protezioni same-origin e service transcription-profile.
- * Flusso: valida il payload Zod, autentica l'admin e delega validazioni di dominio, persistenza e audit al service.
- */
-
 import { z } from 'zod'
 import { getAdminSession } from '@/lib/auth/admin'
 import { apiErr, apiOk } from '@/lib/http/apiResponse'

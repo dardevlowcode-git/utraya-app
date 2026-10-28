@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica il consumo monouso del nonce OIDC senza database reale.
- * Moduli richiamati: `../githubOidcReplay`, client admin Supabase mockato, `vitest`.
- * Flusso: simula insert ok/duplicato/errore e controlla cleanup, scadenza e mapping errori.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { consumeGitHubOidcJti } from './githubOidcReplay'
 import { AppError } from '@/lib/utils/errors'

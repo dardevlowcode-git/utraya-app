@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica richiesta, riuso e vista di stato della trascrizione con un database in memoria.
- * Moduli richiamati: `vitest`, servizio richieste, client Supabase finto (filtri, insert/upsert/update, vincoli unici).
- * Flusso: copre follower, chiave Gemini, riuso canonico senza chiave, creazione job/parti, job attivi, video non trascrivibile e paginazione frasi.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppSupabaseClient } from '@/lib/supabase/types'
 

@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: guida l'utente nella creazione e configurazione della chiave Gemini API.
- * Moduli richiamati: `next-intl` per il testo IT/EN e link alle fonti ufficiali Google.
- * Flusso: disclosure nativa, istruzioni AI Studio, piani, limiti, privacy e vincoli territoriali.
- */
-
 'use client'
 
 import { useTranslations } from 'next-intl'

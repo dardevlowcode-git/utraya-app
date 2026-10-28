@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica la route Bearer per registrare accettazioni legali versionate.
- * Moduli richiamati: handler HTTP, auth API e service legal acceptance simulati.
- * Flusso: invoca POST reale e controlla il rifiuto input/auth e l’identità passata al service.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ApiUserContext } from '@/lib/auth/apiUser'
 

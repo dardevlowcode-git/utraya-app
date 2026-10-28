@@ -1,8 +1,4 @@
-/* Commento didattico:
- * Scopo del file: impedisce cron incompatibili con il piano Vercel gratuito (Hobby, al massimo giornalieri).
- * Moduli richiamati: vercel.json e vitest.
- * Flusso: legge la configurazione e verifica che nessuna schedule giri più di una volta al giorno.
- */
+// Il piano Vercel Hobby consente cron al massimo giornalieri.
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'

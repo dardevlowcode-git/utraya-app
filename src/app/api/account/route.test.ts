@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica auth cookie e minimizzazione della risposta di richiesta cancellazione.
- * Moduli richiamati: handler HTTP, auth di sessione e service account-deletion simulati.
- * Flusso: chiama DELETE reale, controlla identità usata dal service e confronta l’intero payload pubblico.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { getCurrentUserMock, requestDeletionMock, signOutMock } = vi.hoisted(() => ({

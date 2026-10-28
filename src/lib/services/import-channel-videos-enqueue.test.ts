@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica l'accodamento automatico delle trascrizioni nel percorso di import senza lease (import manuale).
- * Moduli richiamati: `importChannelVideos`, client Supabase e registratore uso mockati, Vitest.
- * Flusso: solo i video non presenti prima dell'upsert vengono passati alla RPC idempotente; un errore della RPC non rompe l'import.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({

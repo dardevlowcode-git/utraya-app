@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: converte i tempi delle frasi di trascrizione tra testo `MM:SS`/`H:MM:SS`, secondi interi ed etichette.
- * Moduli richiamati: nessuno.
- * Flusso: il servizio di trascrizione legge i tempi di Gemini; la pagina video mostra l'etichetta e costruisce il link al minuto.
- */
-
 /**
  * Converte `MM:SS` o `H:MM:SS` (anche `MM` oltre 59, come nei video lunghi) in secondi interi.
  * Accetta anche un numero di secondi. Restituisce null per formati non riconosciuti.

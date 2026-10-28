@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: testa il recovery lease degli scan senza database reale.
- * Moduli richiamati: `processPendingScanJobs` con client admin mockato a catene, `vitest`.
- * Flusso: simula code pending/running/legacy e verifica requeue, payload invalidi e conteggi.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { processPendingScanJobs } from './channels'
 

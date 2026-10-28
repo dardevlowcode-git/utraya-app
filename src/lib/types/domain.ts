@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: dichiara tipi TypeScript condivisi, utili per rendere il codice piu` sicuro e leggibile.
- * Moduli richiamati: `./database`
- * Flusso: I tipi dichiarati qui sono importati da servizi, API e componenti per controllare forma e coerenza dei dati.
- */
-
 import type { Database } from './database'
 
 // --- Convenience row types from DB ---

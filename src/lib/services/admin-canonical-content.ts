@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo: legge contenuti canonici persistiti per la sola console admin.
- * Moduli richiamati: auth admin, client Supabase privilegiato e view model admin.
- * Flusso: verifica sessione, legge righe esistenti e separa i testi dai dati della tabella.
- */
-
 import { getAdminSession } from '@/lib/auth/admin'
 import type { ErrorCode } from '@/lib/http/errorCodes'
 import { createAdminClient } from '@/lib/supabase/admin'

@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo: verifica che gli smoke rifiutino host normali e accettino container supportati.
- * Moduli richiamati: `vitest`, `scripts/container-check.mjs`.
- * Flusso: simula marker, cgroup e mount root senza dipendere dal container del test runner.
- */
-
 import { describe, expect, it } from 'vitest'
 import { isRunningInContainer } from '../../../scripts/container-check.mjs'
 

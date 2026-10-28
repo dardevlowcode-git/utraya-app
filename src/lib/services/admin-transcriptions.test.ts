@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica elenco, statistiche e rilancio del service admin delle trascrizioni.
- * Moduli richiamati: service admin-transcriptions, client admin finto e vitest.
- * Flusso: il client finto registra filtri e chiamate RPC; si controllano risultati e parametri passati al database.
- */
-
 import { describe, expect, it, vi } from 'vitest'
 import {
   ADMIN_TRANSCRIPTIONS_PAGE_SIZE,

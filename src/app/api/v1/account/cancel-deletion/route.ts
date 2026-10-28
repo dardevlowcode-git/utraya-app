@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: annulla una cancellazione con token firmato entro il grace period.
- * Moduli richiamati: `@/lib/http/apiV1`, `@/lib/services/account-deletion`.
- * Flusso: il token è verificato server-side; non vengono accettati userId o requestId dal client.
- */
-
 import { apiOk } from '@/lib/http/apiResponse'
 import { apiErr } from '@/lib/http/apiResponse'
 import { apiV1Error, apiV1Validation, getApiRequestId, readApiJson, requireApiJson } from '@/lib/http/apiV1'

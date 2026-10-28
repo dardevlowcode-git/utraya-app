@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: cron endpoint per eseguire richieste cancellazione account scadute con protezione Bearer secret.
- * Moduli richiamati: `node:crypto`, service account deletion, helper API/security.
- * Flusso: valida autorizzazione cron, processa batch richieste pendenti e restituisce conteggio processate/fallite.
- */
-
 import { timingSafeEqual } from 'node:crypto'
 import { apiErr, apiOk } from '@/lib/http/apiResponse'
 import { getRequestId } from '@/lib/security/http'

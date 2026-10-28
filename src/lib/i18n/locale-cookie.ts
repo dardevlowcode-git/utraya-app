@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo: persiste la lingua scelta nel cookie letto dal proxy e da next-intl.
- * Moduli richiamati: configurazione locale del progetto.
- * Flusso: formatta il cookie di un anno valido sull'intero sito.
- */
-
 import { localeCookieName, type Locale } from './config'
 
 const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365

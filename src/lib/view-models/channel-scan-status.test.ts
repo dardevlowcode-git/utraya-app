@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica la scelta dello stato di scansione mostrato per un canale.
- * Moduli richiamati: view model stato scansione e `vitest`.
- * Flusso: il motivo pubblico del job pending diventa un avviso UI esplicito.
- */
-
 import { describe, expect, it } from 'vitest'
 import { getChannelScanNotice } from '@/lib/view-models/channel-scan-status'
 

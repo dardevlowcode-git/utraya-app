@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: route admin sottile per rilanciare le sole parti mancanti di una trascrizione (o una singola parte).
- * Moduli richiamati: Zod, sessione admin, envelope HTTP, guardie same-origin/JSON, service admin-transcriptions, job chain.
- * Flusso: valida origin e payload, autentica l'admin, esegue la RPC atomica e avvia il job con `after()` che restituisce la Promise.
- */
-
 import { after } from 'next/server'
 import { z } from 'zod'
 import { getAdminSession } from '@/lib/auth/admin'

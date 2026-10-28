@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: hook riutilizzabile per colonne ridimensionabili in griglie tabellari.
- * Moduli richiamati: `react`
- * Flusso: mantiene le larghezze, aggancia eventi mouse globali durante il drag e restituisce handler pronti per l'UI.
- */
-
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'

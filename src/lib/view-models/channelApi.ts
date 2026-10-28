@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: converte il contesto canale interno nel view model pubblico `/api/v1`.
- * Moduli richiamati: `@/lib/services/channels`.
- * Flusso: elimina row Supabase e mantiene solo metadati canale, preferenze utente e stato sync leggibile.
- */
-
 import type { getChannelsForUser } from '@/lib/services/channels'
 
 export function toChannelApiView(item: Awaited<ReturnType<typeof getChannelsForUser>>[number]) {

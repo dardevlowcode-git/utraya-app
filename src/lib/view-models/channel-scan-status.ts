@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: trasforma motivi interni/pubblici della scansione nello stato da mostrare nella UI canali.
- * Moduli richiamati: nessuno; contiene una proiezione pura e serializzabile.
- * Flusso: il motivo d'attesa YouTube viene convertito in una chiave di presentazione localizzata.
- */
-
 export type ChannelScanNotice = 'waiting_for_youtube_key'
 
 /** Seleziona un avviso UI quando la scansione e` sospesa per una chiave YouTube non disponibile. */

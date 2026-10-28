@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo: verifica che l'API v1 accetti i provider supportati e non esponga la chiave.
- * Moduli richiamati: route integrazioni, parser API v1 e service integrazioni mockati.
- * Flusso: esercita lo schema Zod reale senza chiamare provider o database.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 type ApiV1HttpHelpers = typeof import('@/lib/http/apiV1')

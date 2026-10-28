@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: renderizza il tracker lato client con filtri stato, selezione vista e supporto filtro canale.
- * Moduli richiamati: `next/link`, `next/navigation`, `react`, `./SeenStatusButton`, `@/lib/types/domain`
- * Flusso: mantiene stato locale video/filtri/vista, aggiorna query URL e proietta i dati nelle viste ribbon/list/latest.
- */
-
 'use client'
 
 import Link from 'next/link'

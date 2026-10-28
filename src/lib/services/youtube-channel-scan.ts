@@ -1,8 +1,3 @@
-/* Commento didattico:
- * Scopo: coordina le richieste YouTube dei job scan con assegnazione e stato persistenti per chiave.
- * Flusso: il lease identifica il job; RPC atomiche assegnano follower e budget, il ledger usa il proprietario effettivo.
- */
-
 import { createHash } from 'node:crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getProviderApiKeyForUserAsAdmin } from '@/lib/services/integrations'

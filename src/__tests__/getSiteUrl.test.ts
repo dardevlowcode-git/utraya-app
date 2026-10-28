@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica il comportamento degli helper env-aware per costruzione URL sito.
- * Moduli richiamati: `@/lib/env/getSiteUrl`, `vitest`.
- * Flusso: i test validano precedence env/fallback e normalizzazione path per redirect/callback.
- */
-
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { buildSiteUrl, getSiteUrl } from '@/lib/env/getSiteUrl'
 

@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica il confine HTTP della force-delete admin utente (sessione, origin, validazione id e audit).
- * Moduli richiamati: route `admin/users/[userId]` reale, `@/lib/auth/admin` e `@/lib/security/http` reali, DB admin finto, `next/headers` finto.
- * Flusso: invoca il DELETE reale con cookie sessione valido e client Supabase finto, controllando RPC, audit e status.
- */
-
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {

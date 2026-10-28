@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: centralizza envelope HTTP standard `{ ok, data/error, requestId }` per nuove route API.
- * Moduli richiamati: `./errorCodes`.
- * Flusso: route handler invoca `apiOk`/`apiErr` per risposte uniformi e header `X-Request-Id` coerente.
- */
-
 import type { ErrorCode } from './errorCodes'
 
 function withRequestId(response: Response, requestId: string): Response {

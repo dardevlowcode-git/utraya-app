@@ -1,8 +1,4 @@
-/* Commento didattico:
- * Scopo del file: layout autenticato per la sola pagina `/legal/accept`, senza enforcement TOS per evitare loop.
- * Moduli richiamati: componenti layout e auth provider.
- * Flusso: richiede sessione utente e rende shell privata standard per la pagina di accettazione legale.
- */
+// Non applicare il controllo TOS qui: causerebbe un loop sulla pagina di accettazione.
 
 import Footer from '@/components/layout/Footer'
 import PrivateChrome from '@/components/layout/PrivateChrome'

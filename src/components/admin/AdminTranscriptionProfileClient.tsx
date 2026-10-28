@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: editor admin del profilo di trascrizione (modello, ragionamento, prezzi).
- * Moduli richiamati: React, next-intl e tipi/costanti del service transcription-profile.
- * Flusso: il form invia il profilo al route admin e mostra esito; senza elenco modelli il modello resta quello corrente.
- */
-
 'use client'
 
 import { useState, type FormEvent } from 'react'

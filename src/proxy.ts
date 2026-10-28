@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: proxy globale per auth, route pubbliche, admin session e security headers.
- * Moduli richiamati: `@supabase/ssr`, `next/server`, allowlist helper.
- * Flusso: decide se lasciare passare, redirigere o bloccare richieste in base a sessione, ruolo e percorso.
- */
-
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 

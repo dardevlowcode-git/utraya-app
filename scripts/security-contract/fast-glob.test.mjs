@@ -1,8 +1,3 @@
-/* Commento didattico:
- * Scopo: definisce il contratto ridotto dell'adapter locale usato dal plugin Next.
- * Flusso: verifica path letterali, array e rifiuto preventivo di pattern/opzioni non supportati.
- */
-
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createRequire } from 'node:module'
 import fs from 'node:fs'

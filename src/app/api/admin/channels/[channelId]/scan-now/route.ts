@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: endpoint admin per forzare una scansione canale immediata.
- * Moduli richiamati: `next/server`, `@/lib/auth/admin`, `@/lib/supabase/admin`, `@/lib/services/channels`, `@/lib/utils/errors`
- * Flusso: valida sessione super-admin, risolve un utente attivo per il canale e avvia la scansione senza attendere scheduler.
- */
-
 import { NextResponse, after } from 'next/server'
 import { getAdminSession } from '@/lib/auth/admin'
 import { createAdminClient } from '@/lib/supabase/admin'

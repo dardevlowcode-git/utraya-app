@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: espone le operazioni admin per consultare e salvare limiti retry delle chiavi.
- * Moduli richiamati: Zod, sessione admin, envelope HTTP, protezioni same-origin e service retry-limits.
- * Flusso: valida il payload Zod, autentica l'admin e delega la persistenza al service server-only.
- */
-
 import { z } from 'zod'
 import { getAdminSession } from '@/lib/auth/admin'
 import { apiErr, apiOk } from '@/lib/http/apiResponse'

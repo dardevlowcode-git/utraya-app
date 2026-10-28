@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: gestisce una API route: riceve richieste HTTP, valida i dati e restituisce una risposta al frontend.
- * Moduli richiamati: `@/lib/auth/provider`, `@/lib/utils/errors`
- * Flusso: La route viene richiamata dal client (o da altre parti server), usa servizi/utilita` in `src/lib` e poi ritorna JSON/HTTP status.
- */
-
 import { after } from 'next/server'
 import { getCurrentSession } from '@/lib/auth/provider'
 import {

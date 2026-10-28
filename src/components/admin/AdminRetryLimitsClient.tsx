@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: editor admin riusabile per i retry delle credenziali private e del setting condiviso.
- * Moduli richiamati: React, next-intl e massimo tecnico del tipo intero PostgreSQL.
- * Flusso: ogni form invia un solo limite al route admin e mostra il massimo tentativi risultante.
- */
-
 'use client'
 
 import { useState, type FormEvent } from 'react'

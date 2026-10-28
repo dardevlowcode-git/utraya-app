@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: testa le guardie del broker api-verifier senza OIDC reale ne` chiamate live.
- * Moduli richiamati: route broker con OIDC, replay e suite verifier mockati, `vitest`.
- * Flusso: verifica validazione, target, auth OIDC, flag mutazioni e report delegato.
- */
-
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { verifyOidcMock, consumeJtiMock, runVerificationMock, runActualVerificationMock } = vi.hoisted(() => ({

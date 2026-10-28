@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo: verifica la conversione degli eventi API in dati serializzabili per la UI.
- * Moduli richiamati: view model API usage, tipi database e `vitest`.
- * Flusso: controlla la forma pubblica consentita e l’assenza di campi interni non necessari.
- */
-
 import { describe, expect, it } from 'vitest'
 import { toApiUsageEventViewModel } from './api-usage'
 import type { ApiUsageEventRow } from '@/lib/types/domain'

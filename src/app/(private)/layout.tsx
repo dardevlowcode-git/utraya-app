@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: layout autenticato principale con enforcement accettazione TOS prima dell'accesso alle pagine private.
- * Moduli richiamati: componenti layout, auth provider e service legal acceptance.
- * Flusso: verifica sessione utente, controlla accettazioni richieste e reindirizza su `/legal/accept` quando necessario.
- */
-
 import Footer from '@/components/layout/Footer'
 import PrivateChrome from '@/components/layout/PrivateChrome'
 import { getCurrentSession } from '@/lib/auth/provider'

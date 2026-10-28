@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: client UI per richiesta/annullamento cancellazione account con feedback immediato all'utente.
- * Moduli richiamati: `react`, `next/navigation`, view model deletion.
- * Flusso: invia DELETE/POST agli endpoint account e aggiorna lo stato visualizzato locale.
- */
-
 'use client'
 
 import { useState } from 'react'

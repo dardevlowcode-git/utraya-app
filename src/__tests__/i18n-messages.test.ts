@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: mantiene allineati i messaggi italiano/inglese ed evita traduzioni vuote.
- * Moduli richiamati: file JSON sotto `messages/`, filesystem locale e Vitest.
- * Flusso: confronta tutti i percorsi delle chiavi ricorsive e cerca valori vuoti in ogni locale.
- */
-
 import { readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'

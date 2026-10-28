@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica il proxy reale (`src/proxy.ts`), i suoi bypass e i file statici dell'icona del sito.
- * Moduli richiamati: `vitest`, `next/server`, `@/proxy`, `@/lib/auth/admin` (firma del cookie admin), fake condiviso `@supabase/ssr`.
- * Flusso: costruisce una `NextRequest` con cookie finti e osserva redirect, status, cookie azzerati e header di sicurezza.
- */
-
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { existsSync, readFileSync } from 'node:fs'
 import { NextRequest } from 'next/server'

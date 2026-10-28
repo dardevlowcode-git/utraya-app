@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica il recupero dei job di trascrizione nel daily-sync con i job automatici in attesa di chiave.
- * Moduli richiamati: `vitest`, servizio richieste, client admin e continuazione mockati.
- * Flusso: i job automatici di canali senza chiave eleggibile non sono reclamati né consumano il limite; i manuali sì.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({

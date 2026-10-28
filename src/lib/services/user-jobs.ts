@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: legge lo stato pubblico di un job creato dall'utente senza esporre payload o diagnostica interna.
- * Moduli richiamati: `@/lib/supabase/types`, `@/lib/supabase/server`, `@/lib/utils/errors`.
- * Flusso: il client request-scoped applica RLS e filtro ownership; il service restituisce solo campi di lifecycle.
- */
-
 import { createClient } from '@/lib/supabase/server'
 import type { AppSupabaseClient } from '@/lib/supabase/types'
 import { AppError } from '@/lib/utils/errors'

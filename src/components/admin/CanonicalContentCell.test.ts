@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo: verifica che la tabella admin renda link solo per le lingue con testo disponibile.
- * Moduli richiamati: cella contenuto canonico, React SSR e `vitest`.
- * Flusso: controlla link accessibili, placeholder «—» e varianti linguistiche.
- */
-
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'

@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica la resa della pagina admin delle trascrizioni (filtri, frequenza, parti mancanti) e il caricamento server.
- * Moduli richiamati: AdminTranscriptionsClient, pagina admin, next-intl e renderer React server-side.
- * Flusso: props sintetiche in IT/EN; la pagina è provata con servizi finti e parametri di query validati.
- */
-
 import * as React from 'react'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'

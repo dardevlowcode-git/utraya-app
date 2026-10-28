@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica che il bootstrap utente v1 richieda Bearer e restituisca solo i view model pubblici.
- * Moduli richiamati: handler HTTP, auth Bearer e servizi legali/cancellazione simulati.
- * Flusso: chiama GET reale e confronta l’intera risposta dati con il contratto minimo atteso.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { getApiUserMock, getDeletionRequestViewMock, getLegalAcceptanceStatusMock } = vi.hoisted(() => ({

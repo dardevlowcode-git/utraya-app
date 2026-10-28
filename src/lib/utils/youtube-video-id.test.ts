@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: testare l'estrazione robusta di YouTube video id da input eterogenei.
- * Moduli richiamati: `vitest`, `@/lib/utils/youtube-video-id`.
- * Flusso: copre id nudi, URL watch/embed/short e input invalidi.
- */
-
 import { describe, expect, it } from 'vitest'
 import { extractYouTubeVideoId } from '@/lib/utils/youtube-video-id'
 

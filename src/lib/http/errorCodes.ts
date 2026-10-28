@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: definisce codici errore applicativi condivisi per le API in envelope standard.
- * Moduli richiamati: `@/lib/types/domain` per il mapping di dominio.
- * Flusso: route web e v1 condividono il mapping; il chiamante sceglie esplicitamente il codice temporary.
- */
-
 import type { AppErrorType } from '@/lib/types/domain'
 
 export type ErrorCode =

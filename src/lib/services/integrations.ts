@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: incapsula la logica di accesso ai dati e le operazioni di dominio, separandole dalla UI.
- * Moduli richiamati: `node:crypto`, `@/lib/supabase/server`, `@/lib/utils/errors`, `@/lib/types/domain`, `@/lib/types/database`
- * Flusso: Le funzioni del servizio vengono chiamate da API route o pagine server: qui avviene l'orchestrazione delle query e delle trasformazioni dati.
- */
-
 import { createHash, createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'

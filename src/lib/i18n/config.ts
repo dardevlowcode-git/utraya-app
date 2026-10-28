@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: gestisce la configurazione internazionale (lingue supportate, caricamento messaggi e locale corrente).
- * Moduli richiamati: nessun import esterno: il file usa logica locale o sole primitive del linguaggio.
- * Flusso: La configurazione viene letta da proxy/layout/componenti per scegliere lingua e messaggi corretti.
- */
-
 export const locales = ['it', 'en'] as const
 export type Locale = (typeof locales)[number]
 

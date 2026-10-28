@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: endpoint utente per avviare richiesta cancellazione account con grace period e logout immediato.
- * Moduli richiamati: auth abstraction, service account deletion, api response helpers.
- * Flusso: valida sessione, registra richiesta cancellazione, invalida sessione corrente e restituisce data pianificata.
- */
-
 import { getCurrentUser } from '@/lib/auth/getCurrentUser'
 import { apiErr, apiOk } from '@/lib/http/apiResponse'
 import { getClientIp, getRequestId } from '@/lib/security/http'

@@ -1,8 +1,3 @@
-/* Commento didattico:
- * Scopo: verifica l'adapter attraverso le API di scoperta route realmente usate dal plugin Next.
- * Flusso: confronta la root predefinita Utraya con fixture root letterali, array ed errori espliciti.
- */
-
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createRequire } from 'node:module'
 import fs from 'node:fs'

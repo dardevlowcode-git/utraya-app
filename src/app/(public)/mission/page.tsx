@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: pagina missione pubblica.
- * Moduli richiamati: `next-intl/server`
- * Flusso: mostra missione e principi guida del prodotto con copy localizzato.
- */
-
 import { getTranslations } from 'next-intl/server'
 
 export default async function MissionPage() {

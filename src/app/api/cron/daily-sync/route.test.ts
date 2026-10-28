@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica auth cron, status e sanitizzazione della route daily-sync.
- * Moduli richiamati: handler HTTP, service daily-sync simulato e AppError del progetto.
- * Flusso: esercita rifiuti Bearer, configurazione, successo completo/parziale e risposta d’errore pubblica.
- */
-
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AppError } from '@/lib/utils/errors'
 

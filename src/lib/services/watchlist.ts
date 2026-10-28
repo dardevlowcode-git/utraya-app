@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: espone la watchlist utente come view model API senza restituire row Supabase grezze.
- * Moduli richiamati: `@/lib/supabase/server`, `@/lib/utils/errors`, `@/lib/supabase/types`.
- * Flusso: verifica il perimetro utente tramite RLS, legge la watchlist default e mappa video/canale in JSON stabile.
- */
-
 import { createClient } from '@/lib/supabase/server'
 import type { AppSupabaseClient } from '@/lib/supabase/types'
 import { AppError } from '@/lib/utils/errors'

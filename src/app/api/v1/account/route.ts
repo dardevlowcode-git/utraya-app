@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: espone stato e richiesta di cancellazione account per client Bearer.
- * Moduli richiamati: `@/lib/http/apiV1`, `@/lib/services/account-deletion`.
- * Flusso: il token identifica l'utente; il service applica grace period e idempotenza sulla richiesta pendente.
- */
-
 import { apiOk } from '@/lib/http/apiResponse'
 import { apiV1Error, getApiRequestId, readApiJson, requireApiJson, requireApiRateLimit, requireApiUser } from '@/lib/http/apiV1'
 import { getClientIp } from '@/lib/security/http'

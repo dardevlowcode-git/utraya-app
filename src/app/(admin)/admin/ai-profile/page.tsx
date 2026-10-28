@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: pagina admin del profilo di trascrizione (sostituisce la vecchia pagina AI profile statica).
- * Moduli richiamati: client Supabase admin, service transcription-profile e relativo editor client.
- * Flusso: la pagina protetta dall'AdminLayout legge profilo ed elenco modelli server-side e li passa all'editor.
- */
-
 import type { Metadata } from 'next'
 import AdminTranscriptionProfileClient from '@/components/admin/AdminTranscriptionProfileClient'
 import { createAdminClient } from '@/lib/supabase/admin'

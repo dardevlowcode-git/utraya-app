@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: contiene logica pura per combinare filtri stato e filtri durata nel tracker.
- * Moduli richiamati: `@/lib/utils/video-duration`.
- * Flusso: `TrackerClient` invoca queste funzioni per decidere se mostrare ogni video.
- */
-
 import { getVideoDurationBucket } from '@/lib/utils/video-duration'
 
 export type SeenStatus = 'seen' | 'unseen' | 'hidden'

@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: endpoint admin per pulizia reale dei log per categoria.
- * Moduli richiamati: `next/server`, `@/lib/auth/admin`, `@/lib/supabase/admin`, `@/lib/utils/errors`, `@/lib/security/http`
- * Flusso: valida sessione super-admin e richiesta same-origin JSON, poi elimina dal DB i record della categoria selezionata.
- */
-
 import { NextResponse } from 'next/server'
 import { getAdminSession } from '@/lib/auth/admin'
 import { createAdminClient } from '@/lib/supabase/admin'

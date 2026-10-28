@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: permette al client mobile di interrogare solo job creati dall'utente autenticato.
- * Moduli richiamati: `@/lib/http/apiV1`, `@/lib/http/apiResponse`.
- * Flusso: RLS + filtro created_by_user_id delimitano ownership; payload e dettagli interni non escono.
- */
-
 import { apiOk } from '@/lib/http/apiResponse'
 import { apiV1Error, apiV1Validation, getApiRequestId, requireApiUser } from '@/lib/http/apiV1'
 import { getUserJobStatus } from '@/lib/services/user-jobs'

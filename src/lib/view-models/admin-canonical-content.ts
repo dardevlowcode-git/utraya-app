@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo: definisce i dati serializzabili della tabella admin per contenuti canonici.
- * Moduli richiamati: nessuno; riceve forme DB già selezionate dal service admin.
- * Flusso: converte le righe in metadati e link, senza trasferire i testi alla tabella.
- */
-
 export interface AdminCanonicalLocalizedContentInput {
   languageCode: string
   shortSummary: string | null

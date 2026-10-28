@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo: verifica autorizzazione e lettura mirata dei contenuti canonici admin.
- * Moduli richiamati: servizio contenuto canonico e `vitest`.
- * Flusso: simula il confine auth/DB e controlla che solo una sessione admin riceva contenuti.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { createAdminClientMock, getAdminSessionMock } = vi.hoisted(() => ({

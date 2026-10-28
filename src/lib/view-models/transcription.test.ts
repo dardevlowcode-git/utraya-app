@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica la costruzione del view model della trascrizione (stati, etichette, link, pulsante).
- * Moduli richiamati: `vitest`, `./transcription`.
- * Flusso: fixture sintetiche per ogni stato visibile.
- */
-
 import { describe, expect, it } from 'vitest'
 import { toTranscriptionViewModel, type TranscriptionViewInput } from './transcription'
 

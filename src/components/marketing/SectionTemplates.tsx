@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: raccoglie i template di sezione marketing (hero, split, griglie) riusabili nelle pagine.
- * Moduli richiamati: React (tipi), utility cn per le classi.
- * Flusso: le pagine compongono questi blocchi passando titolo, sottotitolo e azioni; il template applica tono e layout.
- */
-
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils/cn'
 

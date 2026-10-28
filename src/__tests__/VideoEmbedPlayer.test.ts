@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo: verifica iframe iniziale, reset per video e fallback del player YouTube.
- * Moduli richiamati: `VideoEmbedPlayer`, React SSR e `vitest`.
- * Flusso: controlla host iniziale, timeout fallback, cambio ID e arresto dopo caricamento.
- */
-
 // @vitest-environment happy-dom
 
 import { act, createElement } from 'react'

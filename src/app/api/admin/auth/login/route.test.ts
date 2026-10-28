@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica il confine HTTP del login super-admin (guardie, rate limit per IP, audit e cookie di sessione).
- * Moduli richiamati: route `admin/auth/login` reale, `@/lib/auth/admin` reale, `@/lib/security/http` reale, DB admin finto.
- * Flusso: invoca il POST reale con env admin impostata e client Supabase finto e controlla status, audit e attributi del cookie.
- */
-
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {

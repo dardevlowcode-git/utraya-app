@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: banner consenso cookie con azioni rapide e modal personalizzazione categorie.
- * Moduli richiamati: `next-intl`, `@/lib/consent/ConsentProvider`.
- * Flusso: mostra banner su primo accesso/version mismatch e salva stato consenso nel cookie versionato.
- */
-
 'use client'
 
 import { useEffect, useState } from 'react'

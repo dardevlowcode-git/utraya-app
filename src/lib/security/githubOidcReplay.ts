@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: rende monouso il jti OIDC del workflow API verifier tramite una tabella server-side.
- * Moduli richiamati: `@/lib/supabase/admin`, `@/lib/utils/errors`.
- * Flusso: elimina nonce scaduti, inserisce il jti con vincolo primario e rifiuta replay concorrenti.
- */
-
 import { createAdminClient } from '@/lib/supabase/admin'
 import { AppError } from '@/lib/utils/errors'
 

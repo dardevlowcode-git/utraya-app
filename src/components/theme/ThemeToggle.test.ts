@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo: verifica precedenza della preferenza tema e snapshot stabile durante SSR.
- * Moduli richiamati: `ThemeToggle`, renderer React server-side e `vitest`.
- * Flusso: controlla la scelta di tema e che il markup iniziale resti chiaro per hydration.
- */
-
 // @vitest-environment happy-dom
 
 import { act, createElement } from 'react'

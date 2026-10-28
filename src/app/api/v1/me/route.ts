@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: espone il profilo minimo e gli stati necessari al bootstrap del client mobile.
- * Moduli richiamati: `@/lib/http/apiV1`, `@/lib/services/legal-acceptance`, `@/lib/services/account-deletion`.
- * Flusso: una sola richiesta Bearer restituisce identità non privilegiata e stato legale/account aggregato.
- */
-
 import { apiOk } from '@/lib/http/apiResponse'
 import { apiV1Error, getApiRequestId, requireApiUser } from '@/lib/http/apiV1'
 import { getDeletionRequestView } from '@/lib/services/account-deletion'

@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: orchestrazione sottile delle scritture scan per le route API v1 canali/video.
- * Moduli richiamati: `@/lib/services/channels`, `@/lib/supabase/types`.
- * Flusso: le route validano input e auth, delegano qui accodamento job ed eventuale scan iniziale, poi mappano il risultato in envelope.
- */
-
 import {
   addChannelForUser,
   enqueueScanJobForUser,

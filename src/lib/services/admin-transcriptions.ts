@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: casi d'uso admin delle trascrizioni da rivedere (elenco filtrato, frequenza, rilancio delle parti mancanti).
- * Moduli richiamati: client Supabase service-role, view model admin e worker con continuazione (`after()` lo chiama la route).
- * Flusso: la pagina legge elenco e statistiche; la route chiama `relaunchMissingParts` (RPC atomica con audit) e avvia il job.
- */
-
 import type { createAdminClient } from '@/lib/supabase/admin'
 import {
   ADMIN_TRANSCRIPTION_STATUSES,

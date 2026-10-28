@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica i comandi postMessage verso il lettore YouTube incorporato.
- * Moduli richiamati: `vitest`, `./youtube-embed-control`.
- * Flusso: controlla il formato dei messaggi, l'origine di destinazione e il comportamento senza iframe.
- */
-
 import { describe, expect, it, vi } from 'vitest'
 import { buildPlayCommand, buildSeekCommand, seekEmbeddedPlayer } from './youtube-embed-control'
 

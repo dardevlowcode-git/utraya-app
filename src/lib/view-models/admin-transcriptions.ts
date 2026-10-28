@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: view model serializzabile della pagina admin "Trascrizioni" (elenco, parti mancanti, frequenza).
- * Moduli richiamati: helper dei tempi di trascrizione.
- * Flusso: il servizio passa righe già lette; qui si costruiscono link, intervalli `m:ss–m:ss`, errori sanificati e percentuali.
- */
-
 import { buildYoutubeTimeUrl, formatTranscriptTimestamp } from '@/lib/utils/transcript-time'
 
 export type AdminTranscriptionStatus = 'pending' | 'running' | 'complete' | 'needs_review' | 'unavailable'

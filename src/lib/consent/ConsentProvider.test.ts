@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica parsing sicuro, hydration e interazioni del banner consenso.
- * Moduli richiamati: `ConsentProvider`, `CookieBanner`, React SSR/client e helper consenso.
- * Flusso: copre cookie validi/malformati, mismatch versione, salvataggio e ripristino preferenze.
- */
-
 // @vitest-environment happy-dom
 
 import { act, createElement } from 'react'

@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica che un worker faccia un solo tentativo provider e persista la continuazione.
- * Moduli richiamati: service credential-validation-jobs, client admin mock e vitest.
- * Flusso: simula claim/finish della lease e controlla budget alto senza dipendere dal provider.
- */
-
 import { describe, expect, it, vi } from 'vitest'
 import type { createAdminClient } from '@/lib/supabase/admin'
 import {

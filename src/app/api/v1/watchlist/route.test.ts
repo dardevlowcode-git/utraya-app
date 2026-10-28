@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica autenticazione, isolamento per utente, validazione e limite HTTP della watchlist v1.
- * Moduli richiamati: route handler, auth Bearer, servizi watchlist/video e rate limiter.
- * Flusso: chiama i metodi HTTP reali e osserva le risposte e gli argomenti dei service boundary.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ApiUserContext } from '@/lib/auth/apiUser'
 import { resetRateLimits } from '@/lib/security/rate-limit'

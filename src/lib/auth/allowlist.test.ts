@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica la decisione di accesso (`isEmailAllowlisted`) e il provisioning OAuth con watchlist default senza DB reale.
- * Moduli richiamati: `isEmailAllowlisted`, `provisionNewUser`, client admin Supabase mockato, `vitest`.
- * Flusso: simula la lettura della allowlist e lookup/inserimento della callback concorrente che vince il vincolo univoco.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { isEmailAllowlisted, provisionNewUser } from '@/lib/auth/allowlist'
 

@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: fornisce ai test di servizio un fake Supabase piccolo ma fedele ai filtri SQL più usati.
- * Moduli richiamati: tipo condiviso `AppSupabaseClient`.
- * Flusso: le query si compongono in memoria e applicano i filtri alle righe prima di ordinamento, paginazione e conteggio.
- */
-
 import type { AppSupabaseClient } from '@/lib/supabase/types'
 
 export type FilteringRow = Record<string, unknown>

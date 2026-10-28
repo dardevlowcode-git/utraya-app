@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica parser/formatter/bucket della durata video.
- * Moduli richiamati: `vitest`, `@/lib/utils/video-duration`.
- * Flusso: test unitari su casi validi, invalidi e boundary.
- */
-
 import { describe, expect, it } from 'vitest'
 import { formatVideoDuration, getVideoDurationBucket, parseYouTubeDurationToSeconds } from '@/lib/utils/video-duration'
 

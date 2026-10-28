@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: autentica esclusivamente token Supabase Bearer per la superficie API versionata.
- * Moduli richiamati: `@supabase/supabase-js`, `@/lib/supabase/types`, `@/lib/types/database`.
- * Flusso: estrae Authorization, valida il JWT presso Supabase e restituisce user + client con header Bearer.
- */
-
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import type { User } from '@supabase/supabase-js'
 import type { Database } from '@/lib/types/database'

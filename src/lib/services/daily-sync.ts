@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: orchestrare la scansione giornaliera dei canali in modo idempotente e riusabile.
- * Moduli richiamati: `@/lib/supabase/admin`, `@/lib/services/channels`, `@/lib/utils/errors`
- * Flusso: la route cron delega qui l'esecuzione; il service seleziona canali due, applica lock/dedup, avvia scansioni e produce un riepilogo.
- */
-
 import { createAdminClient } from '@/lib/supabase/admin'
 import { processPendingScanJobs, requestScanNowForUser } from '@/lib/services/channels'
 import { processPendingCredentialValidationJobs } from '@/lib/services/credential-validation-jobs'

@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: espone helper centralizzati per costruire URL assolute del sito in modo environment-aware.
- * Moduli richiamati: nessuno.
- * Flusso: i chiamanti invocano `getSiteUrl` e `buildSiteUrl` per evitare URL hard-coded nei redirect/callback.
- */
-
 /**
  * Ritorna l'origin del sito corrente in modo sincrono.
  *

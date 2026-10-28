@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica la resa locale e non segreta della schermata admin retry.
- * Moduli richiamati: AdminRetryLimitsClient, next-intl e renderer React server-side.
- * Flusso: controlla owner, provider, identificatore condiviso inattivo, limiti e massimo tentativi.
- */
-
 import * as React from 'react'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'

@@ -1,9 +1,4 @@
-/* Commento didattico:
- * Scopo del file: verifica il comportamento del worker sui job automatici con chiavi in rotazione per canale.
- * Moduli richiamati: `vitest`, servizio di trascrizione, registratore uso (client admin finto che raccoglie gli eventi).
- * Flusso: uno store in memoria assegna le chiavi in ordine come l'RPC (la rotazione reale per canale è provata su PostgreSQL);
- * qui si controllano retry sulla stessa chiave, passaggio alla successiva per sola parte, esaurimento, attesa e attribuzione dell'uso.
- */
+// La rotazione reale delle chiavi per canale è verificata su PostgreSQL.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 

@@ -1,9 +1,4 @@
-/* Commento didattico:
- * Scopo del file: maschera visiva di email e nomi per demo/presentazioni (modalità presentazione).
- * Moduli richiamati: nessuno.
- * Flusso: funzioni pure chiamate dai componenti admin per mostrare "***" al posto del valore in chiaro.
- * Nota: NON è sicurezza del dato (il valore resta in API/DOM), solo protezione visiva da screen-sharing.
- */
+// Solo protezione visiva da screen-sharing: i valori restano in API e DOM.
 
 /**
  * Maschera un'email mantenendo solo un indizio minimo per riconoscerla in admin.

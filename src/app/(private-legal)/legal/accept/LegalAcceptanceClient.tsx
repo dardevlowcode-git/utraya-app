@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: form client per registrare accettazione TOS e clausole vessatorie con doppia checkbox separata.
- * Moduli richiamati: `next/navigation`, view model legal acceptance.
- * Flusso: abilita submit solo con doppia spunta, invia POST `/api/legal/accept` e reindirizza a dashboard.
- */
-
 'use client'
 
 import { useState } from 'react'

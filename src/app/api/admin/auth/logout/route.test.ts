@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica che il logout super-admin azzeri il cookie di sessione.
- * Moduli richiamati: route `admin/auth/logout` reale, `@/lib/auth/admin` reale per il nome del cookie.
- * Flusso: invoca il POST reale e controlla che il `set-cookie` azzeri valore, scadenza e attributi.
- */
-
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { adminRequest, adminSessionCookieName } from '@/__tests__/admin-route-helpers'

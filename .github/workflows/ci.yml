@@ -3,7 +3,6 @@
 # -----------------------------------------------------------------------------
 # Controlli di qualita del codice che girano sulle PR verso main e sui push a main.
 # Allineati agli script presenti in package.json (progetto alla root):
-#   - check-comments  -> verifica che ogni file abbia il commento didattico iniziale
 #   - lint            -> next lint (ESLint)
 #   - type-check      -> tsc --noEmit
 #   - test            -> vitest run
@@ -48,11 +47,6 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-
-      - name: Check comments (didactic headers)
-        # Verifica che ogni file in src/ e supabase/migrations/ inizi con il
-        # commento didattico richiesto. Definito in scripts/check-comments.mjs
-        run: npm run check-comments
 
       - name: Lint
         run: npm run lint

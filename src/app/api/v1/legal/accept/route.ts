@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: registra accettazioni TOS versionate per il client mobile autenticato.
- * Moduli richiamati: `@/lib/http/apiV1`, `@/lib/services/legal-acceptance`, `@/lib/security/http`.
- * Flusso: valida solo tipi allowlistati, usa user/email dal JWT e salva audit server-side.
- */
-
 import { apiOk } from '@/lib/http/apiResponse'
 import { apiV1Error, apiV1Validation, getApiRequestId, readApiJson, requireApiJson, requireApiRateLimit, requireApiUser } from '@/lib/http/apiV1'
 import { getClientIp } from '@/lib/security/http'

@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: definisce gli stili globali dell'applicazione, applicati a tutte le pagine.
- * Moduli richiamati: nessun import esterno: il file usa logica locale o sole primitive del linguaggio.
- * Flusso: Gli stili globali influenzano direttamente i componenti renderizzati nei layout e nelle pagine.
- */
-
 @import 'tailwindcss';
 
 @custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));

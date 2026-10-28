@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: visual hero orbitale per il marketing site, costruito in SVG + CSS senza dipendenze esterne.
- * Moduli richiamati: nessun import esterno: il file usa logica locale o sole primitive del linguaggio.
- * Flusso: il componente riceve etichette localizzate e renderizza una composizione orbitale con fallback statico.
- */
-
 type HeroOrbitalProps = {
   ariaLabel: string
   centerLabel: string

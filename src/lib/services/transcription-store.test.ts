@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica l'eleggibilità della chiave del richiedente nel confine Supabase del worker.
- * Moduli richiamati: `vitest` e store di trascrizione.
- * Flusso: simula il video e l'RPC canonica d'eleggibilità; nessuna query o chiave reale.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { from, rpc, getApiKey, filters, videoChannel } = vi.hoisted(() => ({

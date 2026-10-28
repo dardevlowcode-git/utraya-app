@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: pulsante client per pulizia reale dei log da console admin.
- * Moduli richiamati: `react`, `next/navigation`
- * Flusso: invia richiesta POST al backend admin e ricarica i dati della pagina con `router.refresh()`.
- */
-
 'use client'
 
 import { useState } from 'react'

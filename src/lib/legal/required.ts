@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: dichiara versioni/hash correnti dei documenti legali richiesti dall'applicazione.
- * Moduli richiamati: nessuno.
- * Flusso: servizi e UI leggono queste costanti per enforcement accettazioni e visualizzazione metadata.
- */
-
 export const TOS_REQUIRED_VERSION = '2026-10-25-1'
 export const TOS_REQUIRED_HASH = 'sha256:a180e26c76c73721cf129808012f7549d06efc27e6e5b34c24f5180832dd7453'
 

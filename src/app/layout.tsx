@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: definisce il layout radice dell'applicazione: qui si collegano stili globali, provider e struttura base.
- * Moduli richiamati: `next`, `next-intl`, `next-intl/server`
- * Flusso: Questo modulo viene importato dove serve per mantenere separata la responsabilita` del codice.
- */
-
 import type { Metadata } from 'next'
 import { Inter, Sofia_Sans } from 'next/font/google'
 import { NextIntlClientProvider } from 'next-intl'

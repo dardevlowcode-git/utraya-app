@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: espone l'entrypoint auth server-side unico per ottenere utente corrente e client Supabase.
- * Moduli richiamati: `@/lib/supabase/server`.
- * Flusso: route/server component invoca questa funzione per autenticazione senza duplicare chiamate auth sparse.
- */
-
 import { createClient } from '@/lib/supabase/server'
 import type { User } from '@supabase/supabase-js'
 

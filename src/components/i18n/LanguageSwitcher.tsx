@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: contiene un componente per la gestione della lingua e dei testi localizzati.
- * Moduli richiamati: `next/navigation`, `next-intl`, `@/lib/i18n/config`
- * Flusso: Il componente riceve dati da pagine/layout parent, usa eventuali hook/utilita` e restituisce markup riusabile.
- */
-
 'use client'
 
 import { useRouter } from 'next/navigation'

@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: gestisce callback OAuth Google con allowlist, provisioning, blocco account in cancellazione e gate TOS.
- * Moduli richiamati: supabase server, allowlist, account deletion, legal acceptance, site URL helper.
- * Flusso: scambia code->session, valida accesso app, esegue provisioning e redirige in modo safe verso dashboard o legal accept.
- */
-
 import { createClient } from '@/lib/supabase/server'
 import { provisionNewUser, isEmailAllowlisted } from '@/lib/auth/allowlist'
 import { getCurrentUserFromSupabase } from '@/lib/auth/getCurrentUser'

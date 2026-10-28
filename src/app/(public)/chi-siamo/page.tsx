@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: pagina "Chi siamo" pubblica.
- * Moduli richiamati: `next/link`, `next-intl/server`
- * Flusso: presenta il progetto e include sezione canale YouTube con placeholder.
- */
-
 import Link from 'next/link'
 import { getTranslations } from 'next-intl/server'
 

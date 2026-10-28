@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: testa i flussi principali del service account deletion (token, request, cancel, execute, force delete).
- * Moduli richiamati: service account-deletion reale con mock Supabase admin e builder URL.
- * Flusso: valida i path critici senza accesso DB reale, verificando query/rpc invocate e i casi avversi del token firmato.
- */
-
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   cancelDeletion,

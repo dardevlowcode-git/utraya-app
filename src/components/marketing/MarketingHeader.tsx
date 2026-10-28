@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: header del marketing site con pill navigation, lingua e CTA principale.
- * Moduli richiamati: `next/link`, `next-intl/server`, `./LanguageSwitcher`
- * Flusso: il componente server risolve le traduzioni e rende il menu pubblico coerente su tutte le pagine marketing.
- */
-
 import Link from 'next/link'
 import { getTranslations } from 'next-intl/server'
 import MarketingLanguageSwitcher from './LanguageSwitcher'

@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: fornisce context React per consenso cookie versionato e controllo apertura banner preferenze.
- * Moduli richiamati: `react`, `./version`.
- * Flusso: legge/scrive cookie `cf_consent`, espone stato categorie e API `openBanner` per footer/banner.
- */
-
 'use client'
 
 import { createContext, useContext, useMemo, useState, useSyncExternalStore } from 'react'

@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica i contratti deterministici dell'envelope API v1 senza chiamare provider o database.
- * Moduli richiamati: `./apiV1`, `@/lib/utils/errors`, `vitest`.
- * Flusso: testa requestId, validazione e sanitizzazione degli errori prima delle suite live.
- */
-
 import { describe, expect, it } from 'vitest'
 import { apiV1Error, apiV1NotFound, apiV1Validation } from './apiV1'
 import { AppError } from '@/lib/utils/errors'

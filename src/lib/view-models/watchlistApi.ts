@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: mappa le row watchlist nel view model API senza far uscire relazioni Supabase grezze.
- * Moduli richiamati: nessuno.
- * Flusso: normalizza relazioni singolo/array e serializza solo video/canale pubblici.
- */
-
 export type WatchlistItemView = {
   id: string
   videoId: string

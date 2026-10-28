@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica i view model pubblici API v1 senza database, provider o row reali.
- * Moduli richiamati: view model canali/video/integrazioni/watchlist, tipi dominio, `vitest`.
- * Flusso: costruisce fixture minime e controlla shaping pubblico e assenza di leak interni.
- */
-
 import { describe, expect, it } from 'vitest'
 import { toChannelApiView } from './channelApi'
 import { toIntegrationApiView } from './integrationApi'

@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica la route di richiesta/stato trascrizione (auth, follower, chiave, 202+jobId, after con Promise).
- * Moduli richiamati: `vitest`, route, servizi mockati al confine (nessun database).
- * Flusso: simula utente e servizi, poi controlla status HTTP, envelope e che `after` riceva un callback che restituisce la Promise del worker.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AppError } from '@/lib/utils/errors'
 

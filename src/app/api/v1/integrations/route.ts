@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: espone stato e gestione delle chiavi provider senza mai restituire segreti in chiaro.
- * Moduli richiamati: `@/lib/http/apiV1`, `@/lib/services/integrations`, `@/lib/types/domain`.
- * Flusso: Bearer user + RLS delimitano la riga; il service cifra, accoda la verifica e maschera la chiave.
- */
-
 import { after } from 'next/server'
 import { apiOk } from '@/lib/http/apiResponse'
 import { apiV1Error, apiV1Validation, getApiRequestId, readApiJson, requireApiJson, requireApiRateLimit, requireApiUser } from '@/lib/http/apiV1'

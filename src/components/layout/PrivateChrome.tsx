@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: shell client condivisa per area privata, con gestione sidebar collassabile/pinnabile su desktop e drawer su mobile.
- * Moduli richiamati: componenti layout, hook React, utility `cn` e tipo sessione auth.
- * Flusso: legge preferenza pin da localStorage, sincronizza stato con viewport e calcola offset contenuto quando la sidebar e` fissata.
- */
-
 'use client'
 
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'

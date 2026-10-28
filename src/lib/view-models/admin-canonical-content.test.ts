@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo: verifica che la tabella admin mostri link solo per contenuti persistiti e non vuoti.
- * Moduli richiamati: view model contenuto canonico e `vitest`.
- * Flusso: controlla placeholder, separazione linguistica e destinazioni di lettura.
- */
-
 import { describe, expect, it } from 'vitest'
 import {
   toAdminCanonicalContentDetailViewModel,

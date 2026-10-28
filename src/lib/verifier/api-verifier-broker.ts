@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: controller HTTP del broker interno che evita Bearer secret statici in GitHub Actions.
- * Moduli richiamati: `@/lib/verifier/api-verifier`, `@/lib/security/githubOidc`.
- * Flusso: valida rate limit, target, OIDC monouso e flag mutazioni, poi delega la suite al modulo verifier.
- */
-
 import { z } from 'zod'
 import { apiErr, apiOk } from '@/lib/http/apiResponse'
 import { getClientIp, getRequestId } from '@/lib/security/http'

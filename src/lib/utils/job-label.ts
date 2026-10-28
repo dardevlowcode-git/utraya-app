@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: costruisce un nome job leggibile e coerente in UI admin.
- * Moduli richiamati: nessuno.
- * Flusso: Usa dati job + lookup utente/canale per produrre etichetta unitaria "utente · canale · id".
- */
-
 interface JobLabelInput {
   id: string
   created_by_user_id?: string | null

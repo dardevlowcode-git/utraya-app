@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: definisce una pagina o layout amministrativo, usato per operazioni di controllo e gestione avanzata.
- * Moduli richiamati: `react`, `next/navigation`, `next-intl`
- * Flusso: Questa pagina/layout richiama componenti e servizi: i dati arrivano da API o funzioni server, poi vengono passati alla UI per il rendering.
- */
-
 'use client'
 
 import { useState } from 'react'

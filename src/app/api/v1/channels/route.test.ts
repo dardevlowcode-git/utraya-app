@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: testa il contratto della route v1 canali senza database o provider reali.
- * Moduli richiamati: route `v1/channels`, auth e service mockati, `vitest`.
- * Flusso: simula Bearer user e service per happy-path, auth, validazione e rate limit.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ApiUserContext } from '@/lib/auth/apiUser'
 import { resetRateLimits } from '@/lib/security/rate-limit'

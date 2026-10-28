@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo: elimina ogni giorno gli eventi d'uso API più vecchi della retention di 30 giorni.
- * Moduli richiamati: `node:crypto`, `@/lib/services/api-usage`, `@/lib/http/apiResponse`.
- * Flusso: valida il Bearer CRON_SECRET in constant-time e rimuove solo righe scadute.
- */
-
 import { timingSafeEqual } from 'node:crypto'
 import { apiErr, apiOk } from '@/lib/http/apiResponse'
 import { getRequestId } from '@/lib/security/http'

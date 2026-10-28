@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo: verifica che il backoff condiviso rispetti la semantica persistente dei retry provider.
- * Moduli richiamati: utility retry-backoff e Vitest.
- * Flusso: controlla delay esponenziale, cap e precedenza dell'header Retry-After.
- */
-
 import { describe, expect, it } from 'vitest'
 import { computeRetryAt } from './retry-backoff'
 

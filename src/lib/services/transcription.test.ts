@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica il comportamento osservabile del servizio di trascrizione con fetcher e store finti.
- * Moduli richiamati: `vitest`, servizio di trascrizione, registratore uso (client admin finto che raccoglie gli eventi).
- * Flusso: fixture sintetiche, nessun testo reale; controlla richieste, frasi salvate, stati, retry, riuso, ripresa e uso registrato.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { usageRows } = vi.hoisted(() => ({ usageRows: [] as Array<Record<string, unknown>> }))

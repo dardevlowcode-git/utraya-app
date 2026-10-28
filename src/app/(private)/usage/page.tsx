@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo: mostra all'utente il riepilogo delle chiamate API personali degli ultimi 30 giorni.
- * Moduli richiamati: `next/link`, `@/lib/auth/provider`, `@/lib/services/api-usage`, `next-intl`.
- * Flusso: carica dati con sessione Supabase e RLS; la pagina non riceve né espone credenziali o payload provider.
- */
-
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { getCurrentSession } from '@/lib/auth/provider'

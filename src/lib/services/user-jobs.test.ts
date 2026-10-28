@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: prova che il servizio dei job nasconda a ogni utente le righe di un altro proprietario.
- * Moduli richiamati: `user-jobs`, fake Supabase con filtri applicati e `vitest`.
- * Flusso: A legge il proprio job mentre una query per il job di B deve apparire come inesistente.
- */
-
 import { describe, expect, it } from 'vitest'
 import { createFilteringSupabase } from '@/__tests__/helpers/filteringSupabase'
 import { getUserJobStatus } from '@/lib/services/user-jobs'

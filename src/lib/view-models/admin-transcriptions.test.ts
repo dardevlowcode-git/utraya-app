@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica il view model admin delle trascrizioni (intervalli, link, errori sanificati, frequenza).
- * Moduli richiamati: view model admin-transcriptions e vitest.
- * Flusso: righe sintetiche in ingresso, controllo dei valori osservabili in uscita.
- */
-
 import { describe, expect, it } from 'vitest'
 import {
   formatPartInterval,

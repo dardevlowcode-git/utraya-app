@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: carica script analytics solo con consenso esplicito categoria analytics.
- * Moduli richiamati: `next/script`, `@/lib/consent/ConsentProvider`.
- * Flusso: controlla stato consenso corrente e monta GA solo se analytics=true e measurement id presente.
- */
-
 'use client'
 
 import Script from 'next/script'

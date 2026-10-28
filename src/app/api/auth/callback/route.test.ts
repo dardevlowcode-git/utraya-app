@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica callback OAuth su redirect safe, uso NEXT_PUBLIC_SITE_URL, gating TOS e blocco account in cancellazione.
- * Moduli richiamati: route callback, mock supabase/allowlist/legal/deletion.
- * Flusso: isola la route con mock e valida i redirect risultanti in scenari sicurezza e business critici.
- */
-
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const exchangeCodeForSessionMock = vi.fn()

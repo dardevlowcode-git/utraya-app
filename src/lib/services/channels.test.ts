@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica detector di business e isolamento della rimozione canale fra utenti.
- * Moduli richiamati: `channels`, fake Supabase con filtri applicati, `AppError` e `vitest`.
- * Flusso: prova classificazione errori e rimozione della sola relazione e dei dati privati di A.
- */
-
 import { describe, expect, it } from 'vitest'
 import { createFilteringSupabase } from '@/__tests__/helpers/filteringSupabase'
 import { AppError } from '@/lib/utils/errors'

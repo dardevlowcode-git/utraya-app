@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: pagina legale Termini di Servizio con rendering markdown da sorgente canonica.
- * Moduli richiamati: `@/lib/legal/documents`, `@/components/legal/LegalMarkdownDocument`.
- * Flusso: carica documento TOS dal file markdown e lo rende staticamente con metadata visibili.
- */
-
 import LegalMarkdownDocument from '@/components/legal/LegalMarkdownDocument'
 import { loadLegalDocument } from '@/lib/legal/documents'
 

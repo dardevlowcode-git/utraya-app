@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: script CLI per calcolare hash SHA-256 di un documento legale markdown.
- * Moduli richiamati: `node:path`, `node:fs`, `@/lib/legal/hashLegalDocument`.
- * Flusso: risolve path argomento, applica fallback root workspace e stampa hash canonico su stdout.
- */
-
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { hashLegalDocument } from '@/lib/legal/hashLegalDocument'

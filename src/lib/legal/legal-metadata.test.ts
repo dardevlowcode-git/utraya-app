@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica che hash e versione richiesti di privacy e cookie corrispondano alle fonti legali.
- * Moduli richiamati: helper di hash legale, costanti metadata e `vitest`.
- * Flusso: ricalcola l'hash canonico di ciascun Markdown e confronta la versione dichiarata con quella richiesta.
- */
-
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { hashLegalDocument } from '@/lib/legal/hashLegalDocument'

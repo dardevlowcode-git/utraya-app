@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica il rate limiting in-memory senza rete, database o timer reali.
- * Moduli richiamati: `../rate-limit`, `vitest`.
- * Flusso: esercita finestra fissa, reset temporale e isolamento per chiave con orologio iniettato.
- */
-
 import { beforeEach, describe, expect, it } from 'vitest'
 import { checkRateLimit, resetRateLimits } from './rate-limit'
 

@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica il contenuto TOS mostrato e la coerenza dei metadata richiesti.
- * Moduli richiamati: caricamento pubblico dei documenti legali e costanti di accettazione.
- * Flusso: controlla versione/hash effettivi e la presenza letterale degli inserti approvati IT/EN.
- */
-
 import * as React from 'react'
 import { createElement } from 'react'
 import { readFileSync, readdirSync } from 'node:fs'

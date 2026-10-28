@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica il salvataggio credenziale e il confine fra API sincrona e job pending.
- * Moduli richiamati: integrations, route utente, client Supabase mock e vitest.
- * Flusso: verifica owner-scoping, reset/preservazione e che il save non invochi direttamente il provider.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppSupabaseClient } from '@/lib/supabase/types'
 

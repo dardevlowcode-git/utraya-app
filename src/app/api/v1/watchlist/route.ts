@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: espone lettura e modifica della watchlist default per il client mobile.
- * Moduli richiamati: `@/lib/http/apiV1`, `@/lib/services/watchlist`, `@/lib/services/videos`.
- * Flusso: ogni operazione è legata al Bearer user e non accetta watchlistId di un altro utente.
- */
-
 import { apiOk } from '@/lib/http/apiResponse'
 import { apiV1Error, apiV1Validation, getApiRequestId, readApiJson, requireApiJson, requireApiRateLimit, requireApiUser } from '@/lib/http/apiV1'
 import { setVideoWatchlistForUser } from '@/lib/services/videos'

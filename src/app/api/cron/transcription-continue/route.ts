@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: continuazione interna dei job di trascrizione rilasciati dopo il budget di durata, senza cron al minuto.
- * Moduli richiamati: `next/server` (`after`), servizi di trascrizione, confronto a tempo costante di CRON_SECRET.
- * Flusso: il worker che termina il budget chiama questa route; qui si risponde 202 subito e il job riprende in `after()`.
- */
-
 import { after } from 'next/server'
 import { z } from 'zod'
 import { apiErr, apiOk } from '@/lib/http/apiResponse'

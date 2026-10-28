@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo: verifica snapshot SSR stabile per viewport, preferenza sidebar e drawer.
- * Moduli richiamati: `PrivateChrome`, renderer React server-side e `vitest`.
- * Flusso: neutralizza la navigazione e osserva i valori passati alla sidebar.
- */
-
 // @vitest-environment happy-dom
 
 import { act, createElement, type ComponentProps, type ComponentType } from 'react'

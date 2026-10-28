@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo: verifica autenticazione e comportamento osservabile del cron di retention eventi API.
- * Moduli richiamati: route handler, `api-usage` mocked e `vitest`.
- * Flusso: una chiamata senza secret valida non pulisce; il Bearer corretto invoca il cleanup una sola volta.
- */
-
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { cleanupMock } = vi.hoisted(() => ({ cleanupMock: vi.fn() }))

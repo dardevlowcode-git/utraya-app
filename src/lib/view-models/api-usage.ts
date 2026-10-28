@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo: espone shape serializzabili e allowlistate per il pannello utilizzo API.
- * Moduli richiamati: tipi di dominio derivati dallo schema database.
- * Flusso: il service converte le righe Supabase in dati camelCase adatti alla UI.
- */
-
 import type { ApiUsageEventRow, IntegrationProvider } from '@/lib/types/domain'
 
 export type ApiUsageProvider = IntegrationProvider

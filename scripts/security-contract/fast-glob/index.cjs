@@ -1,8 +1,3 @@
-/* Commento didattico:
- * Scopo: sostituisce il solo uso Next di fast-glob con ricerca directory letterali.
- * Flusso: valida input/opzioni prima delle stat e restituisce i path esistenti che sono directory.
- */
-
 'use strict'
 
 const fs = require('node:fs')

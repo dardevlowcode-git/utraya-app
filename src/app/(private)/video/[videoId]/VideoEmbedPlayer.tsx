@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: renderizzare un player YouTube resiliente con fallback host embed.
- * Moduli richiamati: `react`.
- * Flusso: prova prima `youtube-nocookie`, se il player non risulta caricato passa a `youtube.com`.
- */
-
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'

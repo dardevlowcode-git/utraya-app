@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo: calcola la prossima scadenza di retry per chiamate provider persistenti.
- * Moduli richiamati: Date nativa.
- * Flusso: applica il massimo fra backoff esponenziale (cappato a 60 secondi) e Retry-After del provider.
- */
-
 const MAX_RETRY_DELAY_MS = 60_000
 
 /** Calcola una scadenza deterministica per i worker. */

@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: testa combinazioni filtri tracker (stato + durata multi-select).
- * Moduli richiamati: `vitest`, `./tracker-filters`.
- * Flusso: validazione logica pura senza dipendenze UI.
- */
-
 import { describe, expect, it } from 'vitest'
 import { matchesTrackerFilters, type DurationFilterState, type SeenFilterState } from './tracker-filters'
 

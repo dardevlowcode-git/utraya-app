@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica che il worker admin non dipenda dal contesto HTTP dell'utente.
- * Moduli richiamati: `importChannelVideos`, client Supabase mockati e Vitest.
- * Flusso: simula ownership/admin e credenziale provider assente senza creare un client cookie.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { createClientMock, createAdminClientMock, getProviderApiKeyForUserAsAdminMock } = vi.hoisted(() => ({

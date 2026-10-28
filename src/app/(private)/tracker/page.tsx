@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: carica dati tracker lato server, applica filtro canale/view via URL e delega rendering interattivo al client.
- * Moduli richiamati: `next`, `next-intl/server`, `next/navigation`, servizi auth/channels/videos
- * Flusso: valida sessione, risolve filtro canale, carica tutti i video utili al tracker e passa stato iniziale a `TrackerClient`.
- */
-
 import type { Metadata } from 'next'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { redirect } from 'next/navigation'

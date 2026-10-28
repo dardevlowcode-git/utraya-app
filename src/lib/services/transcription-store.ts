@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: implementazione Supabase (service_role) del `TranscriptionStore` e continuazione dei job lunghi.
- * Moduli richiamati: client admin, servizio integrazioni (chiave Gemini decifrata solo qui), utility video id.
- * Flusso: il worker chiede claim, contesto, credenziale e salvataggi; ogni scrittura passa dalle RPC con fencing sulla lease.
- */
-
 import { timingSafeEqual } from 'node:crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getProviderApiKeyForUserAsAdmin } from '@/lib/services/integrations'

@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: landing pubblica marketing con layout editoriale a blocchi riusabili.
- * Moduli richiamati: `next`, `next/link`, `next-intl/server`, componenti hero e template sezioni.
- * Flusso: compone contenuti localizzati in tre template visivi (split hero, editorial grid, statement band).
- */
-
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { getTranslations } from 'next-intl/server'

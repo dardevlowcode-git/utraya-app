@@ -1,8 +1,3 @@
-/* Commento didattico:
- * Scopo del file: pagina prezzi marketing con blocchi statement + faq editoriale.
- * Moduli richiamati: `next-intl/server`, template sezioni marketing.
- */
-
 import { getTranslations } from 'next-intl/server'
 import { EditorialGridSection, SplitHeroSection, StatementBand } from '@/components/marketing/SectionTemplates'
 

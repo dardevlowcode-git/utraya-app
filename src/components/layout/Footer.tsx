@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: contiene un componente di interfaccia per la struttura visiva (navigazione, footer, sidebar).
- * Moduli richiamati: `next/link`, `next-intl/server`
- * Flusso: Il componente riceve dati da pagine/layout parent, usa eventuali hook/utilita` e restituisce markup riusabile.
- */
-
 import Link from 'next/link'
 import { getTranslations } from 'next-intl/server'
 

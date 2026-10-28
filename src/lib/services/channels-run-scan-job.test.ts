@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica il lifecycle pubblico di un job di scansione.
- * Moduli richiamati: `runScanJob`, client Supabase admin e servizio import video.
- * Flusso: sospende l'import e verifica che il claim con attempt running preceda il lavoro.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AppError } from '@/lib/utils/errors'
 

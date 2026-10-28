@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica che la guida YouTube sia localizzata e collegata al connettore corretto.
- * Moduli richiamati: `IntegrationsClient`, provider `next-intl` e renderer React server-side.
- * Flusso: renderizza la schermata pubblica e controlla semantica della disclosure, fonti e form chiave.
- */
-
 import * as React from 'react'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'

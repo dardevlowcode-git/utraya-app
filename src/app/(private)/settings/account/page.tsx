@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: pagina impostazioni account con richiesta cancellazione, stato grace period e annullamento via token.
- * Moduli richiamati: auth provider, service account deletion, client component locale.
- * Flusso: carica stato cancellazione server-side e delega interazioni mutative al componente client.
- */
-
 import { redirect } from 'next/navigation'
 import { getCurrentSession } from '@/lib/auth/provider'
 import { getDeletionRequestView } from '@/lib/services/account-deletion'

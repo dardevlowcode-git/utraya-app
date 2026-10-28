@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica auth e shape minima del view model account nella API Bearer.
- * Moduli richiamati: handler HTTP, auth Bearer e service account-deletion simulati.
- * Flusso: prova accesso anonimo ai metodi e uguaglianza stretta della risposta GET.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { getApiUserMock, getDeletionRequestViewMock, requestDeletionMock } = vi.hoisted(() => ({

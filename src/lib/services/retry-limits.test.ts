@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica i view model admin e la persistenza separata dei retry senza leggere segreti.
- * Moduli richiamati: service retry-limits, client Supabase admin tipizzato e vitest.
- * Flusso: simula solo il confine database e controlla default, proiezione sicura e aggiornamenti isolati.
- */
-
 import { describe, expect, it, vi } from 'vitest'
 import type { createAdminClient } from '@/lib/supabase/admin'
 import { getAdminRetryLimits, setCredentialRetryLimit, setSharedYoutubeRetryLimit } from '@/lib/services/retry-limits'

@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: configura il comportamento globale di Next.js (build, lint, immagini, plugin i18n).
- * Moduli richiamati: `next-intl/plugin`
- * Flusso: Next.js legge questa configurazione all'avvio/build per applicare plugin e opzioni runtime.
- */
-
 import createNextIntlPlugin from 'next-intl/plugin'
 
 const withNextIntl = createNextIntlPlugin('./src/lib/i18n/request.ts')

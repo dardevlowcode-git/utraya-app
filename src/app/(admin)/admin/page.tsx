@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: definisce una pagina o layout amministrativo, usato per operazioni di controllo e gestione avanzata.
- * Moduli richiamati: `next`, `@/lib/supabase/admin`, `next-intl/server`
- * Flusso: Questa pagina/layout richiama componenti e servizi: i dati arrivano da API o funzioni server, poi vengono passati alla UI per il rendering.
- */
-
 import type { Metadata } from 'next'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { Database } from '@/lib/types/database'

@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: pagina login pubblica con avvio OAuth Google e gestione errori callback inclusi stato cancellazione account.
- * Moduli richiamati: next-intl, supabase client, site-url helper, next/navigation.
- * Flusso: costruisce redirect OAuth sicuro verso callback e mostra eventuali errori rientrati da querystring.
- */
-
 'use client'
 
 import { useTranslations } from 'next-intl'

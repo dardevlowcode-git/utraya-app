@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: crea il client SSR Supabase finto condiviso dai test proxy e sessione admin.
- * Moduli richiamati: `vitest` per il tipo dei mock dei confini Supabase.
- * Flusso: collega gli spy forniti al client atteso dal proxy, senza rete né database.
- */
-
 import type { Mock } from 'vitest'
 
 type SupabaseSsrFakeMocks = {

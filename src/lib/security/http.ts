@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: centralizza utilita` HTTP di sicurezza per request ID, IP e policy CSRF minimale.
- * Moduli richiamati: `node:crypto`, `@/lib/utils/errors`
- * Flusso: Le route API usano queste funzioni prima delle mutazioni per validare headers e origine.
- */
-
 import { randomUUID } from 'node:crypto'
 import { AppError } from '@/lib/utils/errors'
 

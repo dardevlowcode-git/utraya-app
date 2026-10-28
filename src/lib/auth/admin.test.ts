@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: fissa il contratto della sessione admin (`@/lib/auth/admin`) e la coerenza con il proxy reale.
- * Moduli richiamati: `node:crypto` (hash scrypt), `vitest`, `next/server`, `@/lib/auth/admin`, `@/proxy`, mock di `@supabase/ssr`.
- * Flusso: crea cookie con la funzione di produzione e verifica che siano accettati o rifiutati allo stesso modo da lettore e proxy.
- */
-
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 import { adminPassword, adminUsername, setAdminEnv } from '@/__tests__/admin-route-helpers'

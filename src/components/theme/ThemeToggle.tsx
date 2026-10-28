@@ -1,10 +1,4 @@
-/* Commento didattico:
- * Scopo del file: fornisce il selettore tema globale (Normale/Dark) visibile nella top navigation.
- * Moduli richiamati: `react`, `next-intl`
- * Flusso: quando l'utente cambia tema, questo componente aggiorna subito `html[data-theme]`
- *         e salva la preferenza sia in `localStorage` sia in cookie; `layout.tsx` leggera` poi il cookie
- *         al reload per disegnare subito il tema corretto senza effetto "flash".
- */
+// Il cookie permette al layout di applicare il tema al reload senza flash.
 
 'use client'
 

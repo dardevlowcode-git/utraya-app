@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: implementa logica server-side per verificare e registrare accettazioni TOS/clausole vessatorie.
- * Moduli richiamati: `@/lib/supabase/admin`, `@/lib/legal/required`, `@/lib/view-models/legalAcceptance`.
- * Flusso: layout/callback usano lo status; route `/api/legal/accept` invoca registrazione accettazioni.
- */
-
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
   PRIVACY_VISIBLE_HASH,

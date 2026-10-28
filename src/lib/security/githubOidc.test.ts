@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica la validazione OIDC GitHub senza rete, con chiavi RSA reali e JWKS mockato.
- * Moduli richiamati: `../githubOidc`, `node:crypto`, `vitest`.
- * Flusso: firma token di prova, espone la JWK via fetch mock e controlla accept/reject dei claim.
- */
-
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPrivateKey, generateKeyPairSync, sign } from 'node:crypto'
 import { verifyGitHubActionsOidc } from './githubOidc'

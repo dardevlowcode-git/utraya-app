@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: carica documenti legali markdown da sorgente canonica `.Progetto/specs` con fallback bundle interno.
- * Moduli richiamati: `node:fs/promises`, `node:fs`, `node:path`, `./hashLegalDocument`.
- * Flusso: le pagine `/legal/*` chiamano helper di questo modulo per contenuto, metadata e hash runtime.
- */
-
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'

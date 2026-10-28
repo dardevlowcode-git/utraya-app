@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo: verifica che il cambio lingua persista la preferenza nel cookie del sito.
- * Moduli richiamati: helper del cookie lingua e `vitest`.
- * Flusso: sostituisce `document` con un target minimo e controlla il cookie scritto.
- */
-
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { writeLocaleCookie } from './locale-cookie'
 

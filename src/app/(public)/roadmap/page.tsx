@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: pagina roadmap in stato "In arrivo a breve".
- * Moduli richiamati: `next-intl/server`
- * Flusso: espone roadmap pubblica placeholder senza date vincolanti.
- */
-
 import { getTranslations } from 'next-intl/server'
 
 export default async function RoadmapPage() {

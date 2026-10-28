@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: gestisce le richieste HTTP dell'endpoint v1 canali con contratto Bearer versionato.
- * Moduli richiamati: `@/lib/http/apiV1`, `@/lib/services/channels`, `@/lib/http/apiResponse`.
- * Flusso: autentica token, verifica ownership nel service e restituisce solo il view model pubblico.
- */
-
 import { apiOk } from '@/lib/http/apiResponse'
 import { after } from 'next/server'
 import { apiV1Error, apiV1Validation, getApiRequestId, readApiJson, requireApiJson, requireApiRateLimit, requireApiUser } from '@/lib/http/apiV1'

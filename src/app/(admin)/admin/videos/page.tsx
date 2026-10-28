@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: pagina admin per consultare il contenuto canonico video e lo stato dei riepiloghi AI.
- * Moduli richiamati: `next`, `next-intl/server`, view service admin e cella contenuto canonico.
- * Flusso: carica metadati dei contenuti localizzati e mostra link di lettura nella console admin.
- */
-
 import type { Metadata } from 'next'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { notFound, redirect } from 'next/navigation'

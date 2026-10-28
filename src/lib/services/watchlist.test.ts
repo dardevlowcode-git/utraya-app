@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica che lettura, aggiunta e rimozione della watchlist restino nel perimetro dell’utente.
- * Moduli richiamati: servizi `watchlist` e `videos`, fake Supabase con filtri applicati e `vitest`.
- * Flusso: A e B condividono video e watchlist nel fake; le operazioni di A non devono esporre né alterare quelle di B.
- */
-
 import { describe, expect, it } from 'vitest'
 import { createFilteringSupabase } from '@/__tests__/helpers/filteringSupabase'
 import { setVideoWatchlistForUser } from '@/lib/services/videos'

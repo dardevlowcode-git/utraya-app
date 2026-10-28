@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: converte il contesto video interno in un view model pubblico stabile per mobile/API.
- * Moduli richiamati: `@/lib/types/domain`.
- * Flusso: esclude raw metadata, errori provider e nomi DB snake_case prima della serializzazione.
- */
-
 import type { VideoWithContext } from '@/lib/types/domain'
 
 export function toVideoApiView(item: VideoWithContext) {

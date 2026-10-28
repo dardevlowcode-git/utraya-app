@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica il confine HTTP della route legacy pubblica di annullamento cancellazione, esclusa dal proxy.
- * Moduli richiamati: route `account/cancel-deletion` reale, mock Supabase admin e orologio finto.
- * Flusso: prova token valido da body e query, rifiuti per token assente/non valido e nessuna RPC sui rifiuti.
- */
-
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { createAdminClientMock } = vi.hoisted(() => ({ createAdminClientMock: vi.fn() }))

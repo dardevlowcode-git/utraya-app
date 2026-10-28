@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica che il task in background dello scan avvii la trascrizione automatica del canale.
- * Moduli richiamati: `channel-scan-actions`, servizio canali e servizio auto mockati, Vitest.
- * Flusso: lo scan gira, poi nello stesso task parte un job di trascrizione; il kick parte anche se lo scan fallisce.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({

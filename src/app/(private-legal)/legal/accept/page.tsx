@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: pagina autenticata per doppia accettazione TOS/clausole vessatorie prima accesso dashboard.
- * Moduli richiamati: auth provider, service legal acceptance e client form.
- * Flusso: calcola stato accettazioni mancanti lato server e delega submit al componente client.
- */
-
 import { getCurrentSession } from '@/lib/auth/provider'
 import { getLegalAcceptanceStatus } from '@/lib/services/legal-acceptance'
 import { redirect } from 'next/navigation'

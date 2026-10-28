@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica la barriera di autenticazione della superficie /api/v1 (Bearer + allowlist + stato) senza rete.
- * Moduli richiamati: `getApiUser`, client Supabase Bearer finto, client admin finto, `vitest`.
- * Flusso: finge solo i confini esterni (createClient, createAdminClient) ed esercita esiti e side effect osservabili.
- */
-
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getApiUser } from './apiUser'
 

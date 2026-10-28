@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: verifica l'avvio dei job di trascrizione automatici dopo uno scan e la catena un-video-alla-volta.
- * Moduli richiamati: `vitest`, servizio auto, servizio richieste e continuazione mockati, client admin finto.
- * Flusso: controlla filtro chiavi eleggibili, budget ridotto, concatenazione solo a job concluso e assenza di errori verso lo scan.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({

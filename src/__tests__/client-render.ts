@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo: fornisce mount, hydration e aggiornamento client per test React comportamentali.
- * Moduli richiamati: React `act`, renderer server e root client.
- * Flusso: genera markup SSR, lo idrata nel DOM e restituisce controlli di test isolati.
- */
-
 import { act, type ReactElement } from 'react'
 import { hydrateRoot, type Root } from 'react-dom/client'
 import { renderToString } from 'react-dom/server'

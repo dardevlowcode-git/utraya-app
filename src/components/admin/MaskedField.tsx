@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo del file: valore sensibile mascherato con occhio per-riga per la modalità presentazione in admin.
- * Moduli richiamati: `react`.
- * Flusso: il parent passa valore reale + valore mascherato + stato visible; il bottone occhio alterna solo quella riga.
- */
-
 'use client'
 
 interface MaskedFieldProps {

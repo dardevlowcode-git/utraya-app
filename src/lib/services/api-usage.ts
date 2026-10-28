@@ -1,9 +1,3 @@
-/* Commento didattico:
- * Scopo: registra chiamate API personali e prepara il riepilogo privato del pannello utilizzo.
- * Moduli richiamati: `@/lib/supabase/admin`, `@/lib/supabase/server`, `@/lib/types/database`.
- * Flusso: i service upstream scrivono solo metadati allowlistati; il pannello legge sotto RLS dell'utente.
- */
-
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import type { Database } from '@/lib/types/database'
