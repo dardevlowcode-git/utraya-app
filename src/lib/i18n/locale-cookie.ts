@@ -1,5 +1,5 @@
 /* Commento didattico:
- * Scopo: persiste la lingua scelta nel cookie letto dal middleware e da next-intl.
+ * Scopo: persiste la lingua scelta nel cookie letto dal proxy e da next-intl.
  * Moduli richiamati: configurazione locale del progetto.
  * Flusso: formatta il cookie di un anno valido sull'intero sito.
  */

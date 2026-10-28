@@ -1,6 +1,6 @@
 /* Commento didattico:
- * Scopo del file: verifica il middleware reale (`src/middleware.ts`), i suoi bypass e i file statici dell'icona del sito.
- * Moduli richiamati: `vitest`, `next/server`, `@/middleware`, `@/lib/auth/admin` (firma del cookie admin), fake condiviso `@supabase/ssr`.
+ * Scopo del file: verifica il proxy reale (`src/proxy.ts`), i suoi bypass e i file statici dell'icona del sito.
+ * Moduli richiamati: `vitest`, `next/server`, `@/proxy`, `@/lib/auth/admin` (firma del cookie admin), fake condiviso `@supabase/ssr`.
  * Flusso: costruisce una `NextRequest` con cookie finti e osserva redirect, status, cookie azzerati e header di sicurezza.
  */
 
@@ -17,7 +17,7 @@ const fromMock = vi.fn()
 
 vi.mock('@supabase/ssr', () => ({ createServerClient: vi.fn(() => createSupabaseSsrFake({ getUserMock, rpcMock, maybeSingleMock, fromMock })) }))
 
-const { middleware, config } = await import('@/middleware')
+const { proxy, config } = await import('@/proxy')
 const { buildAdminSessionCookieValue } = await import('@/lib/auth/admin')
 
 function request(path: string, init?: { cookies?: Record<string, string>; url?: string }) {
@@ -41,7 +41,7 @@ function expectSecurityHeaders(response: { headers: Headers }) {
   expect(response.headers.get('Cross-Origin-Opener-Policy')).toBe('same-origin')
 }
 
-describe('middleware', () => {
+describe('proxy', () => {
   beforeEach(() => {
     vi.resetAllMocks()
     setAdminEnv({ SUPERADMIN_PASSWORD_HASH: 'scrypt$16384$8$1$64$c2FsdA==$aGFzaA==' })
@@ -59,7 +59,7 @@ describe('middleware', () => {
 
   describe('rotte admin con sessione admin', () => {
     it('reindirizza /admin/* senza cookie a /admin/login con redirectTo', async () => {
-      const response = await middleware(request('/admin/users'))
+      const response = await proxy(request('/admin/users'))
 
       expect(response.status).toBe(307)
       const location = new URL(response.headers.get('location')!)
@@ -70,7 +70,7 @@ describe('middleware', () => {
     })
 
     it('reindirizza /admin/* con cookie manomesso e azzera cf_admin_session', async () => {
-      const response = await middleware(request('/admin/allowlist', { cookies: { [adminSessionCookieName]: 'payload.firma-falsa' } }))
+      const response = await proxy(request('/admin/allowlist', { cookies: { [adminSessionCookieName]: 'payload.firma-falsa' } }))
 
       expect(response.status).toBe(307)
       expect(new URL(response.headers.get('location')!).pathname).toBe('/admin/login')
@@ -87,7 +87,7 @@ describe('middleware', () => {
       const scaduto = signedAdminCookie()
       vi.setSystemTime(new Date('2026-01-02T00:00:00.000Z'))
 
-      const response = await middleware(request('/admin/users', { cookies: { [adminSessionCookieName]: scaduto } }))
+      const response = await proxy(request('/admin/users', { cookies: { [adminSessionCookieName]: scaduto } }))
 
       expect(response.status).toBe(307)
       expect(new URL(response.headers.get('location')!).pathname).toBe('/admin/login')
@@ -95,7 +95,7 @@ describe('middleware', () => {
     })
 
     it('lascia passare /admin/* con un cookie firmato valido', async () => {
-      const response = await middleware(request('/admin/users', { cookies: { [adminSessionCookieName]: signedAdminCookie() } }))
+      const response = await proxy(request('/admin/users', { cookies: { [adminSessionCookieName]: signedAdminCookie() } }))
 
       expect(response.status).toBe(200)
       expect(response.headers.get('location')).toBeNull()
@@ -103,7 +103,7 @@ describe('middleware', () => {
     })
 
     it('lascia passare /api/admin/* con un cookie firmato valido', async () => {
-      const response = await middleware(request('/api/admin/allowlist', { cookies: { [adminSessionCookieName]: signedAdminCookie() } }))
+      const response = await proxy(request('/api/admin/allowlist', { cookies: { [adminSessionCookieName]: signedAdminCookie() } }))
 
       expect(response.status).toBe(200)
       expect(response.headers.get('location')).toBeNull()
@@ -112,7 +112,7 @@ describe('middleware', () => {
 
   describe('rotte /api/admin/* senza sessione', () => {
     it('risponde 401 JSON senza sessione valida', async () => {
-      const response = await middleware(request('/api/admin/allowlist'))
+      const response = await proxy(request('/api/admin/allowlist'))
 
       expect(response.status).toBe(401)
       expect(response.headers.get('content-type')).toContain('application/json')
@@ -121,7 +121,7 @@ describe('middleware', () => {
     })
 
     it('risponde 401 e azzera cf_admin_session con cookie invalido', async () => {
-      const response = await middleware(request('/api/admin/allowlist', { cookies: { [adminSessionCookieName]: 'bad.value' } }))
+      const response = await proxy(request('/api/admin/allowlist', { cookies: { [adminSessionCookieName]: 'bad.value' } }))
 
       expect(response.status).toBe(401)
       expect(response.cookies.get(adminSessionCookieName)?.value).toBe('')
@@ -131,7 +131,7 @@ describe('middleware', () => {
       const cookie = signedAdminCookie()
       vi.stubEnv('SUPERADMIN_SESSION_SECRET', 'test-session-secret-not-a-real-key-for-invalid-signature')
 
-      const response = await middleware(request('/api/admin/allowlist', { cookies: { [adminSessionCookieName]: cookie } }))
+      const response = await proxy(request('/api/admin/allowlist', { cookies: { [adminSessionCookieName]: cookie } }))
 
       expect(response.status).toBe(401)
     })
@@ -139,7 +139,7 @@ describe('middleware', () => {
 
   describe('pagine private', () => {
     it('reindirizza l\'anonimo a /login con redirectTo', async () => {
-      const response = await middleware(request('/dashboard'))
+      const response = await proxy(request('/dashboard'))
 
       expect(response.status).toBe(307)
       const location = new URL(response.headers.get('location')!)
@@ -152,7 +152,7 @@ describe('middleware', () => {
       getUserMock.mockResolvedValue({ data: { user: { id: 'user-1', email: 'utente@example.com' } } })
       rpcMock.mockResolvedValue({ data: false, error: null })
 
-      const response = await middleware(request('/dashboard'))
+      const response = await proxy(request('/dashboard'))
 
       expect(response.status).toBe(307)
       const location = new URL(response.headers.get('location')!)
@@ -164,7 +164,7 @@ describe('middleware', () => {
       getUserMock.mockResolvedValue({ data: { user: { id: 'user-1', email: 'utente@example.com' } } })
       rpcMock.mockResolvedValue({ data: null, error: { message: 'rpc down' } })
 
-      const response = await middleware(request('/dashboard'))
+      const response = await proxy(request('/dashboard'))
 
       expect(new URL(response.headers.get('location')!).searchParams.get('error')).toBe('access_denied')
     })
@@ -174,7 +174,7 @@ describe('middleware', () => {
       rpcMock.mockResolvedValue({ data: true, error: null })
       maybeSingleMock.mockResolvedValue({ data: null, error: null })
 
-      const response = await middleware(
+      const response = await proxy(
         request('/dashboard', { cookies: { 'sb-auth-token': 'sessione-finta', 'altro-cookie': 'x' } })
       )
 
@@ -189,7 +189,7 @@ describe('middleware', () => {
     it('lascia passare un utente allowlisted e attivo', async () => {
       getUserMock.mockResolvedValue({ data: { user: { id: 'user-1', email: 'utente@example.com' } } })
 
-      const response = await middleware(request('/dashboard'))
+      const response = await proxy(request('/dashboard'))
 
       expect(response.status).toBe(200)
       expect(response.headers.get('location')).toBeNull()
@@ -207,7 +207,7 @@ describe('middleware', () => {
       '/prezzi',
       '/legal/privacy',
     ])('non reindirizza %s per un anonimo', async (path) => {
-      const response = await middleware(request(path))
+      const response = await proxy(request(path))
 
       expect(response.status).toBe(200)
       expect(response.headers.get('location')).toBeNull()
@@ -215,14 +215,14 @@ describe('middleware', () => {
     })
 
     it('/api/cron/* è raggiungibile senza redirect (caso conservato)', async () => {
-      const response = await middleware(request('/api/cron/daily-sync'))
+      const response = await proxy(request('/api/cron/daily-sync'))
 
       expect(response.status).toBe(200)
       expect(response.headers.get('location')).toBeNull()
     })
 
     it('/legal/accept è invece protetta', async () => {
-      const response = await middleware(request('/legal/accept'))
+      const response = await proxy(request('/legal/accept'))
 
       expect(response.status).toBe(307)
       const location = new URL(response.headers.get('location')!)
@@ -235,7 +235,7 @@ describe('middleware', () => {
     it.each(['/', '/login'])('reindirizza %s a /dashboard per utente allowlisted e attivo', async (path) => {
       getUserMock.mockResolvedValue({ data: { user: { id: 'user-1', email: 'utente@example.com' } } })
 
-      const response = await middleware(request(path))
+      const response = await proxy(request(path))
 
       expect(response.status).toBe(307)
       expect(new URL(response.headers.get('location')!).pathname).toBe('/dashboard')
@@ -245,7 +245,7 @@ describe('middleware', () => {
       getUserMock.mockResolvedValue({ data: { user: { id: 'user-1', email: 'utente@example.com' } } })
       rpcMock.mockResolvedValue({ data: false, error: null })
 
-      const response = await middleware(request('/login'))
+      const response = await proxy(request('/login'))
 
       expect(response.status).toBe(200)
       expect(response.headers.get('location')).toBeNull()
@@ -256,7 +256,7 @@ describe('middleware', () => {
     it('esclude asset statici e percorsi che finiscono con un\'estensione immagine', () => {
       const matcher = new RegExp(`^${config.matcher[0]}$`)
 
-      // Percorsi gestiti dal middleware.
+      // Percorsi gestiti dal proxy.
       expect(matcher.test('/dashboard')).toBe(true)
       expect(matcher.test('/admin/users')).toBe(true)
       expect(matcher.test('/api/admin/allowlist')).toBe(true)

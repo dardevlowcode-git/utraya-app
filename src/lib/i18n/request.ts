@@ -1,7 +1,7 @@
 /* Commento didattico:
  * Scopo del file: gestisce la configurazione internazionale (lingue supportate, caricamento messaggi e locale corrente).
  * Moduli richiamati: `next-intl/server`, `next/headers`, `./config`
- * Flusso: La configurazione viene letta da middleware/layout/componenti per scegliere lingua e messaggi corretti.
+ * Flusso: La configurazione viene letta da proxy/layout/componenti per scegliere lingua e messaggi corretti.
  */
 
 import { getRequestConfig } from 'next-intl/server'

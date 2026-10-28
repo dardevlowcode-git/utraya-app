@@ -1,7 +1,7 @@
 /* Commento didattico:
  * Scopo del file: gestisce regole e utilita` legate ad autenticazione, permessi e controlli di accesso.
  * Moduli richiamati: `node:crypto`, `next/headers`
- * Flusso: Queste funzioni vengono usate da middleware, layout o API per decidere se un utente puo` accedere a una risorsa.
+ * Flusso: Queste funzioni vengono usate da proxy, layout o API per decidere se un utente puo` accedere a una risorsa.
  */
 
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'

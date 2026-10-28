@@ -1,7 +1,7 @@
 /* Commento didattico:
  * Scopo del file: gestisce regole e utilita` legate ad autenticazione, permessi e controlli di accesso.
  * Moduli richiamati: `@/lib/supabase/admin`
- * Flusso: Queste funzioni vengono usate da middleware, layout o API per decidere se un utente puo` accedere a una risorsa.
+ * Flusso: Queste funzioni vengono usate da proxy, layout o API per decidere se un utente puo` accedere a una risorsa.
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -60,7 +60,7 @@ export async function addToAllowlist(
 
 /**
  * Revoca accesso disattivando l'email.
- * Da quel momento il middleware blocca nuove sessioni applicative.
+ * Da quel momento il proxy blocca nuove sessioni applicative.
  */
 export async function removeFromAllowlist(email: string): Promise<{ success: boolean; error?: string }> {
   const supabase = createAdminClient()

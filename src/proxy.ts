@@ -1,5 +1,5 @@
 /* Commento didattico:
- * Scopo del file: middleware globale per auth, route pubbliche, admin session e security headers.
+ * Scopo del file: proxy globale per auth, route pubbliche, admin session e security headers.
  * Moduli richiamati: `@supabase/ssr`, `next/server`, allowlist helper.
  * Flusso: decide se lasciare passare, redirigere o bloccare richieste in base a sessione, ruolo e percorso.
  */
@@ -89,7 +89,7 @@ async function verifyAdminSessionCookie(cookieValue: string | undefined): Promis
   }
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let supabaseResponse = applySecurityHeaders(NextResponse.next({ request }))
 
   const supabase = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {

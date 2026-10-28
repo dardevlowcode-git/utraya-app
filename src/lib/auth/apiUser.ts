@@ -54,7 +54,7 @@ export async function getApiUser(request: Request): Promise<ApiUserContext | nul
 
   if (error || !user?.id || !user.email) return null
 
-  // La superficie API bypassa il middleware cookie: replica quindi allowlist e stato applicativo qui.
+  // La superficie API bypassa il proxy cookie: replica quindi allowlist e stato applicativo qui.
   if (!(await isEmailAllowlisted(user.email))) return null
   const admin = createAdminClient()
   const { data: appUser } = await admin

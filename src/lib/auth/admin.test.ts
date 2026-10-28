@@ -1,7 +1,7 @@
 /* Commento didattico:
- * Scopo del file: fissa il contratto della sessione admin (`@/lib/auth/admin`) e la coerenza con il middleware reale.
- * Moduli richiamati: `node:crypto` (hash scrypt), `vitest`, `next/server`, `@/lib/auth/admin`, `@/middleware`, mock di `@supabase/ssr`.
- * Flusso: crea cookie con la funzione di produzione e verifica che siano accettati o rifiutati allo stesso modo da lettore e middleware.
+ * Scopo del file: fissa il contratto della sessione admin (`@/lib/auth/admin`) e la coerenza con il proxy reale.
+ * Moduli richiamati: `node:crypto` (hash scrypt), `vitest`, `next/server`, `@/lib/auth/admin`, `@/proxy`, mock di `@supabase/ssr`.
+ * Flusso: crea cookie con la funzione di produzione e verifica che siano accettati o rifiutati allo stesso modo da lettore e proxy.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -17,7 +17,7 @@ const fromMock = vi.fn()
 vi.mock('@supabase/ssr', () => ({ createServerClient: vi.fn(() => createSupabaseSsrFake({ getUserMock, rpcMock, maybeSingleMock, fromMock })) }))
 
 const { buildAdminSessionCookieValue, readAdminSessionFromCookieValue, verifySuperAdminCredentials } = await import('@/lib/auth/admin')
-const { middleware } = await import('@/middleware')
+const { proxy } = await import('@/proxy')
 
 function adminRequest(cookieValue?: string) {
   return new NextRequest('https://utraya.com/api/admin/probe', {
@@ -25,8 +25,8 @@ function adminRequest(cookieValue?: string) {
   })
 }
 
-async function middlewareAccepts(cookieValue: string | undefined): Promise<boolean> {
-  const response = await middleware(adminRequest(cookieValue))
+async function proxyAccepts(cookieValue: string | undefined): Promise<boolean> {
+  const response = await proxy(adminRequest(cookieValue))
   return response.status !== 401
 }
 
@@ -45,7 +45,7 @@ function tamperPayload(cookie: string, mutate: (parsed: { u: string; exp: number
   return `${nextPayload}.${signature}`
 }
 
-describe('sessione admin: contratto fra admin.ts e middleware', () => {
+describe('sessione admin: contratto fra admin.ts e proxy', () => {
   beforeEach(() => {
     vi.resetAllMocks()
     setAdminEnv()
@@ -63,28 +63,28 @@ describe('sessione admin: contratto fra admin.ts e middleware', () => {
     const cookie = buildAdminSessionCookieValue(adminUsername)
 
     expect(readAdminSessionFromCookieValue(cookie)).toEqual({ username: adminUsername })
-    await expect(middlewareAccepts(cookie)).resolves.toBe(true)
+    await expect(proxyAccepts(cookie)).resolves.toBe(true)
   })
 
   it('rifiuta da entrambi la firma alterata', async () => {
     const cookie = tamperSignature(buildAdminSessionCookieValue(adminUsername))
 
     expect(readAdminSessionFromCookieValue(cookie)).toBeNull()
-    await expect(middlewareAccepts(cookie)).resolves.toBe(false)
+    await expect(proxyAccepts(cookie)).resolves.toBe(false)
   })
 
   it('rifiuta da entrambi il payload alterato (username)', async () => {
     const cookie = tamperPayload(buildAdminSessionCookieValue(adminUsername), (parsed) => ({ ...parsed, u: 'altro-admin' }))
 
     expect(readAdminSessionFromCookieValue(cookie)).toBeNull()
-    await expect(middlewareAccepts(cookie)).resolves.toBe(false)
+    await expect(proxyAccepts(cookie)).resolves.toBe(false)
   })
 
   it('rifiuta da entrambi il payload alterato (exp)', async () => {
     const cookie = tamperPayload(buildAdminSessionCookieValue(adminUsername), (parsed) => ({ ...parsed, exp: parsed.exp + 60_000 }))
 
     expect(readAdminSessionFromCookieValue(cookie)).toBeNull()
-    await expect(middlewareAccepts(cookie)).resolves.toBe(false)
+    await expect(proxyAccepts(cookie)).resolves.toBe(false)
   })
 
   it('rifiuta da entrambi un cookie scaduto oltre le 12 ore', async () => {
@@ -95,7 +95,7 @@ describe('sessione admin: contratto fra admin.ts e middleware', () => {
     vi.setSystemTime(new Date('2026-01-02T00:00:01.000Z'))
 
     expect(readAdminSessionFromCookieValue(cookie)).toBeNull()
-    await expect(middlewareAccepts(cookie)).resolves.toBe(false)
+    await expect(proxyAccepts(cookie)).resolves.toBe(false)
   })
 
   it('rifiuta da entrambi un cookie firmato con un\'altra secret', async () => {
@@ -103,19 +103,19 @@ describe('sessione admin: contratto fra admin.ts e middleware', () => {
 
     vi.stubEnv('SUPERADMIN_SESSION_SECRET', 'test-session-secret-not-a-real-key-for-invalid-signature')
     expect(readAdminSessionFromCookieValue(cookie)).toBeNull()
-    await expect(middlewareAccepts(cookie)).resolves.toBe(false)
+    await expect(proxyAccepts(cookie)).resolves.toBe(false)
   })
 
   it('rifiuta da entrambi un valore senza punto', async () => {
     expect(readAdminSessionFromCookieValue('senza-punto')).toBeNull()
-    await expect(middlewareAccepts('senza-punto')).resolves.toBe(false)
+    await expect(proxyAccepts('senza-punto')).resolves.toBe(false)
   })
 
   it('rifiuta da entrambi la stringa vuota e il valore assente', async () => {
     expect(readAdminSessionFromCookieValue('')).toBeNull()
     expect(readAdminSessionFromCookieValue(undefined)).toBeNull()
-    await expect(middlewareAccepts('')).resolves.toBe(false)
-    await expect(middlewareAccepts(undefined)).resolves.toBe(false)
+    await expect(proxyAccepts('')).resolves.toBe(false)
+    await expect(proxyAccepts(undefined)).resolves.toBe(false)
   })
 
   it('rifiuta da entrambi quando la secret non è configurata', async () => {
@@ -123,7 +123,7 @@ describe('sessione admin: contratto fra admin.ts e middleware', () => {
     const cookie = `${Buffer.from(JSON.stringify({ u: adminUsername, exp: Date.now() + 60_000 }), 'utf8').toString('base64url')}.firma`
 
     expect(readAdminSessionFromCookieValue(cookie)).toBeNull()
-    await expect(middlewareAccepts(cookie)).resolves.toBe(false)
+    await expect(proxyAccepts(cookie)).resolves.toBe(false)
   })
 
   it('buildAdminSessionCookieValue lancia se la configurazione è incompleta', () => {

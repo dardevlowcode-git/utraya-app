@@ -149,7 +149,7 @@ export async function POST(request: Request) {
     action: 'admin_login_success',
   })
 
-  // Se valido, emette cookie HttpOnly firmato usato poi dal middleware su `/admin/*`.
+  // Se valido, emette cookie HttpOnly firmato usato poi dal proxy su `/admin/*`.
   const response = NextResponse.json({ ok: true, requestId })
   response.cookies.set({
     name: adminSessionCookieName,

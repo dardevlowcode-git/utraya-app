@@ -35,7 +35,7 @@ export async function createClient() {
           } catch {
             // The `setAll` method is called from Server Components, which
             // cannot set cookies directly. This is expected in cases where
-            // the session refresh is handled by middleware.
+            // the session refresh is handled by the proxy.
           }
         },
       },
