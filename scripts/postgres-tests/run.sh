@@ -2,11 +2,8 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-removal_migration='supabase/migrations/20261028150000_remove_firecrawl.sql'
-if [[ ! -f "$repo_root/$removal_migration" ]]; then
-  printf 'Migrazione per la fixture assente: %s\n' "$removal_migration" >&2
-  exit 1
-fi
+source "$repo_root/scripts/postgres-tests/apply-migrations.sh"
+(cd "$repo_root" && check_migrations)
 
 tar -C "$repo_root" -cf - \
   --exclude='./.git' --exclude='./.git/**' --exclude='**/.git' --exclude='**/.git/**' \
@@ -20,7 +17,7 @@ tar -C "$repo_root" -cf - \
   --exclude='coverage' --exclude='**/coverage' \
   --exclude='*.log' --exclude='**/*.log' \
   . |
-  docker run --rm -i --network bridge -v /workspace -w /workspace postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24 sh -lc '
+  docker run --rm -i --network bridge -v /workspace -w /workspace "$POSTGRES_IMAGE" sh -lc '
     set -eu
     tar -xf - -C /workspace
     mkdir -p /tmp/utraya-pgdata
@@ -29,15 +26,9 @@ tar -C "$repo_root" -cf - \
     gosu postgres pg_ctl -D /tmp/utraya-pgdata -o "-h 127.0.0.1 -p 5432" -w start >/dev/null
     trap "gosu postgres pg_ctl -D /tmp/utraya-pgdata -m fast stop >/dev/null" EXIT
     export PGHOST=127.0.0.1 PGPORT=5432 PGUSER=postgres PGDATABASE=postgres
-    psql -X -v ON_ERROR_STOP=1 -f scripts/postgres-tests/fixture.sql
-    # Tutte le migrazioni, in ordine lessicografico: i prefissi numerici (001..009)
-    # e i timestamp (2026...) ordinano correttamente come vuole Supabase.
-    for migration in $(ls supabase/migrations/*.sql | sort); do
-      if [ "$migration" = supabase/migrations/20261028150000_remove_firecrawl.sql ]; then
-        psql -X -v ON_ERROR_STOP=1 -f scripts/postgres-tests/firecrawl-removal-fixture.sql
-      fi
-      psql -X -v ON_ERROR_STOP=1 -f "$migration"
-    done
-    psql -X -v ON_ERROR_STOP=1 -f scripts/postgres-tests/assertions.sql
-    psql -X -v ON_ERROR_STOP=1 -f scripts/postgres-tests/rls.sql
+    export PGOPTIONS="-c client_min_messages=warning"
+    . scripts/postgres-tests/apply-migrations.sh
+    apply_migrations
+    psql -X -q -v ON_ERROR_STOP=1 -f scripts/postgres-tests/assertions.sql
+    psql -X -q -v ON_ERROR_STOP=1 -f scripts/postgres-tests/rls.sql
   '
